@@ -364,6 +364,13 @@ export function registerDefaultShells(): void {
         description: "CRX content shell with overlay-focused layering",
         loader: () => import("shells/content/index")
     });
+
+    ShellRegistry.register({
+        id: "immersive",
+        name: "Immersive",
+        description: "Chromeless immersive host (extensions / embedded)",
+        loader: () => import("shells/immersive/index")
+    });
 }
 
 /** Register the built-in views that are enabled by current feature flags. */
@@ -584,7 +591,7 @@ export const createViewComponentEntryPoint = (viewId: string): ViewComponentEntr
     }
 });
 
-export type ShellAnatomyId = "base" | "window" | "tabbed" | "minimal" | "environment" | "content";
+export type ShellAnatomyId = "base" | "window" | "tabbed" | "minimal" | "environment" | "content" | "immersive";
 
 export type ShellAnatomySpec = {
     id: ShellAnatomyId;
@@ -623,6 +630,12 @@ export const SHELL_ANATOMY_SPECS: Record<ShellAnatomyId, ShellAnatomySpec> = {
         nestedShells: ["window", "base", "minimal"],
         layers: [],
         overlays: ["sniping", "tools", "toasts"]
+    },
+    immersive: {
+        id: "immersive",
+        nestedShells: ["base", "minimal"],
+        layers: [],
+        overlays: ["toasts", "modals"]
     },
     environment: {
         id: "environment",

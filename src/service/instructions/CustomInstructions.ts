@@ -3,8 +3,8 @@
  * Manages user-defined instructions for AI recognition operations
  */
 
-import { loadSettings, saveSettings } from "../../config/Settings";
-import { type AppSettings } from "../../config/SettingsTypes";
+import { loadSettings, saveSettings } from "../../other/config/Settings";
+import { type AppSettings } from "../../other/config/SettingsTypes";
 import { generateInstructionId, type CustomInstruction } from "./utils";
 
 export type { CustomInstruction };

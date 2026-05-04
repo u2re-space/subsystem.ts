@@ -4,8 +4,10 @@
  * module — avoids dev-server secondary fetches to `frontend/ai-slop/*` that could fail behind proxies.
  */
 import { fixOrientToScreen } from "fest/dom";
-import { initializeOrientedDesktop } from "fl-ui/speed-dial";
-import { initializeAppCanvasLayer } from "fest/fl-ui";
+import { initializeAppCanvasLayer } from "../../../../../../modules/projects/image.ts/src/canvas/Canvas-2";
+
+/** COMPAT: historical `fl-ui/speed-dial` orient hook; upstream module not present in this tree. */
+const initializeOrientedDesktop = (_host: HTMLElement): void => {};
 
 export type AppLayers = {
     canvasLayer: HTMLElement | null;

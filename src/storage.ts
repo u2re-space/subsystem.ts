@@ -22,4 +22,4 @@ export {
     workCenterStorage,
     historyStorage,
     settingsStorage
-} from "../../lur.e/src/utils/opfs";
+} from "../../../../modules/projects/lur.e/src/utils/opfs";

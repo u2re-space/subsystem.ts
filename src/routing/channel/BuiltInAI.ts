@@ -17,18 +17,18 @@ export {
 	DATA_CONVERSION_INSTRUCTION,
 	ENTITY_EXTRACTION_INSTRUCTION,
 	DATA_MODIFICATION_INSTRUCTION,
-} from "../service/instructions/core";
+} from "../../service/instructions/core";
 
 export {
 	DEFAULT_TEMPLATES,
 	BUILT_IN_AI_ACTIONS,
 	DEFAULT_INSTRUCTION_TEMPLATES,
 	type BuiltInAIAction,
-} from "../service/instructions/templates";
+} from "../../service/instructions/templates";
 
 export {
 	buildInstructionPrompt,
 	SVG_GRAPHICS_ADDON,
 	generateInstructionId,
 	type CustomInstruction,
-} from "../service/instructions/utils";
+} from "../../service/instructions/utils";

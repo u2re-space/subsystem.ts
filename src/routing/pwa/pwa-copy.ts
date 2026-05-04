@@ -4,7 +4,7 @@
  * Listens for clipboard requests from service worker via BroadcastChannel
  */
 
-import { initToastReceiver, showToast } from "fest/fl-ui";
+import { initToastReceiver, showToast } from "../../boot/toast";
 import { unifiedMessaging } from "com/core/UnifiedMessaging";
 import { summarizeForLog } from "com/core/LogSanitizer";
 import { copy, initClipboardReceiver, listenForClipboardRequests, requestCopy } from "fest/lure";

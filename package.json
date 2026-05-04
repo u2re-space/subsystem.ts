@@ -47,8 +47,9 @@
         "@fest-lib/veela": "^0.1.0"
     },
     "scripts": {
-        "test": "vite --host 0.0.0.0",
-        "dev": "vite --host 0.0.0.0",
+        "test": "vite --config vite.dev.config.js --host 0.0.0.0",
+        "dev": "vite --config vite.dev.config.js --host 0.0.0.0",
+        "demo:explorer": "vite --config vite.dev.config.js --host 0.0.0.0",
         "watch": "vite build --watch",
         "build": "vite build --config vite.config.js && npm run docs && npm run docs:md",
         "build:publish": "FEST_NPM_IMPORTS=1 vite build --config vite.config.js",
@@ -61,10 +62,14 @@
     },
     "devDependencies": {
         "@types/node": ">=22.8.1",
+        "@vitejs/plugin-basic-ssl": "^2.1.0",
+        "autoprefixer": ">=10.4.20",
+        "cssnano": ">=7.0.6",
+        "postcss-discard-duplicates": ">=7.0.1",
         "puppeteer": ">=24.42.0",
         "sass": ">=1.93.3",
         "typescript": ">=6.0.0-beta",
         "vite": ">=8.0.10",
-        "vite-plugin-external": ">=6.2.2"
+        "vite-plugin-external": "^6.2.2"
     }
 }

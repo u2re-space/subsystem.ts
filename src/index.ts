@@ -18,9 +18,9 @@
  */
 
 export * from "./other/utils";
-export * from "./views/types";
-export * from "./views/registry";
-export * from "./views/apis/channel-actions";
+export * from "../types";
+export * from "../registry";
+export * from "./routing/api/channel-actions";
 export * from "./routing/core/registry";
 export * from "./routing/core/channel-mixin";
 export * from "./routing/core/view-message-routing";

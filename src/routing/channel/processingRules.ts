@@ -2,9 +2,9 @@
  * PROCESSING_RULES derived from BUILT_IN_AI_ACTIONS.
  * Types live here so this module does not import UnifiedAIConfig (avoids circular init).
  */
-import type { RecognizeByInstructionsOptions } from "../service/service/ProcessingData";
-import { AI_INSTRUCTIONS } from "../service/instructions/core";
-import { BUILT_IN_AI_ACTIONS } from "../service/instructions/templates";
+import type { RecognizeByInstructionsOptions } from "../../service/service/ProcessingData";
+import { AI_INSTRUCTIONS } from "../../service/instructions/core";
+import { BUILT_IN_AI_ACTIONS } from "../../service/instructions/templates";
 
 export type AIProcessingType =
     | "solve-and-answer"

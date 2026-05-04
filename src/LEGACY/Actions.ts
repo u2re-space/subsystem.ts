@@ -15,7 +15,7 @@ import { JSOX } from "jsox";
 import { stringRef } from "fest/object";
 import { writeText, readText } from "core/modules/Clipboard";
 import { canParseURL } from "core/utils/Runtime";
-import { showError, showSuccess } from "fest/fl-ui";
+import { showError, showSuccess } from "../../boot/toast";
 
 //
 const SERVICE_UUID = '12345678-1234-5678-1234-5678abcdef01';

@@ -5,7 +5,7 @@
         <link rel="icon" type="image/svg+xml" href="/vite.svg" />
         <meta name="text-scale" content="scale" />
         <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-        <title>FL.UI — test suites</title>
+        <title>Views playground (HTTPS)</title>
 
         <script>
             WeakMap.prototype.getOrInsert ??= function (key, defaultValue) {
@@ -122,20 +122,19 @@
     <body class="c2-contrast fl-ui-dev-body">
         <div class="fl-ui-dev-shell">
             <header class="fl-ui-dev-header">
-                <h1>FL.UI test suites</h1>
+                <h1>Views playground</h1>
                 <p class="fl-ui-dev-hint">
-                    Load a suite below or open a deep link, e.g.
+                    Dev server uses TLS via Vite (<code>@vitejs/plugin-basic-ssl</code>). Use the
+                    <strong>https://</strong> URL printed in the terminal (default port <code>8443</code>), not plain
+                    <code>http://</code>. Deep links:
                     <code>?suite=explorer</code>,
-                    <code>?suite=markdown</code>,
-                    <code>?suite=misc</code>,
-                    <code>?suite=speed-dial</code>
-                    (alias: <code>demo=</code>).
+                    <code>?suite=markdown</code>
+                    (alias <code>demo=</code>). Explorer loads <code>explorer-view</code> through
+                    <code>mountViewModule</code> + dynamic import.
                 </p>
                 <nav class="fl-ui-dev-nav" id="fl-ui-suite-nav" aria-label="Test suites">
                     <button type="button" data-fl-suite="explorer">Explorer</button>
                     <button type="button" data-fl-suite="markdown">Markdown</button>
-                    <button type="button" data-fl-suite="misc">Misc (canvas)</button>
-                    <button type="button" data-fl-suite="speed-dial">Speed dial</button>
                 </nav>
                 <p class="fl-ui-suite-status" id="fl-ui-suite-status" aria-live="polite"></p>
             </header>

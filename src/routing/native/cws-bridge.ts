@@ -5,7 +5,7 @@
 import type { PluginListenerHandle } from "@capacitor/core";
 import { registerPlugin, WebPlugin } from "@capacitor/core";
 import { createProtocolEnvelope, isProtocolEnvelope, normalizeProtocolEnvelope, type UniformProtocolEnvelope } from "fest/uniform";
-import { createInteropEnvelope } from "shared/channel/UniformInterop";
+import { createInteropEnvelope } from "com/core/UniformInterop";
 
 export interface CwsShellInfo {
     shell: string;

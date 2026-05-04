@@ -1,0 +1,1 @@
+../../../../../apps/CrossWord/shared/polyfill/showOpenFilePicker.mjs

@@ -5,7 +5,7 @@
  * convenience operations used by share-target flows, recognition/analyze
  * pipelines, markdown/json persistence, and timeline/entity storage.
  */
-import { canParseURL } from "core/utils";
+import { canParseURL } from "core/utils/index";
 import { BASE64_PREFIX, convertImageToJPEG, MAX_BASE64_SIZE } from "core/workers/ImageProcess";
 import { getJSONFromFile, getMarkDownFromFile, writeFileSmart } from "fest/lure";
 

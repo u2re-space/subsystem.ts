@@ -1,109 +1,66 @@
-import { resolve  } from "node:path";
-import { readFile } from "node:fs/promises";
-
-
-//
-const importConfig = (url, ...args)=>{ return import(url)?.then?.((m)=>m?.default?.(...args)); }
-const objectAssign = (target, ...sources) => {
-    if (!sources?.length) return target;
-    const source = sources.shift();
-    if (source && typeof source === 'object') {
-        for (const key in source) {
-            if (Object.prototype.hasOwnProperty.call(source, key)) {
-                if (source[key] && typeof source[key] === 'object') {
-                    if (!target[key] || typeof target[key] !== 'object') {
-                        target[key] = Array.isArray(source[key]) ? [] : {};
-                    }
-                    objectAssign(target[key], source[key]);
-                } else {
-                    target[key] = source[key];
-                }
-            }
-        }
-    }
-    return objectAssign(target, ...sources);
-}
-
-//
-export const NAME = "subsystem";
-export const __dirname = resolve(import.meta.dirname, "./");
-export default objectAssign(
-    await importConfig(resolve(__dirname, "../../shared/vite.config.js"),
-        NAME,
-        JSON.parse(await readFile(resolve(__dirname, "./tsconfig.json"), {encoding: "utf8"})),
-        __dirname
-    ),
-    {}
-);
-
-
+/**
+ * Library build config for `@fest-lib/subsystem` sources under modules/shared/src.
+ * Named export `initiate` is reused by modules/projects/subsystem and fl.ui vite configs.
+ * Dev playground with HTTPS: npm run dev → vite.dev.config.js
+ */
 import { resolve } from "node:path";
-//import { compression } from 'vite-plugin-compression2';
-
-//
-//import optimizer from 'vite-plugin-optimizer';
-import { externalPlugin } from "@praha/vite-plugin-external";
+import { readFile } from "node:fs/promises";
+import { defineConfig, searchForWorkspaceRoot } from "vite";
+import pluginExternal from "vite-plugin-external";
 import deduplicate from "postcss-discard-duplicates";
-//import postcssPresetEnv from 'postcss-preset-env';
 import autoprefixer from "autoprefixer";
-//import tsconfigPaths from 'vite-tsconfig-paths';
 import cssnano from "cssnano";
-import https from "./https/certificate.mjs";
-import { searchForWorkspaceRoot } from "vite";
 import { npmFestImportRewritePlugin } from "./vite-npm-imports.mjs";
 
-//
+const NAME = "subsystem";
+
 function normalizeAliasPattern(pattern) {
-    // Удаляет /*, /**, /**/* с конца строки
-    return pattern.replace(/\/\*+$/, '');
+    return pattern.replace(/\/\*+$/, "");
 }
 
-//
-const importFromTSConfig = (tsconfig, __dirname) => {
+function importFromTSConfig(tsconfig, dir) {
     const paths = tsconfig?.compilerOptions?.paths || {};
-    const alias = [];
+    const out = [];
     for (const key in paths) {
         const normalizedKey = normalizeAliasPattern(key);
         const target = paths[key][0];
         const normalizedTarget = normalizeAliasPattern(target);
-        alias.push({
+        out.push({
             find: normalizedKey,
-            replacement: resolve(__dirname, normalizedTarget),
+            replacement: resolve(dir, normalizedTarget)
         });
     }
-    return alias;
-};
+    return out;
+}
 
-//
-export const initiate = (NAME = "generic", tsconfig = {}, __dirname = resolve("./", import.meta.dirname))=>{
-    const $resolve = { alias: importFromTSConfig(tsconfig, __dirname) }
-    const projectMap = new Map([
-        ["fest/core", "core.ts"],
-        ["fest/icon", "icon.ts"],
-        ["fest/fl-ui", "fl.ui"],
-        ["fest/object", "object.ts"],
-        ["fest/uniform", "uniform.ts"],
-        ["fest/dom", "dom.ts"],
-        ["fest/veela", "veela.css"],
-        ["fest/veela-runtime", "veela.css"],
-        ["fest/lure", "lur.e"],
-    ]);
+const projectMap = new Map([
+    ["fest/core", "core.ts"],
+    ["fest/icon", "icon.ts"],
+    ["fest/fl-ui", "fl.ui"],
+    ["fest/object", "object.ts"],
+    ["fest/uniform", "uniform.ts"],
+    ["fest/dom", "dom.ts"],
+    ["fest/veela", "veela.css"],
+    ["fest/veela-runtime", "veela.css"],
+    ["fest/lure", "lur.e"]
+]);
 
-    //
+export function initiate(name = NAME, tsconfig = {}, dir = resolve(import.meta.dirname, "./")) {
+    const $resolve = { alias: importFromTSConfig(tsconfig, dir) };
+
     const plugins = [
-        /*tsconfigPaths({
-            projects: [resolve(__dirname, './tsconfig.json')],
-        }),*/
-        //optimizer({}),
-        //compression(),
-        externalPlugin({
-            include: Array.from(projectMap?.keys()).filter((n)=>!n?.endsWith(NAME)), // Explicitly externalize specific packages
-            exclude: [resolve(__dirname, "./src/index.ts"), "./src/index.ts", resolve(__dirname, "./dist/"+NAME+".js"), "./dist/"+NAME+".js"]
+        pluginExternal({
+            include: Array.from(projectMap.keys()).filter((n) => !n.endsWith(name)),
+            exclude: [
+                resolve(dir, "./src/index.ts"),
+                "./src/index.ts",
+                resolve(dir, `./dist/${name}.js`),
+                `./dist/${name}.js`
+            ]
         }),
-        ...(process.env.FEST_NPM_IMPORTS === "1" ? [npmFestImportRewritePlugin()] : []),
+        ...(process.env.FEST_NPM_IMPORTS === "1" ? [npmFestImportRewritePlugin()] : [])
     ];
 
-    //
     const rollupOptions = {
         shimMissingExports: true,
         treeshake: {
@@ -117,44 +74,47 @@ export const initiate = (NAME = "generic", tsconfig = {}, __dirname = resolve(".
         input: "./src/index.ts",
         external: (source) => {
             if (source?.includes?.("node_modules/")) return false;
-            if (source?.includes?.("fest/"+NAME) || source?.includes?.("./src/index.ts") || source?.includes?.(projectMap.get("fest/"+NAME)) || source?.includes?.("dist/")) return false;
-            if (Array.from(projectMap.keys()).some((name)=>source.includes(name))) return true;
+            if (
+                source?.includes?.(`fest/${name}`) ||
+                source?.includes?.("./src/index.ts") ||
+                source?.includes?.(projectMap.get(`fest/${name}`)) ||
+                source?.includes?.("dist/")
+            )
+                return false;
+            if (Array.from(projectMap.keys()).some((n) => source.includes(n))) return true;
             return false;
         },
         output: {
             compact: true,
-            name: NAME,
-            dir: './dist',
+            name,
+            dir: "./dist",
             exports: "auto",
             minifyInternalExports: true
         }
     };
 
-    //
     const css = {
         postcss: {
             plugins: [
                 deduplicate(),
                 autoprefixer(),
                 cssnano({
-                    preset: ['advanced', {
-                        calc: false,
-                        layer: false,
-                        scope: false,
-                        discardComments: {
-                            removeAll: true
+                    preset: [
+                        "advanced",
+                        {
+                            calc: false,
+                            layer: false,
+                            scope: false,
+                            discardComments: {
+                                removeAll: true
+                            }
                         }
-                    }],
-                }),
-                /*postcssPresetEnv({
-                    features: { 'nesting-rules': false, 'custom-properties': false },
-                    stage: 0
-                })*/
-            ],
-        },
-    }
+                    ]
+                })
+            ]
+        }
+    };
 
-    //
     const optimizeDeps = {
         include: [
             "./node_modules/**/*.mjs",
@@ -170,63 +130,66 @@ export const initiate = (NAME = "generic", tsconfig = {}, __dirname = resolve(".
             "./test/*.js",
             "./test/*.ts"
         ],
-        entries: [resolve(__dirname, './src/index.ts'),],
+        entries: [resolve(dir, "./src/index.ts")],
         force: true
-    }
-
-    //
-    const server = {
-        port: 443,
-        open: false,
-        host: "0.0.0.0",
-        origin: "https://localhost",
-        allowedHosts: ['localhost', '127.0.0.1', '0.0.0.0', '192.168.0.200', '95.188.82.223'],
-        appType: 'spa',
-        https,
-        fs: {
-            strict: false,
-            allow: [searchForWorkspaceRoot(process.cwd()), '../**/*', '../*', '..', resolve(__dirname, './**/*'), resolve(__dirname, './*'), __dirname ]
-        },
     };
 
-    //
+    const server = {
+        port: 8443,
+        open: false,
+        host: "0.0.0.0",
+        strictPort: false,
+        origin: "https://localhost:8443",
+        allowedHosts: ["localhost", "127.0.0.1", "0.0.0.0", "192.168.0.200", "95.188.82.223"],
+        appType: "spa",
+        fs: {
+            strict: false,
+            allow: [
+                searchForWorkspaceRoot(process.cwd()),
+                "../**/*",
+                "../*",
+                "..",
+                resolve(dir, "./**/*"),
+                resolve(dir, "./*"),
+                dir
+            ]
+        }
+    };
+
     const build = {
         chunkSizeWarningLimit: 1600,
         assetsInlineLimit: 1024 * 1024,
         minify: "esbuild",
         emptyOutDir: true,
-        target: 'esnext',
+        target: "esnext",
         modulePreload: {
             polyfill: true,
-            include: [
-                "fest/core",
-                "fest/dom",
-                "fest/lure",
-                "fest/object",
-                "fest/uniform",
-            ]
+            include: ["fest/core", "fest/dom", "fest/lure", "fest/object", "fest/uniform"]
         },
         rollupOptions,
-        name: NAME,
+        name,
         lib: {
             formats: ["es"],
-            entry: resolve(__dirname, './src/index.ts'),
-            name: NAME,
-            fileName: NAME,
-        },
-    }
+            entry: resolve(dir, "./src/index.ts"),
+            name,
+            fileName: name
+        }
+    };
 
     const esbuild = {
-        legalComments: 'none',
+        legalComments: "none",
         minify: true,
         minifySyntax: true,
         minifyIdentifiers: true,
         minifyWhitespace: true
-    }
+    };
 
-    //
-    return {esbuild, rollupOptions, plugins, resolve: $resolve, build, css, optimizeDeps, server};
+    return { esbuild, rollupOptions, plugins, resolve: $resolve, build, css, optimizeDeps, server };
 }
 
-//
-export default initiate;
+const pkgDir = resolve(import.meta.dirname, "./");
+
+export default defineConfig(async () => {
+    const tsconfig = JSON.parse(await readFile(resolve(pkgDir, "./tsconfig.json"), { encoding: "utf8" }));
+    return initiate(NAME, tsconfig, pkgDir);
+});

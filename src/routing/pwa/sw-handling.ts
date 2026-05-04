@@ -6,7 +6,7 @@
  * page side, while `src/pwa/sw.ts` owns the worker-side behavior.
  */
 import { initPWAClipboard } from "./pwa-copy";
-import { showToast } from "fest/fl-ui";
+import { showToast } from "../../boot/toast";
 import { ensureServiceWorkerRegistered } from "./sw-url";
 import { dispatchViewTransfer, type ViewTransferHint } from "com/core/ViewTransferRouting";
 import { BROADCAST_CHANNELS } from "com/config/Names";

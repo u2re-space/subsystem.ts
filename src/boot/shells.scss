@@ -1,0 +1,443 @@
+@layer layer.shell.faint {
+    :is(html, body):has([data-shell="faint"]) {
+        /* Layout */
+        --shell-nav-height: 0;
+        --shell-sidebar-width: 240px;
+        --shell-sidebar-collapsed: 48px;
+        --shell-tab-height: 36px;
+        --shell-toolbar-height: 40px;
+        --shell-status-height: 24px;
+
+        /* Colors */
+        --faint-nav-bg: light-dark(var(--color-surface-container-high), var(--color-surface-container-high));
+        --faint-nav-border: light-dark(var(--color-outline-variant), var(--color-outline-variant));
+        --faint-sidebar-bg: light-dark(var(--color-surface-container-high), var(--color-surface-container-high));
+
+        --shell-sidebar-bg: light-dark(var(--color-surface), var(--color-surface));
+        --shell-sidebar-fg: light-dark(var(--color-on-surface), var(--color-on-surface));
+        --shell-sidebar-border: light-dark(var(--color-border), var(--color-border));
+
+        --shell-tabs-bg: light-dark(var(--color-surface-elevated), var(--color-surface-elevated));
+        --shell-tab-active-bg: light-dark(var(--color-surface), var(--color-surface));
+        --shell-tab-hover-bg: light-dark(var(--color-surface-hover), var(--color-surface-hover));
+    }
+
+    :root:has(.app-shell, .app-shell[data-style="faint"]),
+    :where(.app-shell, .app-shell[data-style="faint"]) {
+        /* Layout */
+        --shell-sidebar-width: 240px;
+        --shell-sidebar-width-collapsed: 56px;
+        --shell-tabs-height: 40px;
+        --shell-toolbar-height: 48px;
+
+        /* Colors */
+        --shell-bg: light-dark(var(--color-surface), var(--color-surface));
+        --shell-fg: light-dark(var(--color-on-surface), var(--color-on-surface));
+        --shell-sidebar-bg: light-dark(var(--color-surface-container-high), var(--color-surface-container-high));
+        --shell-sidebar-border: light-dark(var(--color-outline-variant), var(--color-outline-variant));
+        --shell-tabs-bg: light-dark(var(--color-surface-container-high), var(--color-surface-container-high));
+        --shell-tab-hover: light-dark(var(--color-surface-container-highest), var(--color-surface-container-highest));
+        --shell-tab-active-bg: light-dark(var(--color-surface-container-highest), var(--color-surface-container-highest));
+        --shell-tab-active-border: light-dark(var(--color-primary), var(--color-primary));
+        --shell-accent: light-dark(var(--color-primary), var(--color-primary));
+        --shell-accent-fg: light-dark(var(--color-on-primary), var(--color-on-primary));
+        --shell-status-bg: light-dark(
+            color-mix(in oklab, var(--color-surface) 85%, var(--color-on-surface)),
+            color-mix(in oklab, var(--color-surface) 85%, var(--color-on-surface))
+        );
+        --shell-status-fg: light-dark(var(--color-on-primary), var(--color-on-primary));
+    }
+
+    .app-shell {
+        position: absolute;
+        inset: 0;
+        display: flex;
+        background-color: var(--shell-bg);
+        color: var(--shell-fg);
+        font-family: system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+        overflow: hidden;
+    }
+
+    .app-shell__sidebar {
+        display: flex;
+        flex-direction: column;
+        inline-size: var(--shell-sidebar-width);
+        background-color: var(--shell-sidebar-bg);
+        border-inline-end: 1px solid var(--shell-sidebar-border);
+        flex-shrink: 0;
+        transition: inline-size 0.2s ease;
+
+        &[data-collapsed="true"] {
+            inline-size: var(--shell-sidebar-width-collapsed);
+
+            .app-shell__sidebar-label {
+                display: none;
+            }
+
+            .app-shell__sidebar-item {
+                justify-content: center;
+                padding-inline: 0.75rem;
+            }
+        }
+    }
+
+    .app-shell__sidebar-header {
+        display: flex;
+        align-items: center;
+        justify-content: flex-end;
+        padding: 0.5rem;
+        block-size: var(--shell-tabs-height);
+    }
+
+    .app-shell__sidebar-toggle {
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        inline-size: 32px;
+        block-size: 32px;
+        border: none;
+        border-radius: 6px;
+        background: transparent;
+        color: var(--shell-fg);
+        cursor: pointer;
+        opacity: 0.6;
+        transition: opacity 0.15s ease, background-color 0.15s ease;
+
+        &:hover {
+            opacity: 1;
+            background-color: var(--shell-tab-hover);
+        }
+    }
+
+    .app-shell__sidebar-nav {
+        display: flex;
+        flex-direction: column;
+        gap: 0.25rem;
+        padding: 0.5rem;
+        overflow-y: auto;
+    }
+
+    .app-shell__sidebar-item {
+        display: flex;
+        align-items: center;
+        gap: 0.75rem;
+        padding: 0.625rem 0.75rem;
+        border: none;
+        border-radius: 8px;
+        background: transparent;
+        color: var(--shell-fg);
+        font-size: 0.875rem;
+        font-weight: 500;
+        text-align: start;
+        cursor: pointer;
+        transition: background-color 0.15s ease, color 0.15s ease;
+
+        ui-icon {
+            font-size: 1.125rem;
+            opacity: 0.7;
+            flex-shrink: 0;
+        }
+
+        &:hover {
+            background-color: var(--shell-tab-hover);
+        }
+
+        &.active {
+            background-color: var(--shell-tab-active-bg);
+            color: var(--shell-accent);
+
+            ui-icon {
+                opacity: 1;
+            }
+        }
+    }
+
+    .app-shell__sidebar-label {
+        white-space: nowrap;
+        overflow: hidden;
+        text-overflow: ellipsis;
+    }
+
+    .app-shell__main {
+        flex: 1;
+        display: flex;
+        flex-direction: column;
+        min-inline-size: 0;
+        overflow: hidden;
+    }
+
+    .app-shell__tabs {
+        display: flex;
+        align-items: center;
+        block-size: var(--shell-tabs-height);
+        background-color: var(--shell-tabs-bg);
+        border-block-end: 1px solid var(--shell-sidebar-border);
+        flex-shrink: 0;
+    }
+
+    .app-shell__tabs-list {
+        display: flex;
+        flex: 1;
+        overflow-x: auto;
+        scrollbar-width: none;
+
+        &::-webkit-scrollbar {
+            display: none;
+        }
+    }
+
+    .app-shell__tab {
+        display: flex;
+        align-items: center;
+        gap: 0.5rem;
+        padding: 0.5rem 0.75rem;
+        padding-inline-end: 0.5rem;
+        border: none;
+        border-block-end: 2px solid transparent;
+        background: transparent;
+        color: var(--shell-fg);
+        font-size: 0.8125rem;
+        cursor: pointer;
+        transition: background-color 0.15s ease, border-color 0.15s ease;
+        white-space: nowrap;
+
+        ui-icon {
+            font-size: 0.875rem;
+            opacity: 0.7;
+        }
+
+        &:hover {
+            background-color: var(--shell-tab-hover);
+        }
+
+        &.active {
+            background-color: var(--shell-tab-active-bg);
+            border-block-end-color: var(--shell-tab-active-border);
+
+            ui-icon {
+                opacity: 1;
+            }
+        }
+    }
+
+    .app-shell__tab-label {
+        max-inline-size: 120px;
+        overflow: hidden;
+        text-overflow: ellipsis;
+    }
+
+    .app-shell__tab-close {
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        inline-size: 18px;
+        block-size: 18px;
+        border: none;
+        border-radius: 4px;
+        background: transparent;
+        color: var(--shell-fg);
+        opacity: 0.5;
+        cursor: pointer;
+        transition: opacity 0.15s ease, background-color 0.15s ease;
+
+        &:hover {
+            opacity: 1;
+            background-color: rgba(255, 0, 0, 0.15);
+            color: #d32f2f;
+        }
+    }
+
+    .app-shell__tabs-actions {
+        display: flex;
+        padding-inline: 0.5rem;
+    }
+
+    .app-shell__tabs-add {
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        inline-size: 28px;
+        block-size: 28px;
+        border: none;
+        border-radius: 6px;
+        background: transparent;
+        color: var(--shell-fg);
+        opacity: 0.6;
+        cursor: pointer;
+        transition: opacity 0.15s ease, background-color 0.15s ease;
+
+        &:hover {
+            opacity: 1;
+            background-color: var(--shell-tab-hover);
+        }
+    }
+
+    .app-shell__toolbar {
+        display: flex;
+        align-items: center;
+        gap: 0.5rem;
+        block-size: var(--shell-toolbar-height);
+        padding-inline: 1rem;
+        background-color: var(--shell-tabs-bg);
+        border-block-end: 1px solid var(--shell-sidebar-border);
+
+        &:empty {
+            display: none;
+        }
+    }
+
+    .app-shell__content {
+        container-type: size;
+        flex: 1;
+        position: relative;
+        overflow: hidden;
+        display: flex;
+        flex-direction: column;
+
+        & > * {
+            flex: 1;
+            min-block-size: 0;
+            overflow: auto;
+        }
+    }
+
+    .app-shell__home {
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        padding: 2rem;
+        background: linear-gradient(135deg, var(--shell-bg) 0%, var(--shell-sidebar-bg) 100%);
+    }
+
+    .app-shell__home-content {
+        text-align: center;
+        max-inline-size: 600px;
+    }
+
+    .app-shell__home-title {
+        font-size: 2.5rem;
+        font-weight: 700;
+        margin: 0 0 0.5rem 0;
+        color: var(--shell-fg);
+    }
+
+    .app-shell__home-subtitle {
+        font-size: 1.125rem;
+        color: var(--shell-fg);
+        opacity: 0.7;
+        margin: 0 0 2rem 0;
+    }
+
+    .app-shell__home-quick-actions {
+        display: flex;
+        gap: 1rem;
+        justify-content: center;
+        flex-wrap: wrap;
+    }
+
+    .app-shell__home-action {
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        gap: 0.75rem;
+        padding: 1.5rem 2rem;
+        border: 1px solid var(--shell-sidebar-border);
+        border-radius: 12px;
+        background-color: var(--shell-sidebar-bg);
+        color: var(--shell-fg);
+        font-size: 0.875rem;
+        font-weight: 500;
+        cursor: pointer;
+        transition: transform 0.15s ease, box-shadow 0.15s ease, border-color 0.15s ease;
+
+        ui-icon {
+            opacity: 0.8;
+        }
+
+        &:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 4px 12px rgba(0, 0, 0, 0.1);
+            border-color: var(--shell-accent);
+
+            ui-icon {
+                opacity: 1;
+                color: var(--shell-accent);
+            }
+        }
+    }
+
+    .app-shell__status {
+        position: fixed;
+        inset-block-end: 1.5rem;
+        inset-inline-start: 50%;
+        transform: translateX(-50%);
+        z-index: 9999;
+        padding: 0.75rem 1.5rem;
+        background-color: var(--shell-status-bg);
+        color: var(--shell-status-fg);
+        border-radius: 8px;
+        font-size: 0.875rem;
+        font-weight: 500;
+        box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
+        animation: app-shell-status-enter 0.2s ease-out;
+
+        &:empty,
+        &[hidden] {
+            display: none;
+        }
+    }
+
+    @media (max-width: 768px) {
+        .app-shell__sidebar {
+            position: fixed;
+            inset-block: 0;
+            inset-inline-start: 0;
+            z-index: 100;
+            box-shadow: 2px 0 8px rgba(0, 0, 0, 0.1);
+
+            &[data-collapsed="true"] {
+                inset-inline-start: calc(-1 * var(--shell-sidebar-width-collapsed));
+            }
+        }
+
+        .app-shell__home-quick-actions {
+            flex-direction: column;
+            align-items: center;
+        }
+
+        .app-shell__home-action {
+            inline-size: 100%;
+            max-inline-size: 280px;
+        }
+    }
+
+    @media print {
+        .app-shell__sidebar,
+        .app-shell__tabs,
+        .app-shell__toolbar,
+        .app-shell__status {
+            display: none !important;
+        }
+
+        .app-shell__content {
+            overflow: visible;
+        }
+
+        [data-cw-view-host="true"],
+        [data-cw-view-host="true"] > .cw-view-element__mount,
+        .cw-view-viewer-shell,
+        .cw-view-viewer__prose,
+        [data-cw-viewer-prose],
+        md-view,
+        markdown-viewer,
+        .markdown-body,
+        .markdown-viewer-content,
+        .result-content {
+            overflow: visible !important;
+            contain: none !important;
+            container-type: normal !important;
+            block-size: auto !important;
+            max-block-size: none !important;
+        }
+    }
+}

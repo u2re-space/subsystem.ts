@@ -22,7 +22,7 @@ import type { AppSettings } from "com/config/SettingsTypes";
 import { loadSettings } from "com/config/Settings";
 import { fetchSwCachedEntries } from "com/core/ShareTargetGateway";
 // @ts-ignore - bundled as inline stylesheet
-import style from "views/views.scss?inline";
+import style from "boot/ts/views.scss?inline";
 import type { FileManager } from "views/explorer";
 
 
@@ -1058,7 +1058,7 @@ export const mountShellApp = (mountElement: HTMLElement, options: ShellOptions =
             // Lazy load markdown editor
             const editorModule = await getCachedComponent(
                 'markdown-editor',
-                () => import("views/editor/editors/MarkdownEditor"),
+                () => import("views/editor/ts/MarkdownEditor"),
                 { componentName: 'MarkdownEditor' }
             );
 
@@ -1137,7 +1137,7 @@ export const mountShellApp = (mountElement: HTMLElement, options: ShellOptions =
             // Lazy load quill editor
             const editorModule = await getCachedComponent(
                 'quill-editor',
-                () => import("views/editor/editors/QuillEditor"),
+                () => import("views/editor/ts/QuillEditor"),
                 { componentName: 'QuillEditor' }
             );
 
@@ -1216,7 +1216,7 @@ export const mountShellApp = (mountElement: HTMLElement, options: ShellOptions =
             // Lazy load history manager
             const historyModule = await getCachedComponent(
                 'history-manager',
-                () => import("../../../../lur.e/src/interactive/modules/HistoryManager"),
+                () => import("../../../../../../modules/projects/lur.e/src/interactive/modules/HistoryManager"),
                 { componentName: 'HistoryManager' }
             );
 
