@@ -1,0 +1,39 @@
+{
+    "compilerOptions": {
+        "target": "ESNext",
+        "module": "ESNext",
+        "moduleResolution": "bundler",
+        "lib": ["ESNext", "DOM", "DOM.Iterable"],
+        "strict": false,
+        "allowJs": true,
+        "allowArbitraryExtensions": true,
+        "allowSyntheticDefaultImports": true,
+        "esModuleInterop": true,
+        "experimentalDecorators": true,
+        "useDefineForClassFields": false,
+        "skipLibCheck": true,
+        "noEmit": true,
+        "paths": {
+            "view-entry": ["./src/index.ts"],
+            "views/types": ["../shared/types.ts"],
+            "views/registry": ["../shared/registry.ts"],
+            "views/apis/channel-actions": ["./src/routing/api/channel-actions.ts"],
+            "views/apis/channel-invokable": ["./src/routing/api/channel-invokable.ts"],
+            "shells/types": ["../shared/types.ts"],
+            "shells/boot": ["../shared/runtime/boot.ts"],
+            "core/*": ["../shared/runtime/*"],
+            "com/*": ["../shared/runtime/*"],
+            "shared/*": ["../shared/runtime/*"],
+            "cwsp-shared/*": ["../shared/runtime/*"],
+            "fest/core": ["../../projects/core.ts/src/index.ts"],
+            "fest/dom": ["../../projects/dom.ts/src/index.ts"],
+            "fest/fl-ui": ["../../projects/fl.ui/src/index.ts"],
+            "fest/icon": ["../../projects/icon.ts/src/index.ts"],
+            "fest/lure": ["../../projects/lur.e/src/index.ts"],
+            "fest/object": ["../../projects/object.ts/src/index.ts"],
+            "fest/subsystem": ["../../projects/subsystem/src/index.ts"],
+            "fest/uniform": ["../../projects/uniform.ts/src/index.ts"],
+            "fl-ui/*": ["../../projects/fl.ui/src/ui/*"]
+        }
+    }
+}

@@ -1,0 +1,9 @@
+@mixin scrollable($axis: "y") {
+    @if $axis == "x" {
+        overflow-x: auto;
+    } @else if $axis == "both" {
+        overflow: auto;
+    } @else {
+        overflow-y: auto;
+    }
+}

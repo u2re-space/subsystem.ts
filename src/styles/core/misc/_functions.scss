@@ -1,0 +1,3 @@
+@function clamp-token($value, $fallback: $value) {
+    @return if($value == null, $fallback, $value);
+}

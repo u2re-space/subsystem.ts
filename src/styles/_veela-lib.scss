@@ -1,0 +1,93 @@
+@mixin panel-base {
+    border: 1px solid var(--view-border, rgba(127, 127, 127, 0.22));
+    border-radius: var(--radius-lg, 12px);
+}
+
+@mixin solid-colorize($target, $opts: ()) {
+    #{$target} {
+        @content;
+    }
+}
+
+@mixin surface($value) {
+    background: var(--#{$value}, var(--view-bg, canvas));
+}
+
+@mixin border-color($value) {
+    border-color: var(--#{$value}, currentColor);
+}
+
+@mixin text-color($value) {
+    color: var(--#{$value}, currentColor);
+}
+
+@mixin grid-center {
+    display: grid;
+    place-items: center;
+}
+
+@mixin flex-center {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+}
+
+@mixin flex-between {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+}
+
+@mixin scrollable($axis: "y") {
+    @if $axis == "x" {
+        overflow-x: auto;
+    } @else if $axis == "both" {
+        overflow: auto;
+    } @else {
+        overflow-y: auto;
+    }
+}
+
+@mixin hide-scrollbar {
+    scrollbar-width: none;
+}
+
+@mixin button-base-variant {
+    border: 1px solid var(--view-border, rgba(127, 127, 127, 0.22));
+    border-radius: var(--radius-md, 10px);
+    background: transparent;
+    color: inherit;
+}
+
+@mixin breakpoint($name) {
+    @content;
+}
+
+@mixin text-label($name, $truncate: false) {
+    font: var(--#{$name}, inherit);
+    @if $truncate {
+        overflow: hidden;
+        text-overflow: ellipsis;
+        white-space: nowrap;
+    }
+}
+
+@mixin text-heading($name, $align: start) {
+    font: var(--#{$name}, inherit);
+    text-align: $align;
+}
+
+@mixin vstack($gap: 0.5rem) {
+    display: flex;
+    flex-direction: column;
+    gap: $gap;
+}
+
+@mixin tonal-surface($surface, $opacity: 1, $radius: 0, $padding: 0, $border: 0) {
+    background: color-mix(in srgb, var(--#{$surface}, canvas) calc($opacity * 100%), transparent);
+    border-radius: $radius;
+    padding: $padding;
+    @if $border != 0 {
+        border: 1px solid var(--view-border, rgba(127, 127, 127, 0.22));
+    }
+}

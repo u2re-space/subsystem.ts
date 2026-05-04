@@ -1,6 +1,6 @@
 {
-    "name": "@fest-lib/fl-ui",
-    "description": "FL-UI components and services (fest-lib). Dev: open index.html — suite picker + /test/playground.ts loader; ?suite=explorer|markdown|misc|speed-dial",
+    "name": "@fest-lib/subsystem",
+    "description": "Subsystem services and routing utilities (fest-lib)",
     "version": "0.1.0",
     "license": "MIT",
     "type": "module",
@@ -13,54 +13,29 @@
     },
     "repository": {
         "type": "git",
-        "url": "git+https://github.com/fest-live/fl.ui.git"
+        "url": "git+https://github.com/fest-live/subsystem.git"
     },
     "bugs": {
-        "url": "https://github.com/fest-live/fl.ui/issues"
+        "url": "https://github.com/fest-live/subsystem/issues"
     },
-    "homepage": "https://github.com/fest-live/fl.ui#readme",
+    "homepage": "https://github.com/fest-live/subsystem#readme",
     "keywords": [
         "fest",
         "fest-lib",
-        "ui",
-        "components",
-        "scss"
+        "subsystem",
+        "routing",
+        "services"
     ],
     "files": [
         "dist",
-        "src/styles",
         "LICENSE"
     ],
-    "main": "./dist/fl-ui.js",
-    "module": "./dist/fl-ui.js",
+    "main": "./dist/subsystem.js",
+    "module": "./dist/subsystem.js",
     "exports": {
         ".": {
-            "import": "./dist/fl-ui.js",
-            "default": "./dist/fl-ui.js"
-        },
-        "./core": {
-            "import": "./dist/fl-ui-core.js",
-            "default": "./dist/fl-ui-core.js"
-        },
-        "./veela": {
-            "import": "./dist/fl-ui-veela.js",
-            "default": "./dist/fl-ui-veela.js"
-        },
-        "./styles": {
-            "import": "./src/styles/_index.scss",
-            "default": "./src/styles/_index.scss"
-        },
-        "./styles/core": {
-            "import": "./src/styles/core/_index.scss",
-            "default": "./src/styles/core/_index.scss"
-        },
-        "./styles/lib": {
-            "import": "./src/styles/lib/_index.scss",
-            "default": "./src/styles/lib/_index.scss"
-        },
-        "./items/*": {
-            "import": "./src/ui/items/*",
-            "default": "./src/ui/items/*"
+            "import": "./dist/subsystem.js",
+            "default": "./dist/subsystem.js"
         },
         "./package.json": "./package.json"
     },
