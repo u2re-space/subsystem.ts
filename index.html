@@ -1,0 +1,146 @@
+<!doctype html>
+<html lang="en">
+    <head>
+        <meta charset="UTF-8" />
+        <link rel="icon" type="image/svg+xml" href="/vite.svg" />
+        <meta name="text-scale" content="scale" />
+        <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+        <title>FL.UI — test suites</title>
+
+        <script>
+            WeakMap.prototype.getOrInsert ??= function (key, defaultValue) {
+                if (!this.has(key)) { this.set(key, defaultValue); }
+                return this.get(key);
+            };
+
+            WeakMap.prototype.getOrInsertComputed ??= function (key, callbackFunction) {
+                if (!this.has(key)) { this.set(key, callbackFunction(key)); }
+                return this.get(key);
+            };
+
+            Map.prototype.getOrInsert ??= function (key, defaultValue) {
+                if (!this.has(key)) { this.set(key, defaultValue); }
+                return this.get(key);
+            };
+
+            Map.prototype.getOrInsertComputed ??= function (key, callbackFunction) {
+                if (!this.has(key)) { this.set(key, callbackFunction(key)); }
+                return this.get(key);
+            };
+        </script>
+
+        <style>
+            :root {
+                color-scheme: dark;
+                --fl-dev-bg: #0b1220;
+                --fl-dev-surface: #151d2e;
+                --fl-dev-border: #2a3650;
+                --fl-dev-text: #e8edf5;
+                --fl-dev-muted: #8b9bb8;
+                --fl-dev-accent: #6ee7b7;
+            }
+            html, body {
+                margin: 0;
+                min-height: 100%;
+                font-family: system-ui, "Segoe UI", Roboto, sans-serif;
+                background: var(--fl-dev-bg);
+                color: var(--fl-dev-text);
+            }
+            .fl-ui-dev-shell {
+                max-width: 72rem;
+                margin: 0 auto;
+                padding: 1rem 1.25rem 2rem;
+            }
+            .fl-ui-dev-header h1 {
+                margin: 0 0 0.35rem;
+                font-size: 1.35rem;
+                font-weight: 600;
+            }
+            .fl-ui-dev-hint {
+                margin: 0 0 1rem;
+                font-size: 0.875rem;
+                color: var(--fl-dev-muted);
+            }
+            .fl-ui-dev-hint code {
+                font-size: 0.8em;
+                padding: 0.12em 0.35em;
+                border-radius: 4px;
+                background: var(--fl-dev-surface);
+                border: 1px solid var(--fl-dev-border);
+            }
+            .fl-ui-dev-nav {
+                display: flex;
+                flex-wrap: wrap;
+                gap: 0.5rem;
+                margin-bottom: 0.75rem;
+                align-items: center;
+            }
+            .fl-ui-dev-nav button {
+                cursor: pointer;
+                border: 1px solid var(--fl-dev-border);
+                background: var(--fl-dev-surface);
+                color: var(--fl-dev-text);
+                padding: 0.45rem 0.85rem;
+                border-radius: 8px;
+                font-size: 0.875rem;
+            }
+            .fl-ui-dev-nav button:hover {
+                border-color: var(--fl-dev-accent);
+                color: var(--fl-dev-accent);
+            }
+            .fl-ui-dev-nav button[data-fl-active="true"] {
+                border-color: var(--fl-dev-accent);
+                background: #0f241c;
+                color: var(--fl-dev-accent);
+            }
+            .fl-ui-suite-status {
+                margin: 0 0 1rem;
+                font-size: 0.8rem;
+                color: var(--fl-dev-muted);
+                min-height: 1.25em;
+            }
+            .fl-ui-suite-status[data-state="loading"] { color: #fbbf24; }
+            .fl-ui-suite-status[data-state="error"] { color: #f87171; }
+            .fl-ui-suite-status[data-state="ready"] { color: var(--fl-dev-accent); }
+            #fl-ui-playground {
+                position: relative;
+                min-height: 12rem;
+                border: 1px solid var(--fl-dev-border);
+                border-radius: 10px;
+                background: var(--fl-dev-surface);
+                overflow: auto;
+            }
+            .fl-ui-dev-suite-caption {
+                margin: 0;
+                padding: 0.65rem 1rem;
+                font-size: 0.8rem;
+                color: var(--fl-dev-muted);
+                border-bottom: 1px solid var(--fl-dev-border);
+            }
+        </style>
+    </head>
+    <body class="c2-contrast fl-ui-dev-body">
+        <div class="fl-ui-dev-shell">
+            <header class="fl-ui-dev-header">
+                <h1>FL.UI test suites</h1>
+                <p class="fl-ui-dev-hint">
+                    Load a suite below or open a deep link, e.g.
+                    <code>?suite=explorer</code>,
+                    <code>?suite=markdown</code>,
+                    <code>?suite=misc</code>,
+                    <code>?suite=speed-dial</code>
+                    (alias: <code>demo=</code>).
+                </p>
+                <nav class="fl-ui-dev-nav" id="fl-ui-suite-nav" aria-label="Test suites">
+                    <button type="button" data-fl-suite="explorer">Explorer</button>
+                    <button type="button" data-fl-suite="markdown">Markdown</button>
+                    <button type="button" data-fl-suite="misc">Misc (canvas)</button>
+                    <button type="button" data-fl-suite="speed-dial">Speed dial</button>
+                </nav>
+                <p class="fl-ui-suite-status" id="fl-ui-suite-status" aria-live="polite"></p>
+            </header>
+            <main id="fl-ui-playground" aria-label="Suite output"></main>
+        </div>
+        <script type="module" src="/test/playground.ts"></script>
+    </body>
+</html>

@@ -1,0 +1,221 @@
+{
+    "include": [
+        "**/*.ts",
+        "**/*.mjs",
+        "**/*.js",
+        "**/*.d.ts",
+        "**/*.tsx",
+        "src/**/*.ts",
+        "src/**/*.mjs",
+        "src/**/*.js",
+        "src/**/*.d.ts",
+        "src/**/*.tsx",
+        "cwsp/endpoint/shared/**/*.ts",
+        "../../modules/projects/**/*.ts",
+        "../../modules/projects/**/*.tsx"
+    ],
+    "exclude": [
+        "node_modules/**",
+        "dist/**",
+        "build/**",
+        "coverage/**",
+        "logs/**",
+        "cache/**",
+        "temp/**",
+        "tmp/**",
+        "temp/**",
+        "./src/**/*.js",
+        "./src/**/*.jsx"
+    ],
+    "compilerOptions": {
+        "skipLibCheck": true,
+        "jsx": "preserve",
+        "paths": {
+            "frontend/shared/*": [
+                "./src/frontend/shared/*"
+            ],
+            "frontend/pwa/*": [
+                "./src/frontend/pwa/*"
+            ],
+            "frontend/shells/*": [
+                "./src/frontend/shells/*"
+            ],
+            "@phosphor-icons/core/assets/*": [
+                "./node_modules/@phosphor-icons/core/assets/*"
+            ],
+            "icons/*": [
+                "./node_modules/@phosphor-icons/core/assets/*"
+            ],
+            "assets/fonts/*": [
+                "./assets/fonts/*"
+            ],
+            "assets/*": [
+                "./assets/*"
+            ],
+            "shared/*": [
+                "./src/shared/*"
+            ],
+            "shells/types": [
+                "./src/frontend/shells/types.ts"
+            ],
+            "shells/boot": [
+                "./src/frontend/boot/index.ts"
+            ],
+            "shells/window": [
+                "./src/frontend/ai-slop/window/index.ts"
+            ],
+            "fest/core": [
+                "./shared/fest/core/index.ts"
+            ],
+            "fest/dom": [
+                "./shared/fest/dom/index.ts"
+            ],
+            "fest/fl-ui": [
+                "./shared/fest/fl-ui/index.ts"
+            ],
+            "fest/lure": [
+                "./shared/fest/lure/index.ts"
+            ],
+            "fest/object": [
+                "./shared/fest/object/index.ts"
+            ],
+            "fest/object/*": [
+                "./shared/fest/object/*"
+            ],
+            "fest/uniform": [
+                "./shared/fest/uniform/index.ts"
+            ],
+            "fest/theme": [
+                "./shared/fest/theme/index.ts"
+            ],
+            "fest/icon": [
+                "./shared/fest/icon/index.ts"
+            ],
+            "fest/veela": [
+                "./shared/fest/veela/index.ts"
+            ],
+            "fest/veela/*": [
+                "./shared/fest/veela/*"
+            ],
+            "fest/polyfill/*": [
+                "./shared/polyfill/*"
+            ],
+            "com/config/*": [
+                "./src/shared/config/*"
+            ],
+            "com/core/*": [
+                "./src/shared/channel/*"
+            ],
+            "com/service/*": [
+                "./src/shared/service/*"
+            ],
+            "com/template/*": [
+                "./src/shared/template/*"
+            ],
+            "com/routing/*": [
+                "./src/shared/routing/*"
+            ],
+            "com/store/*": [
+                "./src/shared/store/*"
+            ],
+            "core/modules/Clipboard": [
+                "./src/shared/modules/Clipboard.ts"
+            ],
+            "cwsp-shared/*": [
+                "../../runtime/cwsp/endpoint/shared/*"
+            ],
+            "@fl-ui/*": [
+                "./shared/fest/fl-ui/ui/*"
+            ],
+            "@shared/*": [
+                "./shared/*"
+            ],
+            "fl-ui/*": [
+                "./shared/fest/fl-ui/ui/*"
+            ],
+            "fl-src/*": [
+                "./shared/fest/fl-ui/*"
+            ],
+            "fl-design/*": [
+                "./shared/fest/fl-ui/design/*"
+            ],
+            "pwa/*": [
+                "./src/pwa/*"
+            ],
+            "crx/*": [
+                "./src/crx/*"
+            ],
+            "core/*": [
+                "./src/shared/*"
+            ],
+            "frontend/*": [
+                "./src/frontend/*"
+            ],
+            "boot/*": [
+                "./src/frontend/boot/*"
+            ],
+            "test/*": [
+                "./test/*"
+            ],
+            "views/*": [
+                "./src/frontend/views/*"
+            ],
+            "shells/*": [
+                "./src/frontend/shells/*"
+            ],
+            "veela": [
+                "./shared/fest/veela/index.ts"
+            ],
+            "veela-runtime": [
+                "./shared/fest/veela/scss/runtime/index.ts"
+            ],
+            "veela-runtime/*": [
+                "./shared/fest/veela/scss/runtime/*"
+            ],
+            "veela-lib": [
+                "./shared/fest/veela/scss/lib/index.scss"
+            ],
+            "veela-lib/*": [
+                "./shared/fest/veela/scss/lib/*"
+            ]
+        },
+        "types": [
+            "chrome"
+        ],
+        "lib": [
+            "ESNext",
+            "DOM",
+            "DOM.Iterable",
+            "WebWorker"
+        ],
+        "module": "ESNext",
+        "target": "ESNext",
+        "moduleDetection": "auto",
+        "pretty": true,
+        "allowArbitraryExtensions": true,
+        "emitDeclarationOnly": true,
+        "resolveJsonModule": true,
+        "allowSyntheticDefaultImports": true,
+        "moduleResolution": "bundler",
+        "preserveSymlinks": true,
+        "allowImportingTsExtensions": true,
+        "rewriteRelativeImportExtensions": true,
+        "esModuleInterop": true,
+        "verbatimModuleSyntax": true,
+        "allowJs": true,
+        "noEmit": true,
+        "strict": false,
+        "strictNullChecks": false,
+        "allowUnusedLabels": true,
+        "noImplicitAny": false,
+        "declaration": true,
+        "noImplicitThis": false,
+        "inlineSources": true,
+        "inlineSourceMap": true,
+        "sourceMap": false,
+        "experimentalDecorators": true,
+        "noEmitOnError": true,
+        "noEmitHelpers": true
+    },
+    "compileOnSave": false
+}

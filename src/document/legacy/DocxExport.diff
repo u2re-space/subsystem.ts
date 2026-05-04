@@ -1,0 +1,127 @@
++ // ═══════════════════════════════════════════════
++ // Native OOXML Math Matrix (<m:m>) components
++ // ═══════════════════════════════════════════════
++ 
++ class MathMatrixBaseJcAttributes extends XmlAttributeComponent<{ val: string }> {
++     protected readonly xmlKeys = { val: "m:val" };
++ }
++ 
++ class MathMatrixColumnCountAttr extends XmlAttributeComponent<{ val: number }> {
++     protected readonly xmlKeys = { val: "m:val" };
++ }
++ 
++ class MathMatrixProperties extends XmlComponent {
++     constructor(cols: number) {
++         super("m:mPr");
++         const baseJc = new XmlComponent("m:baseJc");
++         baseJc.root.push(new MathMatrixBaseJcAttributes({ val: "center" }));
++         this.root.push(baseJc);
++         const mcs = new XmlComponent("m:mcs");
++         const mc = new XmlComponent("m:mc");
++         const mcPr = new XmlComponent("m:mcPr");
++         const count = new XmlComponent("m:count");
++         count.root.push(new MathMatrixColumnCountAttr({ val: cols }));
++         mcPr.root.push(count);
++         const mcJc = new XmlComponent("m:mcJc");
++         mcJc.root.push(new MathMatrixBaseJcAttributes({ val: "center" }));
++         mcPr.root.push(mcJc);
++         mc.root.push(mcPr);
++         mcs.root.push(mc);
++         this.root.push(mcs);
++     }
++ }
++ 
++ class MathMatrixCell extends XmlComponent {
++     constructor(children: MathComponent[]) {
++         super("m:e");
++         for (const child of children) {
++             this.root.push(child as unknown as XmlComponent);
++         }
++     }
++ }
++ 
++ class MathMatrixRow extends XmlComponent {
++     constructor(cells: MathComponent[][]) {
++         super("m:mr");
++         for (const cell of cells) {
++             this.root.push(new MathMatrixCell(cell));
++         }
++     }
++ }
++ 
++ class MathMatrix extends XmlComponent {
++     constructor(options: { rows: MathComponent[][][] }) {
++         super("m:m");
++         const colCount = Math.max(...options.rows.map((r) => r.length), 1);
++         this.root.push(new MathMatrixProperties(colCount));
++         for (const row of options.rows) {
++             this.root.push(new MathMatrixRow(row));
++         }
++     }
++ }
+
+  function matrixComponentsFromMtable(mtable: Element): MathComponent[] {
+-     const rows = Array.from(mtable.children).filter((el) => el.tagName.toLowerCase() === "mtr");
+-     const out: MathComponent[] = [];
+-     rows.forEach((row, rowIndex) => {
+-         const cells = Array.from(row.children).filter((el) => el.tagName.toLowerCase() === "mtd");
+-         const rowComponents: MathComponent[] = [];
+-         cells.forEach((cell, cellIndex) => {
+-             const cellMath = mathComponentsFromMathNode(cell);
+-             if (cellMath.length) rowComponents.push(...cellMath);
+-             else {
+-                 const t = normalizeMathText(cell.textContent || "");
+-                 if (t) rowComponents.push(new MathRun(t));
+-             }
+-             if (cellIndex < cells.length - 1) rowComponents.push(new MathRun(", "));
+-         });
+-         if (rowComponents.length) out.push(new MathRoundBrackets({ children: rowComponents }));
+-         if (rowIndex < rows.length - 1) out.push(new MathRun("; "));
+-     });
+-     return out;
++     const mtrElements = Array.from(mtable.children).filter(
++         (el) => el.tagName.toLowerCase() === "mtr"
++     );
++     if (!mtrElements.length) return [];
++ 
++     const rows: MathComponent[][][] = mtrElements.map((mtr) => {
++         const cells = Array.from(mtr.children).filter(
++             (el) => el.tagName.toLowerCase() === "mtd"
++         );
++         return cells.map((mtd) => {
++             const comps = mathComponentsFromMathNode(mtd);
++             return comps.length ? comps : [new MathRun(" ")];
++         });
++     });
++ 
++     const maxCols = Math.max(...rows.map((r) => r.length), 1);
++     for (const row of rows) {
++         while (row.length < maxCols) {
++             row.push([new MathRun(" ")]);
++         }
++     }
++ 
++     return [new MathMatrix({ rows }) as unknown as MathComponent];
+  }
+
+- // DELETE: buildMatrixTableBlock, matrixBracketGlyphByFence,
+- //         detectMatrixFencePair, extractMatrixDisplayModel,
+- //         convertDisplayMathMatrixParagraph
+
+  function buildDisplayMatrixBlocks(mathEl: Element): BlockChild[] | null {
+-     const matrixTable = buildMatrixTableBlock(mathEl);
+-     if (matrixTable) {
+-         return [matrixTable];
+-     }
+      const math = mathFromElement(mathEl);
+      if (!math) return null;
+      return [
+          new Paragraph({
+              alignment: AlignmentType.CENTER,
+              keepLines: true,
+              spacing: { before: 120, after: 120 },
++             indent: { firstLine: 0 },
+              children: [math],
+          }),
+      ];
+  }
