@@ -10,7 +10,6 @@
         "src/**/*.js",
         "src/**/*.d.ts",
         "src/**/*.tsx",
-        "cwsp/endpoint/shared/**/*.ts",
         "../../modules/projects/**/*.ts",
         "../../modules/projects/**/*.tsx"
     ],
@@ -51,9 +50,6 @@
             ],
             "assets/*": [
                 "./assets/*"
-            ],
-            "shared/*": [
-                "./src/shared/*"
             ],
             "shells/types": [
                 "./src/frontend/shells/types.ts"
@@ -100,83 +96,23 @@
             "fest/polyfill/*": [
                 "./shared/polyfill/*"
             ],
-            "com/config/*": [
-                "./src/shared/config/*"
+            "com/*": [
+                "./src/*"
             ],
-            "com/core/*": [
-                "./src/shared/channel/*"
+            "core/*": [
+                "./src/*"
             ],
-            "com/service/*": [
-                "./src/shared/service/*"
-            ],
-            "com/template/*": [
-                "./src/shared/template/*"
-            ],
-            "com/routing/*": [
-                "./src/shared/routing/*"
-            ],
-            "com/store/*": [
-                "./src/shared/store/*"
-            ],
-            "core/modules/Clipboard": [
-                "./src/shared/modules/Clipboard.ts"
-            ],
-            "cwsp-shared/*": [
-                "../../runtime/cwsp/endpoint/shared/*"
-            ],
-            "@fl-ui/*": [
-                "./shared/fest/fl-ui/ui/*"
+            "shared/*": [
+                "./src/*"
             ],
             "@shared/*": [
                 "./shared/*"
             ],
-            "fl-ui/*": [
-                "./shared/fest/fl-ui/ui/*"
-            ],
-            "fl-src/*": [
-                "./shared/fest/fl-ui/*"
-            ],
-            "fl-design/*": [
-                "./shared/fest/fl-ui/design/*"
-            ],
-            "pwa/*": [
-                "./src/pwa/*"
-            ],
-            "crx/*": [
-                "./src/crx/*"
-            ],
-            "core/*": [
-                "./src/shared/*"
-            ],
-            "frontend/*": [
-                "./src/frontend/*"
-            ],
-            "boot/*": [
-                "./src/frontend/boot/*"
-            ],
-            "test/*": [
-                "./test/*"
-            ],
-            "views/*": [
-                "./src/frontend/views/*"
-            ],
-            "shells/*": [
-                "./src/frontend/shells/*"
-            ],
-            "veela": [
-                "./shared/fest/veela/index.ts"
-            ],
-            "veela-runtime": [
-                "./shared/fest/veela/scss/runtime/index.ts"
-            ],
-            "veela-runtime/*": [
-                "./shared/fest/veela/scss/runtime/*"
-            ],
             "veela-lib": [
-                "./shared/fest/veela/scss/lib/index.scss"
+                "./shared/fest/veela/scss/index.scss"
             ],
             "veela-lib/*": [
-                "./shared/fest/veela/scss/lib/*"
+                "./shared/fest/veela/scss/*"
             ]
         },
         "types": [

@@ -379,7 +379,7 @@ export const loadSettings = async (): Promise<AppSettings> => {
 
             // CWSAndroid bridge may expose canonical native settings projection.
             try {
-                const { getNativeUnifiedSettings, isCwsNativeIpcAvailable } = await import("../native/cws-bridge");
+                const { getNativeUnifiedSettings, isCwsNativeIpcAvailable } = await import("../routing/native/cws-bridge");
                 if (isCwsNativeIpcAvailable()) {
                     const nativeSettings = await getNativeUnifiedSettings();
                     if (nativeSettings && typeof nativeSettings === "object") {
@@ -532,7 +532,7 @@ export const saveSettings = async (settings: AppSettings) => {
     };
     await idbPutSettings(merged);
     try {
-        const { patchNativeUnifiedSettings, isCwsNativeIpcAvailable } = await import("../native/cws-bridge");
+        const { patchNativeUnifiedSettings, isCwsNativeIpcAvailable } = await import("../routing/native/cws-bridge");
         if (isCwsNativeIpcAvailable()) {
             void patchNativeUnifiedSettings(merged as unknown as Record<string, unknown>);
         }

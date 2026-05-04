@@ -6,8 +6,8 @@
  * @deprecated Use UnifiedMessaging from './UnifiedMessaging' instead
  */
 
-import { unifiedMessaging, type UnifiedMessage, type MessageHandler } from './UnifiedMessaging';
-import { BROADCAST_CHANNELS } from 'com/config/Names';
+import { BROADCAST_CHANNELS } from "com/other/config/Names";
+import { unifiedMessaging, type MessageHandler, type UnifiedMessage } from "./UnifiedMessaging";
 
 // Re-export types for backward compatibility
 export type { UnifiedMessage, MessageHandler };

@@ -1,5 +1,5 @@
 import { H } from "fest/lure";
-import type { DocCollection, DocEntry, DocParser } from "../utils/Types";
+import type { DocCollection, DocEntry, DocParser } from "../other/utils/Types";
 import { formatDateTime, sanitizeDocSnippet, truncateDocSnippet } from "core/text";
 
 //

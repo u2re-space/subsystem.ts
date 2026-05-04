@@ -1216,7 +1216,7 @@ export const mountShellApp = (mountElement: HTMLElement, options: ShellOptions =
             // Lazy load history manager
             const historyModule = await getCachedComponent(
                 'history-manager',
-                () => import("../../../lur.e/src/interactive/modules/HistoryManager"),
+                () => import("../../../../lur.e/src/interactive/modules/HistoryManager"),
                 { componentName: 'HistoryManager' }
             );
 
