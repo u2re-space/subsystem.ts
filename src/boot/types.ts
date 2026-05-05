@@ -306,14 +306,6 @@ export interface ContentContext {
     source?: string;
 }
 
-/**
- * View Component Types
- * 
- * Common types used across all view components.
- */
-
-import type { View, ViewOptions, ShellContext } from "./types";
-
 // ============================================================================
 // VIEW BASE TYPES
 // ============================================================================

@@ -1,0 +1,30 @@
+[ req ]
+default_bits       = 2048
+prompt             = no
+default_md         = sha256
+req_extensions     = req_ext
+distinguished_name = dn
+
+[ dn ]
+C  = RU
+ST = Local
+L  = Local
+O  = Internal
+OU = IT
+CN = internal.local
+
+[ req_ext ]
+subjectAltName = @alt_names
+
+[ alt_names ]
+DNS.1 = localhost
+IP.1  = 127.0.0.1
+IP.2  = ::1
+IP.3  = 45.147.121.152
+IP.4  = 2a06:1301:4210:10dc:792f:77a2:5c70:34e3
+IP.5  = 192.168.0.1
+IP.6  = 192.168.0.100
+IP.7  = 192.168.0.110
+IP.8  = 192.168.0.196
+IP.9  = 192.168.0.200
+IP.10 = 192.168.0.208

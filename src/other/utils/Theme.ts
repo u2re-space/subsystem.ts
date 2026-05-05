@@ -69,6 +69,24 @@ const resolveFontSize = (size?: AppSettings["appearance"] extends { fontSize?: i
     }
 };
 
+/** Keep minimal / immersive shell hosts + inner `.app-shell` in sync when only `applyTheme()` runs (Settings saves / preview) — `shell.setTheme` is not always invoked. */
+const syncShellHostVisualScheme = (resolved: "light" | "dark"): void => {
+    try {
+        document.querySelectorAll("[data-shell]").forEach((el) => {
+            const h = el as HTMLElement;
+            h.dataset.theme = resolved;
+            h.style.colorScheme = resolved;
+            const inner = h.shadowRoot?.querySelector?.(".app-shell") as HTMLElement | null;
+            if (inner) {
+                inner.dataset.theme = resolved;
+                inner.style.colorScheme = resolved;
+            }
+        });
+    } catch {
+        /* ignore */
+    }
+};
+
 /** Keep <html> + PWA chrome aligned with resolved light/dark and user preference (auto/light/dark). */
 export const syncBrowserChromeTheme = (
     resolved: "light" | "dark",
@@ -93,26 +111,35 @@ export const syncBrowserChromeTheme = (
         // ignore (SSR / stale documents)
     }
 
-    // When LUR.E dynamic theme is active, it is the single writer for meta theme-color.
-    if ((globalThis as any)?.__LURE_DYNAMIC_THEME_PRIORITY__ === true) {
-        return;
+    /* Content / CRX shell hosts (shadow overlays): keep native controls/widgets aligned with resolved scheme. */
+    try {
+        document.querySelectorAll("[data-shell='content']").forEach((el) => {
+            (el as HTMLElement).style.colorScheme = resolved;
+        });
+    } catch {
+        // ignore
     }
 
-    const applyMetaThemeColor = (): void => {
-        if ((globalThis as any)?.__LURE_DYNAMIC_THEME_PRIORITY__ === true) {
-            return;
-        }
+    // When LUR.E dynamic theme is active, it is the single writer for meta theme-color.
+    if ((globalThis as any)?.__LURE_DYNAMIC_THEME_PRIORITY__ !== true) {
+        const applyMetaThemeColor = (): void => {
+            if ((globalThis as any)?.__LURE_DYNAMIC_THEME_PRIORITY__ === true) {
+                return;
+            }
 
-        const meta = document.querySelector('meta[name="theme-color"]');
-        if (!meta) return;
+            const meta = document.querySelector('meta[name="theme-color"]');
+            if (!meta) return;
 
-        const sampled = samplePwaToolbarBackgroundColor();
-        const fallback = resolved === "dark" ? "#0f1419" : "#007acc";
-        meta.setAttribute("content", sampled ?? fallback);
-    };
+            const sampled = samplePwaToolbarBackgroundColor();
+            const fallback = resolved === "dark" ? "#0f1419" : "#007acc";
+            meta.setAttribute("content", sampled ?? fallback);
+        };
 
-    applyMetaThemeColor();
-    requestAnimationFrame(applyMetaThemeColor);
+        applyMetaThemeColor();
+        requestAnimationFrame(applyMetaThemeColor);
+    }
+
+    syncShellHostVisualScheme(resolved);
 };
 
 //
@@ -139,6 +166,60 @@ export const applyTheme = (settings: AppSettings) => {
     if (settings.grid) {
         applyGridSettings(settings);
     }
+};
+
+/**
+ * Re-apply persisted appearance after a view adopts a document-level constructed stylesheet (e.g. Settings.scss).
+ * WHY: First paint on `/settings` can show mixed shell chrome vs Veela `light-dark()` token resolution until
+ * something triggers a full style pass; microtask + rAF + idle re-run matches what happens after navigating away/back.
+ * INVARIANT: Safe to call multiple times; each pass is idempotent `applyTheme(loadSettings())`.
+ */
+export const resyncThemeAfterAdoptedViewSheet = (): void => {
+    if (typeof document === "undefined") return;
+
+    const run = async (): Promise<void> => {
+        try {
+            applyTheme(await loadSettings());
+        } catch {
+            /* ignore */
+        }
+        try {
+            void document.documentElement.offsetHeight;
+        } catch {
+            /* ignore */
+        }
+    };
+
+    void (async () => {
+        await run();
+        queueMicrotask(() => {
+            void run();
+        });
+        requestAnimationFrame(() => {
+            void run();
+            try {
+                document.documentElement.dispatchEvent(new CustomEvent("u2-theme-change", { bubbles: true }));
+            } catch {
+                /* ignore */
+            }
+            requestAnimationFrame(() => {
+                void run();
+                const ric = globalThis.requestIdleCallback;
+                if (typeof ric === "function") {
+                    ric(
+                        () => {
+                            void run();
+                        },
+                        { timeout: 200 }
+                    );
+                } else {
+                    globalThis.setTimeout(() => {
+                        void run();
+                    }, 50);
+                }
+            });
+        });
+    })();
 };
 
 //

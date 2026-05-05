@@ -274,7 +274,11 @@ class ServiceWorkerUpdateManager {
         try {
             this.registration = await ensureServiceWorkerRegistered();
             if (!this.registration) {
-                console.warn('[SW] Service worker registration skipped: no valid script candidate');
+                if ((import.meta as any)?.env?.DEV) {
+                    console.warn(
+                        "[SW] Service worker registration skipped: no valid script candidate (probe failed or server returned HTML for sw.js)"
+                    );
+                }
                 return null;
             }
             this.setupUpdateListeners();

@@ -38,7 +38,7 @@ import {
     isCapacitorNativeShell,
     readClipboardTextFromDevice,
     writeClipboardTextToDevice,
-} from "../routing/native/clipboard-device
+} from "../routing/native/clipboard-device";
 import { setAirpadCredentialInvalidator } from "views/airpad/credential-cache-bridge";
 
 let socket: Socket | null = null;
@@ -75,6 +75,20 @@ const AIRPAD_CANDIDATE_PARALLEL = 3;
 const AIRPAD_VERBOSE_QUERY_KEY = "CWS_AIRPAD_VERBOSE_QUERY";
 /** Coordinator ask/act wait — was 12s, tighter for snappier UI. */
 const AIRPAD_COORDINATOR_TIMEOUT_MS = 8000;
+
+/** CWSP v2 transport / route hint query keys (canonical `cwsp_*`; see network stack spec). */
+const CWSP_ROUTE_QUERY = {
+    via: "cwsp_via",
+    localEndpoint: "cwsp_local_endpoint",
+    route: "cwsp_route",
+    routeTarget: "cwsp_route_target",
+    hop: "cwsp_hop",
+    host: "cwsp_host",
+    target: "cwsp_target",
+    targetPort: "cwsp_target_port",
+    viaPort: "cwsp_via_port",
+    protocol: "cwsp_protocol"
+} as const;
 
 /**
  * Chrome/Edge MV3: content-script XHR (Engine.IO polling) to LAN often fails with

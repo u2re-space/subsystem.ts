@@ -29,7 +29,9 @@ export const ExplorerChannelAction = {
     FileSave: "file-save",
     RequestUpload: "explorer-request-upload",
     RequestPaste: "explorer-request-paste",
-    RequestUse: "explorer-request-use"
+    RequestUse: "explorer-request-use",
+    /** Payload: `"light"` | `"dark"` | `"system"` or `{ colorScheme }`. */
+    SetColorScheme: "explorer-set-color-scheme"
 } as const;
 
 export const WorkcenterChannelAction = {
@@ -47,7 +49,9 @@ export const ViewerChannelAction = {
     SetContent: "set-content",
     OpenUrl: "open-url",
     OpenMarkdownUrl: "open-markdown-url",
-    AttachToWorkcenter: FileAttachmentApiAction.ViewerPushToWorkcenter
+    AttachToWorkcenter: FileAttachmentApiAction.ViewerPushToWorkcenter,
+    /** Payload: `"light"` | `"dark"` | `"system"` or `{ colorScheme }` — matches explorer channel shape. */
+    SetColorScheme: "viewer-set-color-scheme"
 } as const;
 
 export const SettingsChannelAction = {

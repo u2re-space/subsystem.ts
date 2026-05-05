@@ -125,8 +125,18 @@ export function createViewFromModule(module: ViewModule, options: ViewOptions = 
 }
 
 export function renderViewInstance(view: View | HTMLElement, options: ViewOptions = {}): HTMLElement {
-    if (isElement(view)) return view;
-    return view.render(options);
+    // Custom-element views (explorer, markdown, …) extend HTMLElement and expose `.render()` that
+    // returns the light-DOM subtree to mount — not `this`. Prefer calling it when present.
+    if (typeof HTMLElement !== "undefined" && view instanceof HTMLElement) {
+        const el = view as HTMLElement & Partial<Pick<View, "render">>;
+        if (typeof el.render === "function") {
+            const out = el.render(options) as unknown;
+            if (out instanceof HTMLElement) return out;
+        }
+        return view;
+    }
+    if (isView(view)) return view.render(options);
+    throw new Error("renderViewInstance: unsupported view");
 }
 
 export interface MountedView {

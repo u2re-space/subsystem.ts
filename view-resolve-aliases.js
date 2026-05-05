@@ -10,6 +10,8 @@ const viewsRoot = resolve(import.meta.dirname, "..");
 const sharedRoot = resolve(import.meta.dirname);
 const subsystemRoot = resolve(workspaceRoot, "modules/projects/subsystem/src");
 
+const veelaCssScssRoot = resolve(workspaceRoot, "modules/projects/veela.css/src/scss");
+
 const alias = (find, replacement) => ({ find, replacement });
 
 /**
@@ -54,15 +56,11 @@ export function getViewResolveAliases(prepend = []) {
         alias("shared/transport/hub-socket-boot", resolve(sharedRoot, "runtime/hub-socket-boot.ts")),
         alias("cwsp-shared/wire-target-id", resolve(sharedRoot, "runtime/wire-target-id.ts")),
         alias("cwsp-shared/cws-client-wire-defaults", resolve(sharedRoot, "runtime/cws-client-wire-defaults.ts")),
-        alias("veela-lib", resolve(subsystemRoot, "styles/_veela-lib.scss")),
-        alias("core/misc/config", resolve(sharedRoot, "styles/core/misc/_config.scss")),
-        alias("core/misc/tokens", resolve(sharedRoot, "styles/core/misc/_tokens.scss")),
-        alias("core/misc/mixins", resolve(sharedRoot, "styles/core/misc/_mixins.scss")),
-        alias("core/misc/functions", resolve(sharedRoot, "styles/core/misc/_functions.scss")),
-        alias(
-            "../../../../../subsystem/fest/polyfill/showOpenFilePicker.mjs",
-            resolve(workspaceRoot, "modules/projects/dom.ts/src/polyfill/showOpenFilePicker.mjs")
-        ),
+        alias("veela-lib", resolve(veelaCssScssRoot, "index.scss")),
+        alias("core/misc/config", resolve(veelaCssScssRoot, "core/misc/_config.scss")),
+        alias("core/misc/tokens", resolve(veelaCssScssRoot, "core/misc/_tokens.scss")),
+        alias("core/misc/mixins", resolve(veelaCssScssRoot, "core/misc/_mixins.scss")),
+        alias("core/misc/functions", resolve(veelaCssScssRoot, "core/misc/_functions.scss")),
         alias("fest/core", resolve(workspaceRoot, "modules/projects/core.ts/src/index.ts")),
         alias("fest/dom", resolve(workspaceRoot, "modules/projects/dom.ts/src/index.ts")),
         alias("fest/fl-ui", resolve(workspaceRoot, "modules/projects/fl.ui/src/index.ts")),

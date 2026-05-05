@@ -5,7 +5,11 @@ import { ViewRegistry } from "shared/routing/registry";
 import { showToast } from "./toast";
 import { withViewTransition, getTransitionDirection } from "shared/routing/view-transitions";
 import { loadSettings, saveSettings } from "shared/config/Settings";
-import { applyTheme as applyAppTheme, syncBrowserChromeTheme } from "shared/utils/Theme";
+import {
+    applyTheme as applyAppTheme,
+    resyncThemeAfterAdoptedViewSheet,
+    syncBrowserChromeTheme
+} from "shared/utils/Theme";
 import { isEnabledView } from "shared/routing/views";
 import { scheduleViewModulePrefetch } from "shared/routing/view-prefetch";
 import { serviceChannels, type ServiceChannelId } from "com/core/ServiceChannels";
@@ -72,6 +76,9 @@ export abstract class ShellBase implements Shell {
     protected themeCycleIcon: HTMLElement | null = null;
     protected themeAttrObserver: MutationObserver | null = null;
     private shellActivityDispose: (() => void) | null = null;
+    /** When `colorScheme` is `auto`, re-run `applyTheme` on OS light/dark changes. */
+    private systemColorSchemeMq: MediaQueryList | null = null;
+    private systemColorSchemeHandler: (() => void) | null = null;
 
     // ========================================================================
     // ABSTRACT METHODS (to be implemented by concrete shells)
@@ -148,8 +155,15 @@ export abstract class ShellBase implements Shell {
         this.rootElement.style.alignSelf = "stretch";
         this.rootElement.style.justifySelf = "stretch";
         this.rootElement.style.minInlineSize = "0";
-        this.rootElement.style.minBlockSize = "0";
-        this.rootElement.style.pointerEvents = "auto";
+        // Immersive mounts flush in `#app` without app-layers grid; min-size 0 + inline host = 0 height.
+        // Let immersive `base.scss` :host set `min-block-size` / `min-height` instead.
+        if (this.id !== "immersive" && this.id !== "content") {
+            this.rootElement.style.minBlockSize = "0";
+        } else {
+            this.rootElement.style.minBlockSize = "";
+        }
+        // WHY: Content-script shell is an overlay; hits pass through to the host page unless a view/overlay opts in.
+        this.rootElement.style.pointerEvents = this.id === "content" ? "none" : "auto";
 
         // Find containers
         this.contentContainer = shellLayout.querySelector("[data-shell-content]") || shellLayout;
@@ -165,11 +179,16 @@ export abstract class ShellBase implements Shell {
         // Mount to container
         container.replaceChildren(this.rootElement);
         this.mounted = true;
-        this.shellActivityDispose = initBootShellWindowActivity(this.id);
+        // Overlay / chromeless shells: do not fight `rs-boot-shell-last-active` or other tabs' last-active.
+        this.shellActivityDispose =
+            this.id === "immersive" || this.id === "content"
+                ? null
+                : initBootShellWindowActivity(this.id);
 
         // Align navigation state with the URL before the first boot navigate(), so the
         // outgoing "previous" view is not a stale placeholder (e.g. "home" on /viewer).
         this.syncNavigationFromUrl();
+        this.reconcileBootShellQueryParam();
 
         // LUR.E dynamic theme owns meta[name="theme-color"] for frame/WCO tinting.
         try {
@@ -222,6 +241,27 @@ export abstract class ShellBase implements Shell {
         this.navigationState.viewHistory = [resolved];
     }
 
+    /**
+     * If the address bar carries `?shell=` from another host/tab (e.g. immersive) while this
+     * instance is content/minimal/…, fix the hint so routing and mental model match reality.
+     */
+    protected reconcileBootShellQueryParam(): void {
+        if (typeof globalThis.window === "undefined") return;
+        try {
+            const raw = (globalThis.location?.search || "").replace(/^\?/, "");
+            const params = new URLSearchParams(raw);
+            const qs = (params.get("shell") || "").trim().toLowerCase();
+            if (!qs) return;
+            if (qs === String(this.id)) return;
+            params.set("shell", this.id);
+            const search = params.toString();
+            const next = globalThis.location.pathname + (search ? `?${search}` : "");
+            globalThis.history?.replaceState?.(globalThis.history.state ?? null, "", next);
+        } catch {
+            /* ignore */
+        }
+    }
+
     unmount(): void {
         if (!this.mounted) return;
 
@@ -249,6 +289,13 @@ export abstract class ShellBase implements Shell {
         this.mounted = false;
         this.themeAttrObserver?.disconnect();
         this.themeAttrObserver = null;
+        this.teardownSystemColorSchemeListener();
+
+        try {
+            delete document.documentElement.dataset.activeView;
+        } catch {
+            /* ignore */
+        }
 
         console.log(`[${this.id}] Shell unmounted`);
     }
@@ -297,13 +344,12 @@ export abstract class ShellBase implements Shell {
         // - other shells keep canonical root (`/?...`) with view in history.state
         if (typeof window !== "undefined" && typeof window != "undefined") {
             const searchParams = new URLSearchParams(params || {});
+            // Always stamp the mounted shell — stale `shell=` from another harness must not linger.
+            searchParams.set("shell", this.id);
             const isPathRoutedShell =
                 this.id === "base" ||
                 this.id === "minimal" ||
                 this.id === "immersive";
-            if (isPathRoutedShell) {
-                searchParams.set("shell", this.id);
-            }
             const search = searchParams.toString()
                 ? "?" + searchParams.toString()
                 : "";
@@ -496,6 +542,18 @@ export abstract class ShellBase implements Shell {
         }
 
         this.currentViewElement = element;
+
+        // Mirror active view on <html> and the shell host. WHY: view roots often sit under an open
+        // shadow root; `html:has([data-view="…"])` / `:root:has(…)` cannot match shadow descendants,
+        // so Settings / theme token rules that target :root never run on first paint. `html[data-active-view]`
+        // inherits into shadow and fixes cold-start styling; `data-active-view` on the host drives ::part-less shell chrome.
+        try {
+            const vid = this.currentView.value;
+            document.documentElement.dataset.activeView = vid;
+            if (this.rootElement) this.rootElement.dataset.activeView = vid;
+        } catch {
+            /* ignore */
+        }
     }
 
     /**
@@ -572,6 +630,34 @@ export abstract class ShellBase implements Shell {
                 this.rootElement.style.setProperty(key, value);
             }
         }
+
+        this.syncSystemColorSchemeListener();
+    }
+
+    private teardownSystemColorSchemeListener(): void {
+        if (this.systemColorSchemeMq && this.systemColorSchemeHandler) {
+            this.systemColorSchemeMq.removeEventListener("change", this.systemColorSchemeHandler);
+        }
+        this.systemColorSchemeMq = null;
+        this.systemColorSchemeHandler = null;
+    }
+
+    /** Keep shell + document chrome aligned when settings use `auto` and the OS scheme changes. */
+    private syncSystemColorSchemeListener(): void {
+        this.teardownSystemColorSchemeListener();
+        if (typeof globalThis.matchMedia !== "function") return;
+
+        const shellTheme = this.getThemeRefValue();
+        if (shellTheme.colorScheme !== "auto") return;
+
+        const mq = globalThis.matchMedia("(prefers-color-scheme: dark)");
+        const handler = (): void => {
+            if (!this.mounted || this.getThemeRefValue().colorScheme !== "auto") return;
+            this.applyTheme(this.getThemeRefValue());
+        };
+        this.systemColorSchemeMq = mq;
+        this.systemColorSchemeHandler = handler;
+        mq.addEventListener("change", handler);
     }
 
     protected getThemeRefValue(): ShellTheme {
@@ -826,12 +912,28 @@ export abstract class ShellBase implements Shell {
 
     private invokeCurrentViewOnShow(): void {
         const entry = this.loadedViews.get(this.currentView.value);
-        if (!entry?.view?.lifecycle?.onShow) return;
-        try {
-            entry.view.lifecycle.onShow();
-        } catch (error) {
-            console.warn(`[${this.id}] View ${this.currentView.value} onShow error:`, error);
+        if (entry?.view?.lifecycle?.onShow) {
+            try {
+                entry.view.lifecycle.onShow();
+            } catch (error) {
+                console.warn(`[${this.id}] View ${this.currentView.value} onShow error:`, error);
+            }
         }
+
+        // Settings.scss depends on inherited M3 tokens (`--color-surface`, etc.). Cold start can paint
+        // before Veela `light-dark()` + `color-scheme` fully reconcile; visiting another view forces a
+        // repaint. Re-apply saved appearance + notify LUR.E dynamic theme after the view sheet mounts.
+        if (this.currentView.value === "settings") {
+            this.resyncDocumentThemeAfterSettingsShown();
+        }
+    }
+
+    /**
+     * Re-run theme bridge + token consumers after Settings view adopts its document stylesheet.
+     * WHY: Fixes hybrid light chrome / dark content on first paint when deep-linking to /settings.
+     */
+    private resyncDocumentThemeAfterSettingsShown(): void {
+        resyncThemeAfterAdoptedViewSheet();
     }
 
     /**

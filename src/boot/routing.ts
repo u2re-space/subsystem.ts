@@ -299,7 +299,7 @@ export function getSavedShellPreference(): ShellId | null {
         }
 
         const lastActive = readLastActiveBootShell();
-        if (lastActive) {
+        if (lastActive && lastActive !== "immersive" && lastActive !== "content") {
             return coerceShellForBootViewport(lastActive);
         }
     } catch {

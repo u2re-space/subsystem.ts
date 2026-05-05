@@ -1,6 +1,6 @@
 /**
  * HTTPS playground for packaged view modules (`mountViewModule` + dynamic import).
- * Open https://localhost:8443/?suite=explorer (port from terminal if 8443 is taken).
+ * Open https://localhost/?suite=explorer (default dev port 443, or VIEW_DEV_PORT).
  */
 import "fest/icon";
 import { mountViewModule, type ShellContext, type ViewModule } from "../types";
@@ -110,7 +110,7 @@ else {
     const status = document.getElementById("fl-ui-suite-status");
     if (status) {
         status.innerHTML =
-            'Choose a suite or open <code>?suite=explorer</code>. Use the <strong>HTTPS</strong> URL from the dev server log (default port 8443).';
+            'Choose a suite or open <code>?suite=explorer</code>. Use the <strong>HTTPS</strong> URL from the dev server log (default port 443).';
         status.dataset.state = "idle";
     }
 }

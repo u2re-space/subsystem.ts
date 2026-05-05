@@ -2,10 +2,10 @@
  * Boot Loader - Shell/Style Initialization System
  * 
  * Manages the boot sequence for the CrossWord application:
- * 1. Load style system (Veela CSS or Minimal)
- * 2. Initialize shell (frame/layout/environment)
- * 3. Load view/component/module
- * 4. Connect uniform channels
+ * 1. Load settings and apply document theme (`:root` / color-scheme before Veela paints)
+ * 2. Load style system (Veela CSS or Minimal)
+ * 3. Initialize shell (frame/layout/environment)
+ * 4. Load view/component/module and connect uniform channels
  * 
  * Shell/Style Matrix:
  * | Shells/Styles: | Faint | Minimal | Raw |
@@ -68,6 +68,11 @@ export interface BootConfig {
     channelPriorityId?: ServiceChannelId;
     /** Remember preferences */
     rememberChoice?: boolean;
+    /**
+     * When true, mount shell + channels but do not call {@link Shell.navigate} (no default view).
+     * Dismisses the shell loading placeholder. For CRX/content overlays that start fully transparent.
+     */
+    skipInitialNavigate?: boolean;
 }
 
 /**
@@ -237,27 +242,27 @@ export class BootLoader {
                 /* Capacitor / CWSAndroid bridge is optional on pure web */
             });
 
-            // Phase 0–1: Settings + Veela in parallel (both are on the critical path to first paint).
-            const [persistedSettings] = await Promise.all([
-                loadSettings().catch((error) => {
-                    console.warn("[BootLoader] Failed to load settings:", error);
-                    return null;
-                }),
-                this.loadStyles(config.styleSystem)
-            ]);
+            // Phase 0: Settings first — apply appearance to :root before Veela/shell CSS loads so
+            // M3 tokens + color-scheme resolve to the saved theme on first paint (avoids light→dark flash).
+            const persistedSettings = await loadSettings().catch((error) => {
+                console.warn("[BootLoader] Failed to load settings:", error);
+                return null;
+            });
             if (persistedSettings) {
                 void applyHubSocketFromSettings(persistedSettings).catch(() => undefined);
             }
+            applyAppTheme(persistedSettings ?? DEFAULT_SETTINGS);
+
+            // Phase 1: Style system (Veela, etc.) after document theme attrs are stable.
+            await this.loadStyles(config.styleSystem);
+
             const persistedTheme = this.resolveThemeFromSettings(persistedSettings);
-            
+
             // Phase 2: Initialize Shell
             const shell = await this.loadShell(config.shell, container);
-            
+
             // Phase 3: Shell theme ref (DOM apply runs on mount when rootElement exists)
             shell.setTheme(config.theme || persistedTheme);
-
-            // Phase 3.5: Document / Veela tokens before first shell paint (PWA cutout + scheme)
-            applyAppTheme(persistedSettings ?? DEFAULT_SETTINGS);
 
             // Phase 4: Mount Shell
             await shell.mount(container);
@@ -271,10 +276,12 @@ export class BootLoader {
                 await this.initChannels(config.channels, config.channelPriorityId);
             }
             
-            // Phase 6: Always activate the initial view.
-            // ShellBase starts with a placeholder ref; skipping navigate when it accidentally
-            // equals defaultView (e.g. /home with defaultView "home") left the spinner forever.
-            await shell.navigate(config.defaultView);
+            // Phase 6: Initial view (optional — content-script shells may stay chromeless/empty).
+            if (config.skipInitialNavigate) {
+                this.dismissShellLoadingSpinner(shell);
+            } else {
+                await shell.navigate(config.defaultView);
+            }
             
             // Mark as ready
             this.setPhase("ready");
@@ -302,6 +309,17 @@ export class BootLoader {
         if (theme === "dark") return darkTheme;
         if (theme === "light") return lightTheme;
         return defaultTheme;
+    }
+
+    /** Hide immersive/minimal shell loading row when skipping {@link Shell.navigate}. */
+    private dismissShellLoadingSpinner(shell: Shell): void {
+        try {
+            const el = shell.getElement();
+            const loading = el.shadowRoot?.querySelector(".app-shell__loading") as HTMLElement | null;
+            if (loading) loading.hidden = true;
+        } catch {
+            /* ignore */
+        }
     }
 
     /**
@@ -620,7 +638,8 @@ export async function bootEnvironment(
  */
 export async function bootMinimal(
     container: HTMLElement,
-    view: ViewId = "viewer"
+    view: ViewId = "viewer",
+    options?: BootShellEntryOptions
 ): Promise<Shell> {
     const defaultView = pickEnabledView(view, "viewer");
     /** Minimal shell: init only the active view's channel — others register on first navigate (see ShellBase.loadView). */
@@ -634,7 +653,8 @@ export async function bootMinimal(
         defaultView,
         channels,
         channelPriorityId,
-        rememberChoice: true
+        rememberChoice: options?.rememberChoice ?? true,
+        skipInitialNavigate: options?.skipInitialNavigate ?? false
     });
 }
 
@@ -673,22 +693,40 @@ export async function bootBase(
     });
 }
 
+/** Optional flags for convenience boot entrypoints (`bootContent`, `bootImmersive`, …). */
+export type BootShellEntryOptions = {
+    /** When false, skip writing `rs-boot-shell` / view prefs (demos, shared-origin harnesses). Default true. */
+    rememberChoice?: boolean;
+    /** See {@link BootConfig.skipInitialNavigate}. */
+    skipInitialNavigate?: boolean;
+    /**
+     * When set, replaces the default service-channel list for this boot (e.g. `[]` for a bare overlay).
+     */
+    channels?: ServiceChannelId[];
+};
+
 export async function bootContent(
     container: HTMLElement,
-    view: ViewId = "home"
+    view: ViewId = "home",
+    options?: BootShellEntryOptions
 ): Promise<Shell> {
-    const channels = ["workcenter", "settings", "viewer", "explorer", "history", "editor", "airpad", "home"]
-        .filter((channelId) => isEnabledView(channelId)) as ServiceChannelId[];
+    const defaultChannelIds = ["workcenter", "settings", "viewer", "explorer", "history", "editor", "airpad", "home"] as const;
+    const defaultChannels = defaultChannelIds.filter((channelId) => isEnabledView(channelId)) as ServiceChannelId[];
+    const channels =
+        options?.channels !== undefined ? options.channels : defaultChannels;
     const defaultView = pickEnabledView(view, "home");
     const channelPriorityId: ServiceChannelId | undefined =
-        (channels.find((c) => c === defaultView) ?? channels[0]) as ServiceChannelId | undefined;
+        channels.length > 0
+            ? ((channels.find((c) => c === defaultView) ?? channels[0]) as ServiceChannelId | undefined)
+            : undefined;
     return bootLoader.boot(container, {
         styleSystem: "vl-basic",
         shell: "content",
         defaultView,
         channels,
         channelPriorityId,
-        rememberChoice: true
+        rememberChoice: options?.rememberChoice ?? true,
+        skipInitialNavigate: options?.skipInitialNavigate ?? false
     });
 }
 
@@ -697,7 +735,8 @@ export async function bootContent(
  */
 export async function bootImmersive(
     container: HTMLElement,
-    view: ViewId = "viewer"
+    view: ViewId = "viewer",
+    options?: BootShellEntryOptions
 ): Promise<Shell> {
     const defaultView = pickEnabledView(view, "viewer");
     const channels = isEnabledView(defaultView)
@@ -710,7 +749,8 @@ export async function bootImmersive(
         defaultView,
         channels,
         channelPriorityId,
-        rememberChoice: true
+        rememberChoice: options?.rememberChoice ?? true,
+        skipInitialNavigate: options?.skipInitialNavigate ?? false
     });
 }
 

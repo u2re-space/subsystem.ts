@@ -13,6 +13,10 @@ class ShellHost extends HTMLElement implements ShellMountableHost {
         if (!this.shadowRoot) {
             this.attachShadow({ mode: "open" });
         }
+        // WHY: Autonomous custom elements default to `display: inline`; without a block box the
+        // host often collapses to 0 block-size while light-DOM slotted views overflow visibly.
+        this.style.display = "block";
+        this.style.boxSizing = "border-box";
         this.shadowRoot!.replaceChildren(layout);
     }
 }

@@ -143,13 +143,19 @@ export const initServiceWorker = async (_options: { immediate?: boolean, onRegis
 
         try {
             const registration = await ensureServiceWorkerRegistered();
+            const viteEnv = (import.meta as any)?.env;
             if (!registration) {
-                console.error('[PWA] Service worker registration failed: no valid sw.js found');
+                if (viteEnv?.DEV) {
+                    console.warn(
+                        "[PWA] Service worker not registered (dev): probe failed for dev-sw/sw.js — check Vite BASE_URL matches vite-plugin-pwa dev worker path."
+                    );
+                } else {
+                    console.error("[PWA] Service worker registration failed: no valid sw.js found");
+                }
                 return null;
             }
 
             _swRegistration = registration;
-            const viteEnv = (import.meta as any)?.env;
             bindControllerChangeReload();
 
             // In dev, aggressively activate updated SW to avoid stale Workbox routes breaking Vite module fetches.

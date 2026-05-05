@@ -8,20 +8,46 @@
 @layer layer.view.common, layer.view.viewer;
 
 @layer layer.view.common {
+    /*
+     * Isolate view subtree from shell chrome inheritance while Veela / theme settle after first paint.
+     * Tokens use --view-* first; shell --shell-* must not win here via late cascade.
+     */
     :where([data-cw-view-host="true"]) {
         display: block;
+        box-sizing: border-box;
         inline-size: 100%;
         block-size: 100%;
         min-inline-size: 0;
         min-block-size: 0;
+        isolation: isolate;
+        position: relative;
+        z-index: 0;
+        color-scheme: light dark;
+        color: var(--view-fg, var(--color-on-surface, canvasText));
+        background-color: var(--view-bg, var(--color-surface, canvas));
     }
 }
 
+/*
+ * Boot-time viewer layout only (subsystem shells + channel preload).
+ * Toolbar/spacing/button chrome lives in markdown-view `layer.view.viewer` — keep this file
+ * structural to avoid padding/gap/border fights when both sheets load.
+ */
 @layer layer.view.viewer {
-    .cw-view-viewer-shell,
+    .cw-view-viewer-shell {
+        display: flex;
+        flex-direction: column;
+        inline-size: 100%;
+        block-size: 100%;
+        min-inline-size: 0;
+        min-block-size: max(100%, 100cqb);
+        max-block-size: none;
+    }
+
     .view-viewer {
         display: grid;
         grid-template-rows: [toolbar-row] max-content [content-row] minmax(0, 1fr);
+        flex: 1 1 0%;
         inline-size: 100%;
         block-size: 100%;
         min-inline-size: 0;
@@ -30,130 +56,12 @@
         background: var(--view-bg, var(--color-surface, #{_viewer-css-light-dark("light-dark(#f4f6fa, #060d17)")}));
     }
 
-    .view-viewer__toolbar {
-        grid-row: toolbar-row;
-        display: flex;
-        align-items: center;
-        justify-content: space-between;
-        gap: 0.5rem;
-        padding: 0.4rem 0.55rem;
-        border-block-end: 1px solid var(
-            --view-border,
-            color-mix(
-                in oklab,
-                var(--color-outline-variant, #{_viewer-css-light-dark("light-dark(#94a3b8, #334155)")}) 70%,
-                transparent
-            )
-        );
-        background: var(
-            --view-toolbar-bg,
-            #{_viewer-css-light-dark(
-                    "light-dark(color-mix(in oklab, var(--color-surface-container, #e2e8f0) 88%, transparent), color-mix(in oklab, var(--color-surface-container, #0f1a2b) 88%, transparent))"
-                )}
-        );
-        min-inline-size: 100%;
-        box-sizing: border-box;
-    }
-
-    .view-viewer__toolbar-left,
-    .view-viewer__toolbar-right {
-        display: inline-flex;
-        align-items: center;
-        gap: 0.4rem;
-        min-inline-size: 0;
-    }
-
-    .view-viewer__toolbar-center {
-        flex: 1 1 auto;
-        min-inline-size: 0;
-        display: flex;
-        align-items: center;
-        justify-content: center;
-        padding-inline: 0.35rem;
-        pointer-events: none;
-    }
-
-    .view-viewer__toolbar-title {
-        display: block;
-        max-inline-size: 100%;
-        overflow: hidden;
-        text-overflow: ellipsis;
-        white-space: nowrap;
-        font-size: 0.8125rem;
-        font-weight: 500;
-        line-height: 1.25;
-        color: color-mix(
-            in oklab,
-            var(--color-on-surface, #{_viewer-css-light-dark("light-dark(#334155, #e5e7eb)")}) 88%,
-            transparent
-        );
-        text-align: center;
-    }
-
-    .view-viewer__toolbar-title:empty {
-        display: none;
-    }
-
-    .view-viewer__toolbar-group {
-        display: inline-flex;
-        align-items: center;
-        gap: 0.25rem;
-        min-inline-size: 0;
-    }
-
-    .view-viewer__btn {
-        display: inline-flex;
-        align-items: center;
-        gap: 0.3rem;
-        padding: 0.28rem 0.45rem;
-        border: 1px solid color-mix(
-            in oklab,
-            var(--color-outline-variant, #{_viewer-css-light-dark("light-dark(#cbd5e1, #334155)")}) 70%,
-            transparent
-        );
-        border-radius: 0.48rem;
-        background: color-mix(
-            in oklab,
-            var(
-                    --color-surface-container-high,
-                    #{_viewer-css-light-dark("light-dark(#e2e8f0, #1f2937)")}
-                )
-                62%,
-            transparent
-        );
-        color: color-mix(
-            in oklab,
-            var(--color-on-surface, #{_viewer-css-light-dark("light-dark(#334155, #e5e7eb)")}) 82%,
-            transparent
-        );
-        font: inherit;
-        font-size: 0.78rem;
-        line-height: 1;
-        cursor: pointer;
-        white-space: nowrap;
-    }
-
-    .view-viewer__btn:hover {
-        background: color-mix(
-            in oklab,
-            var(--color-surface-container-high, #{_viewer-css-light-dark("light-dark(#cbd5e1, #334155)")}) 82%,
-            transparent
-        );
-        color: var(--color-on-surface, #{_viewer-css-light-dark("light-dark(#0f172a, #f8fafc)")});
-    }
-
-    .view-viewer__toolbar-icon {
-        inline-size: 1rem;
-        block-size: 1rem;
-    }
-
     .view-viewer__content {
         grid-row: content-row;
         position: relative;
         min-inline-size: 0;
         min-block-size: 0;
         overflow: auto;
-        /* Prose / raw apply their own inset via viewer tokens (--view-padding). */
         padding: 0;
     }
 }
