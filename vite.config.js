@@ -14,14 +14,46 @@ import { npmFestImportRewritePlugin } from "./vite-npm-imports.mjs";
 
 const NAME = "subsystem";
 
-function normalizeAliasPattern(pattern) {
+//
+export const importConfig = (url, ...args)=>{ return import(url)?.then?.((m)=>m?.default?.(...args)); }
+export const objectAssign = (target, ...sources) => {
+    if (!sources.length) return target;
+
+    const source = sources.shift();
+    if (source && typeof source === 'object') {
+        for (const key in source) {
+            if (Object.prototype.hasOwnProperty.call(source, key)) {
+                if (source[key] && typeof source[key] === 'object') {
+                    if (!target[key] || typeof target[key] !== 'object') {
+                        target[key] = Array.isArray(source[key]) ? [] : {};
+                    }
+                    objectAssign(target[key], source[key]);
+                } else {
+                    target[key] = source[key];
+                }
+            }
+        }
+    }
+
+    return objectAssign(target, ...sources);
+}
+
+
+export function normalizeAliasPattern(pattern) {
     return pattern.replace(/\/\*+$/, "");
 }
 
-function importFromTSConfig(tsconfig, dir) {
+export function importFromTSConfig(tsconfig, dir) {
     const paths = tsconfig?.compilerOptions?.paths || {};
+    /** Longer `find` first so e.g. `com/config/Names` wins over `com` from `com/*`. */
+    const keys = Object.keys(paths).sort((a, b) => {
+        const na = normalizeAliasPattern(a);
+        const nb = normalizeAliasPattern(b);
+        if (nb.length !== na.length) return nb.length - na.length;
+        return a.localeCompare(b);
+    });
     const out = [];
-    for (const key in paths) {
+    for (const key of keys) {
         const normalizedKey = normalizeAliasPattern(key);
         const target = paths[key][0];
         const normalizedTarget = normalizeAliasPattern(target);
@@ -33,7 +65,7 @@ function importFromTSConfig(tsconfig, dir) {
     return out;
 }
 
-const projectMap = new Map([
+export const projectMap = new Map([
     ["fest/core", "core.ts"],
     ["fest/icon", "icon.ts"],
     ["fest/fl-ui", "fl.ui"],
@@ -41,8 +73,9 @@ const projectMap = new Map([
     ["fest/uniform", "uniform.ts"],
     ["fest/dom", "dom.ts"],
     ["fest/veela", "veela.css"],
-    ["fest/veela-runtime", "veela.css"],
-    ["fest/lure", "lur.e"]
+    ["veela-lib", "veela.css"],
+    ["fest/lure", "lur.e"],
+    ["fest/image", "image.ts"]
 ]);
 
 export function initiate(name = NAME, tsconfig = {}, dir = resolve(import.meta.dirname, "./")) {

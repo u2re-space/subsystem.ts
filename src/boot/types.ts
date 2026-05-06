@@ -89,6 +89,11 @@ export interface ShellContext {
     shellId: ShellId;
     /** Navigate to a view */
     navigate: (viewId: ViewId, params?: Record<string, string>) => void | Promise<void>;
+    /**
+     * Open a view in a stacking/overlay sense when the host supports it; otherwise same as {@link navigate}.
+     * WHY: Home/speed-dial code prefers this so dedicated window layers can override without forking view code.
+     */
+    openView?: (viewId: ViewId, params?: Record<string, string>) => void | Promise<void>;
     /** Go back in navigation history */
     goBack: () => void;
     /** Show a status/toast message */

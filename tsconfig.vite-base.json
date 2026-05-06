@@ -1,0 +1,79 @@
+{
+    "compilerOptions": {
+        "paths": {
+            "views/types": ["./types.ts"],
+            "views/registry": ["./registry.ts"],
+            "views/apis/channel-actions": [
+                "../../projects/subsystem/src/routing/api/channel-actions.ts"
+            ],
+            "views/apis/channel-invokable": [
+                "../../projects/subsystem/src/routing/api/channel-invokable.ts"
+            ],
+            "views/demo": ["./demo/main.ts"],
+            "views/test": ["./test/module-smoke.ts"],
+            "shells/types": ["./types.ts"],
+            "shells/boot": ["./runtime/boot.ts"],
+            "core/storage": ["./runtime/storage.ts"],
+            "core/store/StateStorage": ["./runtime/state-storage.ts"],
+            "core/modules/Clipboard": ["./runtime/clipboard.ts"],
+            "core/document/AIResponseParser": [
+                "../../projects/subsystem/src/other/document/AIResponseParser.ts"
+            ],
+            "core/document/DocTools": ["./runtime/doc-tools.ts"],
+            "core/document/DocxExport": ["./runtime/docx-export.ts"],
+            "core/pwa/sw-handling": ["./runtime/sw-handling.ts"],
+            "core/utils/Theme": ["./runtime/theme.ts"],
+            "com/config/Settings": ["./runtime/settings-config.ts"],
+            "com/config/SettingsTypes": ["./runtime/app-settings.ts"],
+            "com/config/Names": ["./runtime/names.ts"],
+            "com/config/admin-doors": ["./runtime/admin-doors.ts"],
+            "com/core/UnifiedMessaging": ["./runtime/messaging.ts"],
+            "com/core/UniformViewTransport": ["./runtime/view-transport.ts"],
+            "com/core/ShareTargetGateway": ["./runtime/share-target.ts"],
+            "com/core/LogSanitizer": ["./runtime/log-sanitizer.ts"],
+            "com/service/misc/ActionHistory": ["./runtime/action-history.ts"],
+            "com/service/misc/ExecutionCore": ["./runtime/execution-core.ts"],
+            "com/service/instructions/CustomInstructions": [
+                "./runtime/custom-instructions.ts"
+            ],
+            "com/service/instructions/templates": [
+                "./runtime/instruction-templates.ts"
+            ],
+            "com/service/instructions/utils": ["./runtime/instruction-utils.ts"],
+            "shared/policies/event-handling-policy": [
+                "./runtime/event-handling-policy.ts"
+            ],
+            "shared/native/clipboard-device": ["./runtime/clipboard-device.ts"],
+            "shared/transport/websocket": ["./runtime/websocket.ts"],
+            "shared/transport/hub-socket-boot": ["./runtime/hub-socket-boot.ts"],
+            "cwsp-shared/wire-target-id": ["./runtime/wire-target-id.ts"],
+            "cwsp-shared/cws-client-wire-defaults": [
+                "./runtime/cws-client-wire-defaults.ts"
+            ],
+            "veela-lib": ["../../projects/veela.css/src/scss/index.scss"],
+            "veela-lib/*": ["../../projects/veela.css/src/scss/*"],
+            "core/misc/config": [
+                "../../projects/veela.css/src/scss/core/misc/_config.scss"
+            ],
+            "core/misc/tokens": [
+                "../../projects/veela.css/src/scss/core/misc/_tokens.scss"
+            ],
+            "core/misc/mixins": [
+                "../../projects/veela.css/src/scss/core/misc/_mixins.scss"
+            ],
+            "core/misc/functions": [
+                "../../projects/veela.css/src/scss/core/misc/_functions.scss"
+            ],
+            "fest/core": ["../../projects/core.ts/src/index.ts"],
+            "fest/dom": ["../../projects/dom.ts/src/index.ts"],
+            "fest/fl-ui": ["../../projects/fl.ui/src/index.ts"],
+            "fest/icon": ["../../projects/icon.ts/src/index.ts"],
+            "fest/lure": ["../../projects/lur.e/src/index.ts"],
+            "fest/object": ["../../projects/object.ts/src/index.ts"],
+            "fest/subsystem": ["../../projects/subsystem/src/index.ts"],
+            "fest/uniform": ["../../projects/uniform.ts/src/index.ts"],
+            "fest/image": ["../../projects/image.ts/src/index.ts"],
+            "fl-ui": ["../../projects/fl.ui/src/ui"]
+        }
+    }
+}

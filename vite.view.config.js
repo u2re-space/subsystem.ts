@@ -2,7 +2,7 @@ import { existsSync, readFileSync } from "node:fs";
 import { resolve } from "node:path";
 import basicSsl from "@vitejs/plugin-basic-ssl";
 import { defineConfig, searchForWorkspaceRoot } from "vite";
-import { getViewResolveAliases, workspaceRoot, viewsRoot } from "./view-resolve-aliases.js";
+import { getViewResolveAliases, workspaceRoot, viewsRoot } from "../../views/view-resolve-aliases.js";
 
 const alias = (find, replacement) => ({ find, replacement });
 
@@ -69,7 +69,7 @@ export function defineViewProject({ name, root = process.cwd(), defaultDevPort, 
         root: projectRoot,
         plugins,
         resolve: {
-            alias: getViewResolveAliases([alias("view-entry", entry)])
+            alias: getViewResolveAliases(projectRoot, [alias("view-entry", entry)])
         },
         server: {
             host: "0.0.0.0",
@@ -95,6 +95,8 @@ export function defineViewProject({ name, root = process.cwd(), defaultDevPort, 
             rollupOptions: {
                 external: []
             },
+            /* WHY: lightningcss chokes on some Veela `::slotted` shapes (same as environment-shell). */
+            cssMinify: false,
             ...(buildExtend || {})
         },
         css: {

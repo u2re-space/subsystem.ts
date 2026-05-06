@@ -1292,6 +1292,10 @@ export function connectWS() {
         https: ['8443', '443', '8444'],
     } as const;
     const locationPort = location.port?.trim?.() || '';
+    /** Default 443/80 when `location.port` is empty — used to prefer same-origin WS on unified HTTPS entrypoints. */
+    const pageEffectivePort =
+        locationPort ||
+        (location.protocol === "https:" ? "443" : location.protocol === "http:" ? "80" : "");
 
     const protocolOrder = remoteProtocol === 'http'
         ? (['http'] as const)
@@ -1384,7 +1388,8 @@ export function connectWS() {
     if (location.hostname && !skipPageOriginForDirectLan) {
         hostEntries.push({
             host: location.hostname,
-            source: "page"
+            source: "page",
+            ...(pageEffectivePort ? { preferPort: pageEffectivePort } : {})
         });
     }
     const uniqueHostEntries = new Map<string, { host: string; source: WSConnectCandidate['source']; preferPort?: string }>();
@@ -1404,7 +1409,12 @@ export function connectWS() {
         const hostList = protocol === 'https' ? httpsOrderedHostEntries : candidateHostEntries;
         for (const hostEntry of hostList) {
             const { host, source, preferPort } = hostEntry;
-            const hostPortOverride = preferPort;
+            /* Same hostname as the tab: always try the tab’s effective port first (e.g. 443) even when
+             * stored connect URL still lists :8443 — unified TLS / reverse-proxy shells serve `/ws` on 443. */
+            const hostPortOverride =
+                pageHost && host === pageHost && pageEffectivePort
+                    ? pageEffectivePort
+                    : preferPort;
             for (const port of getPortsForProtocol(protocol, hostPortOverride)) {
                 const hostBare = stripWireEndpointIdPrefix(host).trim() || host.trim();
                 const hostLooksPrivate = isIpv4Literal(hostBare) && isPrivateIp(hostBare);

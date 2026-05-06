@@ -2,7 +2,7 @@
  * Custom element host for shell layouts (`cw-shell-<id>`).
  * Layout DOM lives in an open shadow root so shell SCSS can stay scoped.
  */
-import type { ShellId } from "../types";
+import type { ShellId } from "./types";
 
 export interface ShellMountableHost extends HTMLElement {
     mountShellLayout(layout: HTMLElement): void;

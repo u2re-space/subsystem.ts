@@ -1,15 +1,14 @@
 import { ref } from "fest/object";
-import type { Shell, ShellContext, ShellId, ShellLayoutConfig, ShellNavigationState, ShellTheme, View, ViewId } from "../types";
+import type { Shell, ShellContext, ShellId, ShellLayoutConfig, ShellNavigationState, ShellTheme, View, ViewId } from "./types";
 import { loadInlineStyle, preloadStyle } from "fest/dom";
 import { ViewRegistry } from "shared/routing/registry";
-import { showToast } from "./toast";
 import { withViewTransition, getTransitionDirection } from "shared/routing/view-transitions";
-import { loadSettings, saveSettings } from "shared/config/Settings";
+import { loadSettings, saveSettings } from "com/config/Settings";
 import {
     applyTheme as applyAppTheme,
     resyncThemeAfterAdoptedViewSheet,
     syncBrowserChromeTheme
-} from "shared/utils/Theme";
+} from "core/utils/Theme";
 import { isEnabledView } from "shared/routing/views";
 import { scheduleViewModulePrefetch } from "shared/routing/view-prefetch";
 import { serviceChannels, type ServiceChannelId } from "com/core/ServiceChannels";
@@ -479,9 +478,11 @@ export abstract class ShellBase implements Shell {
     }
 
     getContext(): ShellContext {
+        const navigateFn = (viewId: ViewId, params?: Record<string, string>) => this.navigate(viewId, params);
         return {
             shellId: this.id,
-            navigate: (viewId, params) => this.navigate(viewId, params),
+            navigate: navigateFn,
+            openView: navigateFn,
             goBack: () => this.goBack(),
             showMessage: (msg, duration) => this.showMessage(msg, duration),
             navigationState: this.navigationState,

@@ -52,49 +52,46 @@
                 "./assets/*"
             ],
             "shells/types": [
-                "./src/frontend/shells/types.ts"
+                "./shells/types.ts"
             ],
-            "shells/boot": [
-                "./src/frontend/boot/index.ts"
+            "views/*": [
+                "./views/*"
             ],
-            "shells/window": [
-                "./src/frontend/ai-slop/window/index.ts"
+            "shells/*": [
+                "./shells/*"
             ],
             "fest/core": [
-                "./shared/fest/core/index.ts"
+                "./fest/core/index.ts"
             ],
             "fest/dom": [
-                "./shared/fest/dom/index.ts"
+                "./fest/dom/index.ts"
             ],
             "fest/fl-ui": [
-                "./shared/fest/fl-ui/index.ts"
+                "./fest/fl-ui/index.ts"
             ],
             "fest/lure": [
-                "./shared/fest/lure/index.ts"
+                "./fest/lure/index.ts"
             ],
             "fest/object": [
-                "./shared/fest/object/index.ts"
+                "./fest/object/index.ts"
             ],
             "fest/object/*": [
-                "./shared/fest/object/*"
+                "./fest/object/*"
             ],
             "fest/uniform": [
-                "./shared/fest/uniform/index.ts"
+                "./fest/uniform/index.ts"
             ],
             "fest/theme": [
-                "./shared/fest/theme/index.ts"
+                "./fest/theme/index.ts"
             ],
             "fest/icon": [
-                "./shared/fest/icon/index.ts"
+                "./fest/icon/index.ts"
             ],
             "fest/veela": [
-                "./shared/fest/veela/index.ts"
+                "./fest/veela/index.ts"
             ],
             "fest/veela/*": [
-                "./shared/fest/veela/*"
-            ],
-            "fest/polyfill/*": [
-                "./shared/polyfill/*"
+                "./fest/veela/*"
             ],
             "com/*": [
                 "./src/*"
@@ -106,13 +103,13 @@
                 "./src/*"
             ],
             "@shared/*": [
-                "./shared/*"
+                "./*"
             ],
             "veela-lib": [
-                "./shared/fest/veela/scss/index.scss"
+                "./fest/veela/scss/index.scss"
             ],
             "veela-lib/*": [
-                "./shared/fest/veela/scss/*"
+                "./fest/veela/scss/*"
             ]
         },
         "types": [
