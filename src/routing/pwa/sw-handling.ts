@@ -8,17 +8,20 @@
 import { initPWAClipboard } from "./pwa-copy";
 import { showToast } from "../../boot/toast";
 import { ensureServiceWorkerRegistered } from "./sw-url";
-import { dispatchViewTransfer, classifyIngressFile, classifyIngressFromBasename, type ViewTransferHint } from "com/core/ViewTransferRouting";
-import { BROADCAST_CHANNELS } from "com/config/Names";
-import { loadSettings } from "com/config/Settings";
-import { summarizeForLog } from "com/core/LogSanitizer";
+import { classifyIngressFile, classifyIngressFromBasename, dispatchViewTransfer, type ViewTransferHint } from "../channel/ViewTransferRouting";
 import {
     buildShareDataFromCachedPayload,
-    consumeCachedShareTargetPayload as consumeCachedShareTargetPayloadFromGateway,
-    storeShareTargetPayloadToCache as storeShareTargetPayloadToCacheGateway,
+    consumeCachedShareTargetPayload,
+    storeShareTargetPayloadToCache,
     type CachedShareTargetPayload
-} from "com/core/ShareTargetGateway";
-import { waitForIngressPipelineSlot } from "shared/policies/ingress-pipeline-guard";
+} from "../channel/ShareTargetGateway";
+
+export { consumeCachedShareTargetPayload, storeShareTargetPayloadToCache };
+import { waitForIngressPipelineSlot } from "../policies/ingress-pipeline-guard";
+import { summarizeForLog } from "../channel/LogSanitizer";
+import { unifiedMessaging } from "../channel/UnifiedMessaging";
+import { loadSettings } from "com/config/Settings";
+import { BROADCAST_CHANNELS } from "com/config/Names";
 
 // ============================================================================
 // EXTENSION VS PWA
@@ -602,7 +605,7 @@ const routeToTransferView = async (
     const tryNavigateLiveShell = async (): Promise<boolean> => {
         if (!delivered) return false;
         try {
-            const { bootLoader } = await import("boot/ts/BootLoader");
+            const { bootLoader } = await import("boot/BootLoader");
             const shell = bootLoader.getShell();
             const supportsSingletonViewReuse =
                 shell && !["window", "tabbed", "environment"].includes(shell.id);
@@ -825,7 +828,6 @@ export const processShareTargetData = async (shareData: ShareDataInput, skipIfEm
 
             // Send to workcenter for display (destination-aware)
             try {
-                const { unifiedMessaging } = await import("com/core/UnifiedMessaging");
                 await unifiedMessaging.sendMessage({
                     type: 'share-target-result',
                     source: 'share-target',
@@ -914,16 +916,6 @@ export const CHANNELS = {
 // SHARE TARGET CACHE CONSUMPTION (FILES)
 // ============================================================================
 
-export const storeShareTargetPayloadToCache = async (payload: { files: File[]; meta?: any }): Promise<boolean> =>
-    storeShareTargetPayloadToCacheGateway(payload);
-
-/**
- * Read and (optionally) clear share-target cached payload, including real files.
- * This is used by Basic edition to attach incoming files to WorkCenter or open markdown.
- */
-export const consumeCachedShareTargetPayload = async (opts: { clear?: boolean } = {}): Promise<CachedShareTargetPayload | null> =>
-    consumeCachedShareTargetPayloadFromGateway(opts);
-
 /**
  * Fallback to server-side AI processing when client-side fails
  * Broadcasts results to PWA clipboard handlers instead of copying directly
@@ -936,7 +928,7 @@ const tryServerSideProcessing = async (shareData: ShareDataInput): Promise<boole
         console.log("[ShareTarget] Attempting server-side AI fallback");
 
         // Get API settings
-        const { getRuntimeSettings } = await import("com/config/RuntimeSettings");
+        const { getRuntimeSettings } = await import("../../other/config/RuntimeSettings");
         const settings = await getRuntimeSettings().catch(() => null);
         const apiKey = settings?.ai?.apiKey;
 

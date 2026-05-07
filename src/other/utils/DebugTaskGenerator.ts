@@ -1,5 +1,4 @@
-
-import { fixEntityId } from "com/template/EntityId";
+import { fixEntityId } from "com/service/template/EntityId";
 
 // Debug configuration
 const DEBUG_IMMITATE = 10 * 1000; // 10 seconds

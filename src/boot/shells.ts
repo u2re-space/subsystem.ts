@@ -1,17 +1,16 @@
 import { ref } from "fest/object";
 import type { Shell, ShellContext, ShellId, ShellLayoutConfig, ShellNavigationState, ShellTheme, View, ViewId, ViewOptions, ShellNavigateOptions } from "./types";
 import { loadInlineStyle, preloadStyle } from "fest/dom";
-import { ViewRegistry } from "shared/routing/registry";
-import { withViewTransition, getTransitionDirection } from "shared/routing/view-transitions";
+import { withViewTransition, getTransitionDirection } from "com/routing/core/view-transitions";
 import { loadSettings, saveSettings } from "com/config/Settings";
 import {
     applyTheme as applyAppTheme,
     resyncThemeAfterAdoptedViewSheet,
     syncBrowserChromeTheme
 } from "core/utils/Theme";
-import { isEnabledView } from "shared/routing/views";
-import { scheduleViewModulePrefetch } from "shared/routing/view-prefetch";
-import { serviceChannels, type ServiceChannelId } from "com/core/ServiceChannels";
+import { isEnabledView } from "com/routing/core/views";
+import { scheduleViewModulePrefetch } from "com/routing/core/view-prefetch";
+import { serviceChannels, type ServiceChannelId } from "com/routing/channel/ServiceChannels";
 import { ensureStyleSheet } from "fest/icon";
 import "fest/icon";
 import { dynamicTheme } from "fest/lure";
@@ -24,6 +23,7 @@ import { showToast } from "./toast";
 
 //@ts-ignore
 import style from "./views.scss?inline";
+import { ViewRegistry } from "com/routing/core/registry";
 
 /** Views backed by {@link SERVICE_CHANNEL_CONFIG}; lazily initialized on first navigate when not boot-preloaded. */
 const VIEW_SERVICE_CHANNEL_IDS = new Set<string>([

@@ -3,15 +3,15 @@
  * Used from main PWA boot, Settings save, and CRX shells so clipboard coordinator works outside the AirPad view.
  */
 
-import type { AppSettings } from "core/config/SettingsTypes";
-import { loadSettings, shouldDeferCrxHubSocketBootstrap } from "core/config/Settings";
+import { loadSettings, shouldDeferCrxHubSocketBootstrap } from "com/other/config/Settings";
+import type { AppSettings } from "com/other/config/SettingsTypes";
+import { isCapacitorCwsNativeShell } from "com/routing/native/cws-bridge";
 import {
     applyAirpadRuntimeFromAppSettings,
     getRemoteHost,
     isMaintainHubSocketConnectionEnabled,
     isPreferNativeWebsocketEnabled
 } from "views/airpad/config/config";
-import { isCapacitorCwsNativeShell } from "shared/native/cws-bridge";
 
 /** After this long in the background, force a full reconnect (zombie TCP / suspended workers). */
 const PWA_STALE_BACKGROUND_MS = 12_000;

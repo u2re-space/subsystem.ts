@@ -1,20 +1,6 @@
-export type UnifiedMessage = {
-    type?: string;
-    data?: unknown;
-    [key: string]: unknown;
-};
-
-export async function sendMessage(message: UnifiedMessage): Promise<boolean> {
-    globalThis.dispatchEvent?.(new CustomEvent("view:message", { detail: message }));
-    return true;
-}
-
-export const unifiedMessaging = {
-    sendMessage
-};
-
-export function registerComponent(): void {}
-
-export function initializeComponent(): UnifiedMessage[] {
-    return [];
-}
+/**
+ * Vite/views alias target for `com/core/UnifiedMessaging`.
+ * Re-export canonical implementation so stubs never miss protocol helpers
+ * (`createProtocolEnvelope`, `sendProtocolMessage`, etc.).
+ */
+export * from "../src/routing/channel/UnifiedMessaging.ts";

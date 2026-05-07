@@ -11,8 +11,8 @@
  * - raw: No styling framework (browser defaults)
  */
 
-import { loadVeelaVariant, type VeelaVariant } from "boot/ts/veela-variant-runtime";
-import type { StyleSystem } from "frontend/shells/boot";
+import { loadVeelaVariant, type VeelaVariant } from "./boot/veela-variant-runtime";
+import type { StyleSystem } from "./boot/BootLoader";
 
 export type StyleSystemId = StyleSystem;
 

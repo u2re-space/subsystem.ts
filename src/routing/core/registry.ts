@@ -21,21 +21,6 @@ import type {
     ShellTheme,
     ViewOptions
 } from "shells/types";
-import { 
-    serviceChannels, 
-    affectedToChannel,
-    sendToChannel,
-    type ServiceChannelId,
-    type ChannelMessage 
-} from "com/core/ServiceChannels";
-import { BROADCAST_CHANNELS, MESSAGE_TYPES } from "com/config/Names";
-import {
-    registerHandler,
-    unregisterHandler,
-    registerComponent,
-    initializeComponent,
-    type UnifiedMessage
-} from "com/core/UnifiedMessaging";
 import { attachImplicitViewMessaging } from "./implicit-view-bridge";
 import {
     VIEW_ENABLED_VIEWER,
@@ -48,6 +33,8 @@ import {
     VIEW_ENABLED_HOME,
     VIEW_ENABLED_PRINT
 } from "./views";
+import type { ChannelMessage } from "fest/uniform";
+import type { ServiceChannelId } from "../channel/ServiceChannels";
 
 /**
  * View factories usually return custom elements; some legacy modules return a plain

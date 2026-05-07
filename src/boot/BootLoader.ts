@@ -17,26 +17,20 @@
  */
 
 import { loadAsAdopted } from "fest/dom";
-import {
-    ShellRegistry,
-    initializeRegistries,
-    defaultTheme,
-    darkTheme,
-    lightTheme
-} from "shared/routing/registry";
 import type { ShellId, ViewId, Shell, ShellTheme } from "shells/types";
-import { serviceChannels, type ServiceChannelId } from "com/core/ServiceChannels";
 import { LS_BOOT_SHELL_LAST_ACTIVE } from "./shell-preference";
-import { loadSettings } from "com/config/Settings";
-import { applyTheme as applyAppTheme } from "core/utils/Theme";
-import { DEFAULT_SETTINGS, type AppSettings } from "com/config/SettingsTypes";
-import { isEnabledView, pickEnabledView } from "shared/routing/views";
+import { serviceChannels, type ServiceChannelId } from "com/routing/channel/ServiceChannels";
+import { darkTheme, defaultTheme, initializeRegistries, lightTheme, ShellRegistry } from "com/routing/core/registry";
+import { initializeLayers } from "com/routing/core/layer-manager";
+import { initCwsNativeBridge } from "com/routing/native/cws-bridge";
+import { loadSettings } from "com/other/config/Settings";
+import { DEFAULT_SETTINGS, type AppSettings } from "com/other/config/SettingsTypes";
+import { applyTheme } from "com/other/utils";
+import { startImplicitViewMessagingBridge } from "com/routing/core/implicit-view-bridge";
+import { loadStyleSystem } from "com/styles";
+import { isEnabledView, pickEnabledView } from "com/routing/core/views";
+import { applyHubSocketFromSettings } from "../boot/hub-socket-boot";
 
-import { startImplicitViewMessagingBridge } from "shared/routing/implicit-view-bridge";
-import { initializeLayers } from "shared/routing/layer-manager";
-import { loadStyleSystem } from "shared/styles";
-import { initCwsNativeBridge } from "shared/native/cws-bridge";
-import { applyHubSocketFromSettings } from "shared/transport/hub-socket-boot";
 
 // ============================================================================
 // BOOT TYPES
@@ -253,7 +247,7 @@ export class BootLoader {
             if (persistedSettings) {
                 void applyHubSocketFromSettings(persistedSettings).catch(() => undefined);
             }
-            applyAppTheme(persistedSettings ?? DEFAULT_SETTINGS);
+            applyTheme(persistedSettings ?? DEFAULT_SETTINGS);
 
             // PWA: register SW, clipboard/share receivers, consume ?shared=1 / pending share payloads.
             // Dynamic import avoids wiring the whole stack into unrelated boot paths (extensions, demos).

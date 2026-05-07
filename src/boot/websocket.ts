@@ -38,7 +38,7 @@ import {
     isCapacitorNativeShell,
     readClipboardTextFromDevice,
     writeClipboardTextToDevice,
-} from "../routing/native/clipboard-device";
+} from "shared/native/clipboard-device";
 import { setAirpadCredentialInvalidator } from "views/airpad/credential-cache-bridge";
 
 let socket: Socket | null = null;

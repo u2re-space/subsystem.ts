@@ -8,8 +8,8 @@
 import { makeObjectAssignable, observe, stringRef, safe } from "fest/object";
 import { makeUIState } from "fest/lure";
 import { JSOX } from "jsox";
-import { readText } from "core/modules/Clipboard";
-import { scheduleFrame } from "core/utils/Runtime";
+import { readText } from "../modules/Clipboard";
+import { scheduleFrame } from "../other/utils/Runtime";
 
 export type GridCell = [number, number];
 

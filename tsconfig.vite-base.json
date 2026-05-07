@@ -15,6 +15,7 @@
             "shells/boot": ["./runtime/boot.ts"],
             "core/storage": ["./runtime/storage.ts"],
             "core/store/StateStorage": ["./runtime/state-storage.ts"],
+            "core/utils/Runtime": ["./src/other/utils/Runtime.ts"],
             "core/modules/Clipboard": ["./runtime/clipboard.ts"],
             "core/document/AIResponseParser": [
                 "../../projects/subsystem/src/other/document/AIResponseParser.ts"
@@ -25,6 +26,7 @@
             "core/utils/Theme": ["./runtime/theme.ts"],
             "com/config/Settings": ["./runtime/settings-config.ts"],
             "com/config/SettingsTypes": ["./runtime/app-settings.ts"],
+            "com/config/RuntimeSettings": ["./src/other/config/RuntimeSettings.ts"],
             "com/config/Names": ["./runtime/names.ts"],
             "com/config/admin-doors": ["./runtime/admin-doors.ts"],
             "com/core/UnifiedMessaging": ["./runtime/messaging.ts"],

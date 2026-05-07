@@ -11,31 +11,20 @@ import type {
     ShareTargetHandler,
     ShareTargetData
 } from "./registry";
-import { 
-    serviceChannels, 
-    affectedToChannel,
-    sendToChannel,
-    type ServiceChannelId,
-    type ChannelMessage 
-} from "com/core/ServiceChannels";
-import { BROADCAST_CHANNELS, MESSAGE_TYPES, getDestinationAliases, matchesDestination, normalizeViewId } from "com/config/Names";
-import {
-    registerHandler,
-    unregisterHandler,
-    registerComponent,
-    initializeComponent,
-    type UnifiedMessage
-} from "com/core/UnifiedMessaging";
-import { fetchSwCachedEntries } from "com/core/ShareTargetGateway";
 import { inferViewDestination, mapUnifiedMessageToView } from "./view-message-routing";
 import { subscribeViewChannel } from "./view-api";
-import { toUnifiedInteropMessage } from "com/core/UniformInterop";
 import {
     shouldDeferUnifiedIngressUntilStable,
     settleIngressTargetBeforeDelivery,
     scheduleSerialViewIngressDelivery
 } from "./view-inbound-timing";
 import { validateIngressBeforeViewHandle } from "com/core/view-ingress-validation";
+import { affectedToChannel, sendToChannel, serviceChannels, type ChannelMessage, type ServiceChannelId } from "../channel/ServiceChannels";
+import { BROADCAST_CHANNELS, getDestinationAliases, matchesDestination, MESSAGE_TYPES, normalizeViewId } from "com/other/config/Names";
+import { fetchSwCachedEntries } from "../channel/ShareTargetGateway";
+import type { UnifiedMessage } from "fest/uniform";
+import { initializeComponent, registerComponent, registerHandler, unregisterHandler } from "../channel/UnifiedMessaging";
+import { toUnifiedInteropMessage } from "../channel/UniformInterop";
 
 /**
  * Creates a channel-connected view by mixing channel functionality into an existing view.
