@@ -255,6 +255,15 @@ export class BootLoader {
             }
             applyAppTheme(persistedSettings ?? DEFAULT_SETTINGS);
 
+            // PWA: register SW, clipboard/share receivers, consume ?shared=1 / pending share payloads.
+            // Dynamic import avoids wiring the whole stack into unrelated boot paths (extensions, demos).
+            try {
+                const { initIngressPWA } = await import("shared/routing/pwa/sw-handling");
+                await initIngressPWA();
+            } catch (e) {
+                console.warn("[BootLoader] Share-target / service worker ingress failed (non-fatal):", e);
+            }
+
             // Phase 1: Style system (Veela, etc.) after document theme attrs are stable.
             await this.loadStyles(config.styleSystem);
 

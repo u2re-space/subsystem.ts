@@ -12,7 +12,6 @@
  */
 
 
-import { loadSettings } from "com/config/Settings";
 // Types only — runtime `mountShellApp` is dynamic-imported so this entry chunk does not
 // statically pull `channel-unknown` → unified/RecognizeData (would merge AI into `shell-boot-*`
 // and cause the extension service worker to import DOM-heavy chunks).
@@ -39,39 +38,19 @@ export default async function frontend(
         .then((m) => m.bootHubSocketFromStoredSettings())
         .catch(() => undefined);
 
+    try {
+        const { initIngressPWA } = await import("shared/routing/pwa/sw-handling");
+        await initIngressPWA();
+    } catch (e) {
+        console.warn("[Frontend] PWA / share-target ingress failed:", e);
+    }
+
     // Check for markdown content in URL parameters (from launch queue or direct links)
     const urlParams = new URLSearchParams(globalThis.location.search);
+    // Share-target payloads: handled by BootLoader.initIngressPWA → handleShareTarget +
+    // routeToTransferView. Do NOT consume Cache Storage here (wrong path + clear:true races the router).
+
     const markdownContent = urlParams.get('markdown-content');
-    const sharedFlag = urlParams.get('shared');
-
-    let sharedFilesForAutoAI: File[] | null = null;
-
-    // If this is a share-target navigation, try to pull real files from cache and pass them into Basic.
-    // (SW stores only counts in the metadata; files are stored as cache entries + a manifest.)
-    if (sharedFlag === "1" || sharedFlag === "true") {
-        try {
-            const { consumeCachedShareTargetPayload } = await import("shared/pwa/sw-handling");
-            const payload = await consumeCachedShareTargetPayload({ clear: true });
-            const files = payload?.files ?? [];
-
-            if (files.length > 0) {
-                sharedFilesForAutoAI = files;
-                // If it's a single markdown file, prefer opening it in the viewer.
-                if (files.length === 1 && (files[0].type === "text/markdown" || files[0].name.toLowerCase().endsWith(".md"))) {
-                    const md = await files[0].text();
-                    options.initialView = "markdown-viewer";
-                    options.initialMarkdown = md;
-                } else {
-                    // Otherwise: open WorkCenter and attach files.
-                    (options as any).initialView = "workcenter";
-                    (options as any).initialFiles = files;
-                }
-            }
-        } catch (e) {
-            // If anything goes wrong, just fall back to existing behavior.
-            console.warn("[Frontend] Failed to consume share-target cached files:", e);
-        }
-    }
 
     if (markdownContent) {
         console.log('[Frontend] Loading markdown content from URL parameters');
@@ -89,32 +68,6 @@ export default async function frontend(
     }
 
     mountShellApp(mountElement, options);
-
-    // Optional: auto-run AI recognition and auto-copy result to clipboard (enabled by default).
-    // This happens after the app is mounted so toasts/receivers are ready.
-    if (sharedFilesForAutoAI && sharedFilesForAutoAI.length > 0) {
-        queueMicrotask(() => {
-            void (async () => {
-                const settings = await loadSettings().catch(() => null);
-                const auto = (settings?.ai?.autoProcessShared ?? true) !== false;
-                const hasKey = Boolean(settings?.ai?.apiKey?.trim?.());
-                if (!auto || !hasKey) return;
-
-                try {
-                    const { processShareTargetData } = await import("shared/pwa/sw-handling");
-                    await processShareTargetData({
-                        files: sharedFilesForAutoAI,
-                        fileCount: sharedFilesForAutoAI.length,
-                        imageCount: sharedFilesForAutoAI.filter(f => (f?.type || "").toLowerCase().startsWith("image/")).length,
-                        timestamp: Date.now(),
-                        source: "share-cache",
-                    } as any, false);
-                } catch (e) {
-                    console.warn("[Frontend] Auto AI processing failed:", e);
-                }
-            })();
-        });
-    }
 }
 
 // Named export for explicit usage

@@ -21,7 +21,7 @@
             ],
             "core/document/DocTools": ["./runtime/doc-tools.ts"],
             "core/document/DocxExport": ["./runtime/docx-export.ts"],
-            "core/pwa/sw-handling": ["./runtime/sw-handling.ts"],
+            "core/pwa/sw-handling": ["./src/routing/pwa/sw-handling.ts"],
             "core/utils/Theme": ["./runtime/theme.ts"],
             "com/config/Settings": ["./runtime/settings-config.ts"],
             "com/config/SettingsTypes": ["./runtime/app-settings.ts"],

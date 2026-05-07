@@ -25,6 +25,7 @@ export {
     getServiceWorkerRegistration,
     waitForServiceWorker,
     initReceivers,
+    initIngressPWA,
     handleShareTarget,
     setupLaunchQueueConsumer,
     checkPendingShareData,

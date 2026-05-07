@@ -164,7 +164,28 @@ export const consumeCachedShareTargetPayload = async (opts: { clear?: boolean } 
 export const buildShareDataFromCachedPayload = (payload: CachedShareTargetPayload): Record<string, unknown> => {
     const meta = payload?.meta || {};
     const files = Array.isArray(payload?.files) ? payload.files : [];
-    return {
+    const fileMeta = Array.isArray(payload?.fileMeta) ? payload.fileMeta : [];
+    const manifestName =
+        typeof fileMeta[0]?.name === "string" && fileMeta[0].name.trim().length > 0
+            ? fileMeta[0].name.trim()
+            : undefined;
+
+    const rawHint = meta.hint;
+    const baseHint =
+        rawHint && typeof rawHint === "object" && !Array.isArray(rawHint)
+            ? { ...(rawHint as Record<string, unknown>) }
+            : {};
+    let hintOut: Record<string, unknown> | undefined =
+        Object.keys(baseHint).length > 0 ? { ...baseHint } : undefined;
+    if (manifestName && !files.length) {
+        const existingFn =
+            typeof baseHint.filename === "string" ? String(baseHint.filename).trim() : "";
+        if (!existingFn) {
+            hintOut = { ...(hintOut || baseHint), filename: manifestName };
+        }
+    }
+
+    const out: Record<string, unknown> = {
         ...meta,
         title: typeof meta.title === "string" ? meta.title : undefined,
         text: typeof meta.text === "string" ? meta.text : undefined,
@@ -177,6 +198,10 @@ export const buildShareDataFromCachedPayload = (payload: CachedShareTargetPayloa
         fileCount: files.length || Number(meta.fileCount || 0),
         imageCount: Number(meta.imageCount || files.filter((file) => (file?.type || "").toLowerCase().startsWith("image/")).length)
     };
+    if (hintOut !== undefined) {
+        out.hint = hintOut;
+    }
+    return out;
 };
 
 /** Read the service worker's advertised cached content entries through the HTTP bridge. */

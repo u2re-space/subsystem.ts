@@ -2,6 +2,61 @@ import { sendProtocolMessage, enqueuePendingMessage, type UnifiedMessage } from 
 import { summarizeForLog } from "com/core/LogSanitizer";
 import { normalizeDestination, viewBroadcastChannelName } from "com/config/Names";
 
+/**
+ * Canonical classification for share-target / launch-queue files (extension often beats flaky MIME).
+ * Viewer-first routing treats `markdown` + `text`; other kinds stay on Work Center or sibling sinks.
+ */
+export const classifyIngressFile = (file: File): "markdown" | "text" | "image" | "file" => {
+    const name = String(file?.name || "").toLowerCase();
+    const mime = String(file?.type || "").toLowerCase();
+
+    if (mime.startsWith("image/")) return "image";
+
+    const mdTail = /\.(?:md|markdown|mdown|mkd|mkdn|mdtxt|mdtext)(?:$|[?#])/i;
+    if (mime === "text/markdown" || mdTail.test(name)) return "markdown";
+
+    if (mime.startsWith("text/")) return "text";
+    if (
+        mime === "application/json" ||
+        mime === "application/xml" ||
+        mime === "application/xhtml+xml" ||
+        mime === "application/javascript" ||
+        mime === "application/typescript" ||
+        mime === "application/x-typescript"
+    ) {
+        return "text";
+    }
+
+    const textTail =
+        /\.(?:txt|text|html|htm|css|scss|sass|less|json|csv|xml|yaml|yml|log|ini|env|toml|graphql|svg|tsx?|jsx?|mts|cts|cjs|mjs|vue|svelte|rst)(?:$|[?#])/i;
+    if (textTail.test(name)) {
+        return mdTail.test(name) ? "markdown" : "text";
+    }
+
+    if (!mime || mime === "application/octet-stream") {
+        if (mdTail.test(name)) return "markdown";
+    }
+
+    if (/\.(?:png|jpe?g|gif|webp|bmp)(?:$|[?#])/i.test(name)) return "image";
+
+    return "file";
+};
+
+/** Filename-only classification when blobs are still in Cache Storage (`fileCount` but `files=[]`). */
+export const classifyIngressFromBasename = (raw: string): "markdown" | "text" | "image" | "file" => {
+    const t = raw.trim().replace(/\\/g, "/");
+    const cut = Math.max(t.lastIndexOf("/"), t.lastIndexOf("\\"));
+    const nameOnly = ((cut >= 0 ? t.slice(cut + 1) : t) || "").trim();
+    if (!nameOnly) return "file";
+    try {
+        return classifyIngressFile(
+            new File([], nameOnly, { type: "application/octet-stream" })
+        );
+    } catch {
+        return "file";
+    }
+};
+
 export type ViewTransferSource = "share-target" | "launch-queue" | "pending" | "clipboard";
 
 export type ViewTransferDestination =
@@ -31,6 +86,8 @@ export interface ViewTransferPayload {
     text?: string;
     url?: string;
     files?: File[];
+    /** Mirrors share payload `fileCount` when blobs are not yet hydrated (helps routing/classification). */
+    fileCount?: number;
     pending?: boolean;
     hint?: ViewTransferHint;
     metadata?: Record<string, unknown>;
@@ -46,19 +103,45 @@ export interface ViewTransferResolved {
 }
 
 const getContentType = (payload: ViewTransferPayload): string => {
-    if (payload.hint?.contentType) return String(payload.hint.contentType);
     const files = Array.isArray(payload.files) ? payload.files : [];
     const text = String(payload.text || "").trim();
     const url = String(payload.url || "").trim();
 
+    const meta =
+        payload.metadata && typeof payload.metadata === "object" && !Array.isArray(payload.metadata)
+            ? (payload.metadata as Record<string, unknown>)
+            : {};
+    const expectedFileCount = Math.max(
+        Number(meta.fileCount) || 0,
+        Number(payload.fileCount) || 0
+    );
+    /** Android share-target often ships a `content:`/`https:` URL together with attachments; blobs may hydrate later. */
+    const filesStillPending = files.length === 0 && expectedFileCount > 0;
+
+    if (payload.hint?.contentType && !filesStillPending) {
+        return String(payload.hint.contentType);
+    }
+
     if (files.length > 0) {
-        const file = files[0];
-        const name = String(file?.name || "").toLowerCase();
-        const mime = String(file?.type || "").toLowerCase();
-        if (mime.startsWith("image/")) return "image";
-        if (mime === "text/markdown" || name.endsWith(".md") || name.endsWith(".markdown")) return "markdown";
-        if (mime.startsWith("text/")) return "text";
+        const kind = classifyIngressFile(files[0]);
+        if (kind === "image") return "image";
+        if (kind === "markdown") return "markdown";
+        if (kind === "text") return "text";
         return "file";
+    }
+
+    /** SW metadata row often beats File[] hydration (`fileCount` only) — classify from title/filename hint. */
+    const nameProbe =
+        (typeof payload.hint?.filename === "string" && payload.hint.filename.trim()) ||
+        (typeof payload.title === "string" && payload.title.trim()) ||
+        "";
+    const tryBasename = !text && nameProbe && (!url || filesStillPending);
+    if (tryBasename) {
+        const nk = classifyIngressFromBasename(nameProbe);
+        if (nk === "markdown") return "markdown";
+        if (nk === "text") return "text";
+        if (nk === "image") return "image";
+        if (filesStillPending && nk === "file") return "file";
     }
 
     if (url) {
@@ -71,12 +154,14 @@ const getContentType = (payload: ViewTransferPayload): string => {
 };
 
 const pickDestination = (payload: ViewTransferPayload, contentType: string): ViewTransferDestination => {
-    if (payload.hint?.destination) return payload.hint.destination;
     if (payload.hint?.action === "save") return "explorer";
+    /** Readable docs should win over stale `hint.destination` from cached/share envelopes. */
+    if (contentType === "markdown" || contentType === "text") return "viewer";
+
+    if (payload.hint?.destination) return payload.hint.destination;
     if (payload.hint?.action === "process" || payload.hint?.action === "attach") return "workcenter";
     if (payload.hint?.action === "open") return "viewer";
 
-    if (contentType === "markdown" || contentType === "text") return "viewer";
     if (contentType === "url") return "workcenter";
     if (contentType === "image" || contentType === "file") return "workcenter";
     return "workcenter";
@@ -196,7 +281,7 @@ export const dispatchViewTransfer = async (
         ...message,
         purpose: ["deliver", "mail"],
         protocol: "window",
-        op: resolved.hint?.action === "open" ? "invoke" : "deliver",
+        op: payload.hint?.action === "open" ? "invoke" : "deliver",
         srcChannel: message.source,
         dstChannel: normalizeDestination(resolved.destination),
     });

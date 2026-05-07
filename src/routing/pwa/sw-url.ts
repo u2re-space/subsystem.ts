@@ -235,30 +235,34 @@ export const ensureServiceWorkerRegistered = async (): Promise<ServiceWorkerRegi
 
     const tryRegister = async (url: string): Promise<ServiceWorkerRegistration | null> => {
         const scope = scopeForServiceWorkerScript(url);
+        const isDevVirtualWorker = url.includes("/dev-sw.js?dev-sw");
+
+        // Prod `sw.js` is built as IIFE (see CrossWord `injectManifest.rollupFormat`). Register as
+        // classic by default so we never parse a non-module script as `type: "module"`.
         try {
             return await navigator.serviceWorker.register(url, {
                 scope,
-                type: "module",
                 updateViaCache: "none",
             });
-        } catch (e) {
-            if (url.includes("/dev-sw.js?dev-sw")) {
-                if ((import.meta as any)?.env?.DEV) {
-                    console.warn("[SW] Module registration failed for dev worker", url, e);
+        } catch (eClassic) {
+            if (isDevVirtualWorker) {
+                try {
+                    return await navigator.serviceWorker.register(url, {
+                        scope,
+                        type: "module",
+                        updateViaCache: "none",
+                    });
+                } catch (eModule) {
+                    if ((import.meta as any)?.env?.DEV) {
+                        console.warn("[SW] Dev worker registration failed (classic + module)", url, eClassic, eModule);
+                    }
+                    return null;
                 }
-                return null;
             }
-            try {
-                return await navigator.serviceWorker.register(url, {
-                    scope,
-                    updateViaCache: "none",
-                });
-            } catch (e2) {
-                if ((import.meta as any)?.env?.DEV) {
-                    console.warn("[SW] Registration attempt failed for", url, e, e2);
-                }
-                return null;
+            if ((import.meta as any)?.env?.DEV) {
+                console.warn("[SW] Registration failed for", url, eClassic);
             }
+            return null;
         }
     };
 
