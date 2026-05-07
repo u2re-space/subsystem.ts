@@ -369,6 +369,7 @@ export abstract class ShellBase implements Shell {
                 (this.contentContainer?.contains(entry.element) || this.rootElement?.contains(entry.element)) &&
                 !entry.element.hidden
             ) {
+                this.hideShellLoadingPlaceholder();
                 return;
             }
         }
@@ -432,9 +433,15 @@ export abstract class ShellBase implements Shell {
         // Load and render view (load happens outside the transition to avoid blocking it)
         try {
             const element = await this.loadView(viewId, params);
-            if (navToken !== this.navigationToken) return;
+            if (navToken !== this.navigationToken) {
+                this.hideShellLoadingPlaceholder();
+                return;
+            }
             await this.renderViewWithTransition(element);
-            if (navToken !== this.navigationToken) return;
+            if (navToken !== this.navigationToken) {
+                this.hideShellLoadingPlaceholder();
+                return;
+            }
             scheduleViewModulePrefetch(viewId);
             // Immersive (and similar) use a full-viewport loading layer in shadow; ensure it never
             // survives a successful navigate if a subclass forgets to clear it.
