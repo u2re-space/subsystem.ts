@@ -133,11 +133,32 @@ const extractRecognizedContent = (data: unknown): unknown => {
     return data;
 };
 
+/** Only browsers with a fetchable `/clipboard/pending` (PWA/site SW) — never extension or opaque origins */
+const clipboardPendingSupported = (): boolean => {
+    try {
+        if (typeof window === "undefined") return false;
+        const href = String(window.location?.href ?? "");
+        if (
+            href.startsWith("chrome-extension://") ||
+            href.startsWith("moz-extension://") ||
+            href.startsWith("edge-extension://")
+        ) {
+            return false;
+        }
+        const p = window.location?.protocol ?? "";
+        return p === "http:" || p === "https:";
+    } catch {
+        return false;
+    }
+};
+
 /**
  * Check for pending clipboard operations from service worker
  */
 const checkPendingClipboardOperations = async (): Promise<void> => {
     try {
+        if (!clipboardPendingSupported()) return;
+
         // Wait for service worker to be ready and controlling the page
         if (!navigator.serviceWorker) {
             console.log('[PWA-Copy] Service workers not supported');
@@ -208,6 +229,8 @@ const checkPendingClipboardOperations = async (): Promise<void> => {
  * Call this early in the PWA lifecycle to receive clipboard requests from service worker
  */
 export const initPWAClipboard = (): (() => void) => {
+    if (!clipboardPendingSupported()) return () => undefined;
+
     if (_pwaClipboardInitialized) {
         return () => cleanupPWAClipboard();
     }

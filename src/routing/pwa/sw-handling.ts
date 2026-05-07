@@ -21,6 +21,37 @@ import {
 import { waitForIngressPipelineSlot } from "shared/policies/ingress-pipeline-guard";
 
 // ============================================================================
+// EXTENSION VS PWA
+// ============================================================================
+
+/**
+ * WHY: MV3 extension pages (`chrome-extension:`) do not expose PWA-relative routes (`/clipboard/pending`)
+ * or the site service worker bundle. Running ingress here caused `fetch('/clipboard/pending')` →
+ * `chrome-extension://…/clipboard/pending` (404) and needless SW / launch-queue churn during boot.
+ *
+ * IMPORTANT: Compare `href`/protocol explicitly — if `location.protocol` were ever missing briefly,
+ * `undefined !== "chrome-extension:"` was true and the full PWA clipboard stack still ran.
+ */
+const shouldRunPwaIngress = (): boolean => {
+    try {
+        if (typeof window === "undefined") return false;
+        const href = String(window.location?.href ?? "");
+        if (
+            href.startsWith("chrome-extension://") ||
+            href.startsWith("moz-extension://") ||
+            href.startsWith("edge-extension://")
+        ) {
+            return false;
+        }
+        const p = window.location?.protocol ?? "";
+        if (p === "chrome-extension:" || p === "moz-extension:" || p === "edge-extension:") return false;
+        return p === "http:" || p === "https:";
+    } catch {
+        return false;
+    }
+};
+
+// ============================================================================
 // CSS INJECTION
 // ============================================================================
 
@@ -1443,6 +1474,7 @@ export const initIngressPWA = async (): Promise<void> => {
 
     _ingressPwaPromise = (async () => {
         if (typeof globalThis === "undefined" || typeof window === "undefined") return;
+        if (!shouldRunPwaIngress()) return;
         try {
             /**
              * Always `immediate: false` here — dev + `immediate: true` caused `controllerchange` → `location.reload()`
