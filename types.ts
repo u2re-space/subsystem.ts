@@ -36,6 +36,8 @@ export interface View {
     canHandleMessage?: (messageType: string) => boolean;
     handleMessage?: (message: unknown) => void | Promise<void>;
     invokeChannelApi?: (action: string, payload?: unknown) => unknown | Promise<unknown>;
+    /** Shell cached connected root: merge route/context and repaint without full `render()`. */
+    shellNavigateHydrate?(options?: ViewOptions, initialData?: unknown): void;
 }
 
 export type ViewFactory<TView = View | HTMLElement> = (options?: ViewOptions) => TView;

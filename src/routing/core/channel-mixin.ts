@@ -30,6 +30,12 @@ import { fetchSwCachedEntries } from "com/core/ShareTargetGateway";
 import { inferViewDestination, mapUnifiedMessageToView } from "./view-message-routing";
 import { subscribeViewChannel } from "./view-api";
 import { toUnifiedInteropMessage } from "com/core/UniformInterop";
+import {
+    shouldDeferUnifiedIngressUntilStable,
+    settleIngressTargetBeforeDelivery,
+    scheduleSerialViewIngressDelivery
+} from "./view-inbound-timing";
+import { validateIngressBeforeViewHandle } from "com/core/view-ingress-validation";
 
 /**
  * Creates a channel-connected view by mixing channel functionality into an existing view.
@@ -301,10 +307,88 @@ export interface ViewReceiveBindingOptions {
     componentId?: string;
 }
 
+/**
+ * Burst opens (recent list, launch queue replay): supersede older queued work so only the latest
+ * payload pays settle + paint (serial queue still orders; skipped tasks exit cheaply).
+ */
+const ingressSupersedeGeneration = new WeakMap<View, number>();
+const bumpIngressGeneration = (view: View): number => {
+    const next = (ingressSupersedeGeneration.get(view) ?? 0) + 1;
+    ingressSupersedeGeneration.set(view, next);
+    return next;
+};
+
+/** Mirrors {@link dispatchViewTransfer} + BroadcastChannel can deliver the same ingress twice; ReplayGuard only covers the manager path. */
+const recentViewIngressByMessageId = new Map<string, number>();
+const INGRESS_DEDUP_MS = 600;
+
+/** Attached to routed view messages so views can discard stale async work after `await` (file read, fetch). */
+export const UNIFIED_INGRESS_STAMP_META = "__ingressStamp";
+
+/** True when newer ingress has bumped the counter vs this delivery's stamp (`handleMessage` should no-op). */
+export function ingressStampWasSuperseded(view: View, stamp: unknown): boolean {
+    if (typeof stamp !== "number" || !Number.isFinite(stamp)) return false;
+    const latest = ingressSupersedeGeneration.get(view) ?? 0;
+    return latest !== stamp;
+}
+
+function stampMappedMessageForIngressDelivery<M extends Record<string, unknown>>(
+    mapped: M,
+    generation: number
+): M {
+    const prevMeta =
+        mapped.metadata && typeof mapped.metadata === "object" && !Array.isArray(mapped.metadata)
+            ? (mapped.metadata as Record<string, unknown>)
+            : {};
+    return {
+        ...mapped,
+        metadata: { ...prevMeta, [UNIFIED_INGRESS_STAMP_META]: generation },
+    };
+}
+
+const pruneViewIngressDedup = (now: number): void => {
+    for (const [k, t] of recentViewIngressByMessageId) {
+        if (now - t > INGRESS_DEDUP_MS) recentViewIngressByMessageId.delete(k);
+    }
+};
+
 const deliverUnifiedMessageToView = async (view: View, message: UnifiedMessage): Promise<void> => {
+    const mid = typeof message.id === "string" ? message.id.trim() : "";
+    if (mid) {
+        const dest = normalizeViewId(inferViewDestination(String(view.id || "")));
+        const now = Date.now();
+        pruneViewIngressDedup(now);
+        const dedupKey = `${dest}::${mid}`;
+        const prev = recentViewIngressByMessageId.get(dedupKey);
+        if (prev !== undefined && now - prev < INGRESS_DEDUP_MS) {
+            return;
+        }
+        recentViewIngressByMessageId.set(dedupKey, now);
+    }
+
     const mapped = mapUnifiedMessageToView(view, message);
     if (!mapped) return;
-    await view.handleMessage?.(mapped);
+
+    const ingressCheck = validateIngressBeforeViewHandle(message, mapped.type);
+    if (!ingressCheck.ok) {
+        console.warn("[ViewIngress] Skipped malformed envelope:", ingressCheck.reason, mapped.type);
+        return;
+    }
+
+    const generation = bumpIngressGeneration(view);
+
+    await scheduleSerialViewIngressDelivery(view, async () => {
+        if (ingressSupersedeGeneration.get(view) !== generation) return;
+        if (shouldDeferUnifiedIngressUntilStable(message, mapped.type)) {
+            await settleIngressTargetBeforeDelivery(view, message, mapped.type);
+        }
+        if (ingressSupersedeGeneration.get(view) !== generation) return;
+        await view.handleMessage?.(
+            stampMappedMessageForIngressDelivery(mapped as Record<string, unknown>, generation) as Parameters<
+                NonNullable<View["handleMessage"]>
+            >[0]
+        );
+    });
 };
 
 export function bindViewReceiveChannel(
@@ -354,8 +438,11 @@ export function bindViewReceiveChannel(
         if (payload.type === "view-post") {
             const viewId = normalizeViewId(payload.viewId);
             if (viewId !== normalizeViewId(String(view.id || destination))) return;
-            void view.handleMessage?.({
+            const vm: UnifiedMessage = {
+                id: typeof (payload as { id?: unknown }).id === "string" ? String((payload as { id?: string }).id) : crypto.randomUUID(),
                 type: "view-post",
+                destination: viewId,
+                source: "view-channel",
                 data: {
                     bodyText: String(payload.bodyText || ""),
                     contentType: String(payload.contentType || ""),
@@ -365,6 +452,28 @@ export function bindViewReceiveChannel(
                     source: "view-channel",
                     destination: viewId
                 }
+            };
+            const generation = bumpIngressGeneration(view);
+            void scheduleSerialViewIngressDelivery(view, async () => {
+                if (ingressSupersedeGeneration.get(view) !== generation) return;
+                if (shouldDeferUnifiedIngressUntilStable(vm, "view-post")) {
+                    await settleIngressTargetBeforeDelivery(view, vm, "view-post");
+                }
+                if (ingressSupersedeGeneration.get(view) !== generation) return;
+                await view.handleMessage?.(
+                    stampMappedMessageForIngressDelivery(
+                        {
+                            type: "view-post",
+                            data: {
+                                bodyText: String(payload.bodyText || ""),
+                                contentType: String(payload.contentType || ""),
+                                viewId
+                            },
+                            metadata: vm.metadata,
+                        },
+                        generation
+                    ) as Parameters<NonNullable<View["handleMessage"]>>[0]
+                );
             });
         }
     });

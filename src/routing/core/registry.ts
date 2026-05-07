@@ -89,6 +89,11 @@ class ShellRegistryClass {
     private shells = new Map<ShellId, ShellRegistration>();
     private loadedShells = new Map<ShellId, Shell>();
 
+    /** COMPAT: `base` resolves to immersive chromeless module (`cw-shell-immersive`). */
+    private resolveShellRegistrationKey(id: ShellId): ShellId {
+        return id === "base" ? "immersive" : id;
+    }
+
     /**
      * Register a shell
      */
@@ -100,7 +105,7 @@ class ShellRegistryClass {
      * Get a shell registration
      */
     get(id: ShellId): ShellRegistration | undefined {
-        return this.shells.get(id);
+        return this.shells.get(this.resolveShellRegistrationKey(id));
     }
 
     /**
@@ -114,26 +119,28 @@ class ShellRegistryClass {
      * Load and instantiate a shell
      */
     async load(id: ShellId, container: HTMLElement): Promise<Shell> {
+        const resolved = this.resolveShellRegistrationKey(id);
+
         // Return cached instance if available
-        const cached = this.loadedShells.get(id);
+        const cached = this.loadedShells.get(resolved);
         if (cached) {
             return cached;
         }
 
-        const registration = this.shells.get(id);
+        const registration = this.shells.get(resolved);
         if (!registration) {
-            throw new Error(`Shell not found: ${id}`);
+            throw new Error(`Shell not found: ${resolved}`);
         }
 
         const module = await registration.loader();
         const factory = (module as any).default || (module as any).createShell;
 
         if (typeof factory !== "function") {
-            throw new Error(`Invalid shell module: ${id}`);
+            throw new Error(`Invalid shell module: ${resolved}`);
         }
 
         const shell = factory(container);
-        this.loadedShells.set(id, shell);
+        this.loadedShells.set(resolved, shell);
         return shell;
     }
 
@@ -141,10 +148,11 @@ class ShellRegistryClass {
      * Unload a shell
      */
     unload(id: ShellId): void {
-        const shell = this.loadedShells.get(id);
+        const resolved = this.resolveShellRegistrationKey(id);
+        const shell = this.loadedShells.get(resolved);
         if (shell) {
             shell.unmount();
-            this.loadedShells.delete(id);
+            this.loadedShells.delete(resolved);
         }
     }
 
@@ -152,14 +160,14 @@ class ShellRegistryClass {
      * Check if a shell is loaded
      */
     isLoaded(id: ShellId): boolean {
-        return this.loadedShells.has(id);
+        return this.loadedShells.has(this.resolveShellRegistrationKey(id));
     }
 
     /**
      * Get a loaded shell instance
      */
     getLoaded(id: ShellId): Shell | undefined {
-        return this.loadedShells.get(id);
+        return this.loadedShells.get(this.resolveShellRegistrationKey(id));
     }
 }
 
@@ -342,12 +350,12 @@ export const ViewRegistry = new ViewRegistryClass();
 
 /** Register the built-in shell modules that the boot/routing layer can request. */
 export function registerDefaultShells(): void {
-    // Raw shell (minimal, no frames)
     ShellRegistry.register({
-        id: "base",
-        name: "Base",
-        description: "Base shell with no frames or navigation",
-        loader: () => import("frontend/shells/base/index")
+        id: "immersive",
+        name: "Immersive",
+        description:
+            "Chromeless immersive shell (standalone pages, extensions, embedded); legacy boot id `base` aliases here.",
+        loader: () => import("shells/immersive/index")
     });
 
     // Minimalshell (simple toolbar-based navigation)
@@ -591,7 +599,7 @@ export const createViewComponentEntryPoint = (viewId: string): ViewComponentEntr
     }
 });
 
-export type ShellAnatomyId = "base" | "window" | "tabbed" | "minimal" | "environment" | "content" | "immersive";
+export type ShellAnatomyId = "window" | "tabbed" | "minimal" | "environment" | "content" | "immersive";
 
 export type ShellAnatomySpec = {
     id: ShellAnatomyId;
@@ -601,45 +609,39 @@ export type ShellAnatomySpec = {
 };
 
 export const SHELL_ANATOMY_SPECS: Record<ShellAnatomyId, ShellAnatomySpec> = {
-    base: {
-        id: "base",
-        nestedShells: [],
-        layers: [],
-        overlays: ["toasts", "modals"]
-    },
     minimal: {
         id: "minimal",
-        nestedShells: ["base"],
+        nestedShells: ["immersive"],
         layers: [],
         overlays: ["modals", "toasts"]
     },
     window: {
         id: "window",
-        nestedShells: ["base", "minimal"],
+        nestedShells: ["immersive", "minimal"],
         layers: [],
         overlays: ["modals", "toasts"]
     },
     tabbed: {
         id: "tabbed",
-        nestedShells: ["window", "minimal", "base"],
+        nestedShells: ["window", "minimal", "immersive"],
         layers: [],
         overlays: ["modals", "toasts"]
     },
     content: {
         id: "content",
-        nestedShells: ["window", "base", "minimal"],
+        nestedShells: ["window", "immersive", "minimal"],
         layers: [],
         overlays: ["sniping", "tools", "toasts"]
     },
     immersive: {
         id: "immersive",
-        nestedShells: ["base", "minimal"],
+        nestedShells: ["minimal"],
         layers: [],
         overlays: ["toasts", "modals"]
     },
     environment: {
         id: "environment",
-        nestedShells: ["minimal", "window", "base"],
+        nestedShells: ["minimal", "window", "immersive"],
         layers: ["underlying", "background", "wallpaper", "canvas"],
         overlays: ["taskbar", "statusbar", "modals", "toasts"]
     }
@@ -648,6 +650,7 @@ export const SHELL_ANATOMY_SPECS: Record<ShellAnatomyId, ShellAnatomySpec> = {
 export const normalizeShellAnatomyId = (shell: string | null | undefined): ShellAnatomyId => {
     const value = String(shell || "minimal").toLowerCase();
     if (value === "faint") return "tabbed";
+    if (value === "base") return "immersive";
     if (value in SHELL_ANATOMY_SPECS) return value as ShellAnatomyId;
     return "minimal";
 };

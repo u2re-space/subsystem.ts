@@ -8,7 +8,7 @@
  * - PWA share target handler
  * - Direct URL loading
  *
- * NOTE: Chrome extension pages use `crx-entry.ts` instead (raw shell, no toolbar).
+ * NOTE: Chrome extension pages use `crx-entry.ts` instead (immersive shell by default).
  */
 
 

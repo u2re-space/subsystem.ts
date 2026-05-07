@@ -1,17 +1,13 @@
 /**
  * CRX Frontend Entry Point
  *
- * Entry point for Chrome extension pages (settings, newtab, viewer, etc.).
- * Uses the Raw shell (no toolbar / tabs / navigation chrome).
- * Loads basic styles and lets each view manage its own styling.
- *
- * Usage:
- *   import crxFrontend from "./crx-entry";
- *   crxFrontend(document.getElementById("app")!, { initialView: "settings" });
+ * Entry point for Chrome extension pages (settings, newtab, markdown viewer, etc.).
+ * Boots the **immersive** shell by default (chromeless; `cw-shell-immersive`). Legacy alias `base`
+ * still resolves to the same module via BootLoader normalization.
  */
 
 import { bootLoader } from "./BootLoader";
-import type { ViewId, Shell } from "./types";
+import type { ViewId, Shell, ShellId } from "./types";
 import { ViewRegistry } from "shared/routing/registry";
 import { initializeLayers } from "shared/routing/layer-manager";
 import { pickEnabledView } from "shared/routing/views";
@@ -25,6 +21,11 @@ import { ensureAppLayers } from "shared/routing/app-layers";
 export type CrxAppOptions = {
     /** View to display - accepts both shell ViewId and legacy MinimalView names */
     initialView?: ViewId | "markdown" | "markdown-viewer";
+    /**
+     * Shell for this extension surface. Defaults to `immersive`. Prefer `immersive` for
+     * options pages and full-tab extension UIs (`base` is a compatibility alias).
+     */
+    shell?: ShellId;
     /** Optional URL-style params passed to the launched view */
     viewParams?: Record<string, string>;
     /** Optional initial payload passed to the launched view */
@@ -53,7 +54,7 @@ const resolveViewId = (input?: string): ViewId =>
 /**
  * Mount the frontend for a Chrome extension page.
  *
- * - Uses the **base** shell (chrome-less CRX wrapper).
+ * - Uses the immersive shell (chrome-less CRX wrapper; boot id `base` aliases the same module).
  * - Loads **vl-basic** (core + component tokens/styles; vl-core alone is too minimal for views).
  * - No channels or preference persistence (CRX pages are single-purpose).
  *
@@ -81,9 +82,11 @@ export default async function crxFrontend(
     const hasViewParams = Boolean(options.viewParams && Object.keys(options.viewParams).length > 0);
     const hasPayload = options.viewPayload !== undefined && options.viewPayload !== null;
 
+    const shellId = options.shell ?? "immersive";
+
     const shell = await bootLoader.boot(layers.shellLayer, {
         styleSystem: "vl-basic",
-        shell:       "base",
+        shell:       shellId,
         defaultView: view,
         channels:    [],
         rememberChoice: false,

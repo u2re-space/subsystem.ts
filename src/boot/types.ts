@@ -81,6 +81,15 @@ export interface ShellEvents {
     onThemeChange?: (theme: ShellTheme, shell: Shell) => void | Promise<void>;
 }
 
+/** Optional flags for {@link Shell.navigate} / {@link ShellContext.navigate}. */
+export interface ShellNavigateOptions {
+    /**
+     * Bypass the same-view + same-params early return so ingress can re-run lifecycle
+     * (`onShow`) and refresh UI when a transfer delivered while already on that route.
+     */
+    force?: boolean;
+}
+
 /**
  * Shell context passed to views
  */
@@ -88,7 +97,11 @@ export interface ShellContext {
     /** Shell identifier */
     shellId: ShellId;
     /** Navigate to a view */
-    navigate: (viewId: ViewId, params?: Record<string, string>) => void | Promise<void>;
+    navigate: (
+        viewId: ViewId,
+        params?: Record<string, string>,
+        options?: ShellNavigateOptions
+    ) => void | Promise<void>;
     /**
      * Open a view in a stacking/overlay sense when the host supports it; otherwise same as {@link navigate}.
      * WHY: Home/speed-dial code prefers this so dedicated window layers can override without forking view code.
@@ -146,7 +159,7 @@ export interface Shell {
     unmount(): void;
     
     /** Navigate to a specific view */
-    navigate(viewId: ViewId, params?: Record<string, string>): Promise<void>;
+    navigate(viewId: ViewId, params?: Record<string, string>, options?: ShellNavigateOptions): Promise<void>;
     
     /** Load and render a view */
     loadView(viewId: ViewId, params?: Record<string, string>): Promise<HTMLElement>;
@@ -223,6 +236,12 @@ export interface View extends HTMLElement, CustomElementLifecycle {
     
     /** Handle external message */
     handleMessage?(message: unknown): Promise<void>;
+
+    /**
+     * Lightweight re-hydrate when the shell returns a connected cached root without `render()`
+     * (see `ShellBase.loadView`).
+     */
+    shellNavigateHydrate?(options?: ViewOptions, initialData?: unknown): void;
 }
 
 /**

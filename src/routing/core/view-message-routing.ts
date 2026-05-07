@@ -32,10 +32,12 @@ const selectMessageTypeForView = (view: View, incomingType: string): string | nu
 export const mapUnifiedMessageToView = (
     view: View,
     message: UnifiedMessage
-): { type: string; data: unknown; metadata?: unknown } | null => {
+): { id?: string; type: string; data: unknown; metadata?: unknown } | null => {
     const selectedType = selectMessageTypeForView(view, message.type);
     if (!selectedType) return null;
+    const id = typeof message.id === "string" && message.id.trim() ? message.id : undefined;
     return {
+        ...(id ? { id } : {}),
         type: selectedType,
         data: message.data,
         metadata: message.metadata

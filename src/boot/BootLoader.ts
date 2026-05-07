@@ -93,6 +93,7 @@ export type BootPhaseHandler = (state: BootState) => void | Promise<void>;
 
 const normalizeShellId = (shell: ShellId): ShellId => {
     if (shell === "faint") return "tabbed";
+    if (shell === "base") return "immersive";
     return shell;
 };
 
@@ -113,19 +114,19 @@ const STYLE_CONFIGS: Record<StyleSystem, {
         name: "Raw (No Framework)",
         stylesheets: [],
         description: "No CSS framework, raw browser defaults",
-        recommendedShells: ["base"]
+        recommendedShells: ["immersive"]
     },
     "vl-core": {
         name: "Core (Shared Foundation)",
         stylesheets: [],
         description: "Shared foundation styles for all veela variants",
-        recommendedShells: ["base", "minimal"]
+        recommendedShells: ["immersive", "minimal"]
     },
     "vl-basic": {
         name: "Basic Veela Styles",
         stylesheets: [],
         description: "Minimal styling for basic functionality",
-        recommendedShells: ["window", "tabbed", "minimal", "environment", "base", "content"]
+        recommendedShells: ["window", "tabbed", "minimal", "environment", "immersive", "content"]
     },
     "vl-advanced": {
         name: "Advanced (Full-Featured Styling)",
@@ -155,6 +156,7 @@ export function getRecommendedStyle(shell: ShellId): StyleSystem {
         case "minimal":
             return "vl-basic";
         case "base":
+        case "immersive":
             return "vl-basic";
         case "content":
             return "vl-basic";
@@ -684,6 +686,7 @@ export async function bootBase(
     container: HTMLElement,
     view: ViewId = "viewer"
 ): Promise<Shell> {
+    // COMPAT: persisted / URL `base` still maps through loadShell; registry resolves to `immersive` module.
     return bootLoader.boot(container, {
         styleSystem: "vl-basic",
         shell: "base",

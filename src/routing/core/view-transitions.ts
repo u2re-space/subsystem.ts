@@ -26,6 +26,12 @@ export interface ViewTransitionOptions {
      * Exposed via `:active-view-transition-type()` in CSS.
      */
     types?: string[];
+    /**
+     * Runs after the outgoing pseudo-element animation settles (best-effort), or after two
+     * consecutive `requestAnimationFrame` callbacks when View Transitions are unsupported.
+     * Used to defer view teardown such as dropping document-level adopted stylesheets.
+     */
+    onTransitionFinished?: () => void;
 }
 
 // ─── Minimal typings for the View Transition API ─────────────────────────────
@@ -103,8 +109,23 @@ export async function withViewTransition(
     update: VTUpdateFn,
     options: ViewTransitionOptions = {},
 ): Promise<void> {
+    const finishOnce = (): void => {
+        try {
+            options.onTransitionFinished?.();
+        } catch (error) {
+            console.warn("[view-transition] onTransitionFinished error:", error);
+        }
+    };
+    let finishedCalled = false;
+    const guardedFinish = (): void => {
+        if (finishedCalled) return;
+        finishedCalled = true;
+        finishOnce();
+    };
+
     if (!supportsViewTransitions()) {
         await update();
+        requestAnimationFrame(() => requestAnimationFrame(guardedFinish));
         return;
     }
 
@@ -120,6 +141,9 @@ export async function withViewTransition(
         types?.length
             ? doc.startViewTransition({ update, types })
             : doc.startViewTransition(update);
+
+    void transition.finished.then(guardedFinish).catch(guardedFinish);
+    globalThis.setTimeout?.(() => guardedFinish(), 1400);
 
     try {
         // Wait only until the DOM update callback settles. `finished` can stall in some Chromium

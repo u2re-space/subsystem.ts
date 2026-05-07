@@ -1,5 +1,5 @@
 import { ref } from "fest/object";
-import type { Shell, ShellContext, ShellId, ShellLayoutConfig, ShellNavigationState, ShellTheme, View, ViewId } from "./types";
+import type { Shell, ShellContext, ShellId, ShellLayoutConfig, ShellNavigationState, ShellTheme, View, ViewId, ViewOptions, ShellNavigateOptions } from "./types";
 import { loadInlineStyle, preloadStyle } from "fest/dom";
 import { ViewRegistry } from "shared/routing/registry";
 import { withViewTransition, getTransitionDirection } from "shared/routing/view-transitions";
@@ -20,6 +20,7 @@ import {
     type ShellElement,
     ensureShellElementDefined
 } from "./shell-elements";
+import { showToast } from "./toast";
 
 //@ts-ignore
 import style from "./views.scss?inline";
@@ -75,6 +76,8 @@ export abstract class ShellBase implements Shell {
     protected themeCycleIcon: HTMLElement | null = null;
     protected themeAttrObserver: MutationObserver | null = null;
     private shellActivityDispose: (() => void) | null = null;
+    /** Tear down {@link ShellBase.setupViewOpenRequestBridge} on unmount. */
+    private viewOpenRequestCleanup: (() => void) | null = null;
     /** When `colorScheme` is `auto`, re-run `applyTheme` on OS light/dark changes. */
     private systemColorSchemeMq: MediaQueryList | null = null;
     private systemColorSchemeHandler: (() => void) | null = null;
@@ -188,6 +191,7 @@ export abstract class ShellBase implements Shell {
         // outgoing "previous" view is not a stale placeholder (e.g. "home" on /viewer).
         this.syncNavigationFromUrl();
         this.reconcileBootShellQueryParam();
+        this.setupViewOpenRequestBridge();
 
         // LUR.E dynamic theme owns meta[name="theme-color"] for frame/WCO tinting.
         try {
@@ -261,11 +265,61 @@ export abstract class ShellBase implements Shell {
         }
     }
 
+    /**
+     * Dispatch `cw:view-open-request` (see `view-api.requestOpenView`) for window shells; singleton
+     * minimal/immersive/content route it here so programmatic opens match toolbar `navigate()` calls.
+     */
+    private setupViewOpenRequestBridge(): void {
+        if (typeof globalThis.window === "undefined") return;
+
+        const onOpen = (ev: Event): void => {
+            const ce = ev as CustomEvent<{
+                viewId?: string;
+                target?: string;
+                params?: Record<string, unknown>;
+            }>;
+            const d = ce.detail || {};
+            const vid = typeof d.viewId === "string" ? d.viewId.trim().toLowerCase() : "";
+            if (!vid || !isEnabledView(vid)) return;
+
+            const target = String(d.target ?? "window").toLowerCase();
+            const windowLike = ["window", "tabbed", "environment", "frame"];
+            if (windowLike.includes(target)) return;
+
+            const windowShellIds: ShellId[] = ["window", "tabbed", "environment"];
+            if (windowShellIds.includes(this.id)) return;
+
+            let params: Record<string, string> | undefined;
+            if (d.params && typeof d.params === "object" && !Array.isArray(d.params)) {
+                const out: Record<string, string> = {};
+                for (const [k, v] of Object.entries(d.params)) {
+                    if (v === undefined || v === null) continue;
+                    out[String(k)] = typeof v === "string" ? v : String(v);
+                }
+                if (Object.keys(out).length > 0) params = out;
+            }
+
+            void this.navigate(vid as ViewId, params);
+        };
+
+        globalThis.addEventListener("cw:view-open-request", onOpen as EventListener);
+        this.viewOpenRequestCleanup = () => {
+            try {
+                globalThis.removeEventListener("cw:view-open-request", onOpen as EventListener);
+            } catch {
+                /* ignore */
+            }
+            this.viewOpenRequestCleanup = null;
+        };
+    }
+
     unmount(): void {
         if (!this.mounted) return;
 
         this.shellActivityDispose?.();
         this.shellActivityDispose = null;
+        this.viewOpenRequestCleanup?.();
+        this.viewOpenRequestCleanup = null;
 
         // Cleanup views
         for (const [viewId] of this.loadedViews) {
@@ -299,12 +353,13 @@ export abstract class ShellBase implements Shell {
         console.log(`[${this.id}] Shell unmounted`);
     }
 
-    async navigate(viewId: ViewId, params?: Record<string, string>): Promise<void> {
+    async navigate(viewId: ViewId, params?: Record<string, string>, navOptions?: ShellNavigateOptions): Promise<void> {
         console.log(`[${this.id}] Navigating to: ${viewId}`, params);
         const navToken = ++this.navigationToken;
 
         // No-op when already showing this view with the same query (avoids duplicate transitions).
         if (
+            !navOptions?.force &&
             viewId === this.currentView.value &&
             this.sameRouteParams(params, this.navigationState.params)
         ) {
@@ -346,9 +401,7 @@ export abstract class ShellBase implements Shell {
             // Always stamp the mounted shell — stale `shell=` from another harness must not linger.
             searchParams.set("shell", this.id);
             const isPathRoutedShell =
-                this.id === "base" ||
-                this.id === "minimal" ||
-                this.id === "immersive";
+                this.id === "minimal" || this.id === "immersive";
             const search = searchParams.toString()
                 ? "?" + searchParams.toString()
                 : "";
@@ -383,9 +436,29 @@ export abstract class ShellBase implements Shell {
             await this.renderViewWithTransition(element);
             if (navToken !== this.navigationToken) return;
             scheduleViewModulePrefetch(viewId);
+            // Immersive (and similar) use a full-viewport loading layer in shadow; ensure it never
+            // survives a successful navigate if a subclass forgets to clear it.
+            this.hideShellLoadingPlaceholder();
         } catch (error) {
             console.error(`[${this.id}] Failed to load view ${viewId}:`, error);
             this.showMessage(`Failed to load ${viewId}`);
+            this.hideShellLoadingPlaceholder();
+        }
+    }
+
+    /** Dismiss shell loading overlay (content row and/or shadow `.app-shell__viewport`). */
+    private hideShellLoadingPlaceholder(): void {
+        try {
+            const candidates: HTMLElement[] = [];
+            const fromContent = this.contentContainer?.querySelector(".app-shell__loading") as HTMLElement | null;
+            const fromShadow = this.rootElement?.shadowRoot?.querySelector(".app-shell__loading") as HTMLElement | null;
+            if (fromContent) candidates.push(fromContent);
+            if (fromShadow && fromShadow !== fromContent) candidates.push(fromShadow);
+            for (const el of candidates) {
+                el.hidden = true;
+            }
+        } catch {
+            /* ignore */
         }
     }
 
@@ -423,6 +496,23 @@ export abstract class ShellBase implements Shell {
                     await cached.view.lifecycle.onMount();
                 }
                 return refreshed;
+            }
+            // Singleton shell: connected cache hits skip `render()`. Viewer/print must re-merge route + repaint
+            // or last-opened markdown can stick when navigating back to the view.
+            if (viewId === "viewer" || viewId === "print") {
+                const v = cached.view as View & {
+                    shellNavigateHydrate?: (o?: ViewOptions, initialData?: unknown) => void;
+                };
+                if (typeof v.shellNavigateHydrate === "function") {
+                    v.shellNavigateHydrate(
+                        {
+                            shellContext: this.getContext(),
+                            params,
+                            initialData,
+                        } as ViewOptions,
+                        initialData
+                    );
+                }
             }
             // Update toolbar if view has one
             if (cached.view.getToolbar && this.toolbarContainer) {
@@ -478,7 +568,8 @@ export abstract class ShellBase implements Shell {
     }
 
     getContext(): ShellContext {
-        const navigateFn = (viewId: ViewId, params?: Record<string, string>) => this.navigate(viewId, params);
+        const navigateFn = (viewId: ViewId, params?: Record<string, string>, opts?: ShellNavigateOptions) =>
+            this.navigate(viewId, params, opts);
         return {
             shellId: this.id,
             navigate: navigateFn,
@@ -560,13 +651,10 @@ export abstract class ShellBase implements Shell {
     /**
      * Render a view with a View Transition animation.
      *
-     * Calls `onHide` on the outgoing view BEFORE the transition starts so the
-     * browser captures the old view in its final settled state.  The actual
-     * DOM swap runs inside `document.startViewTransition()` so the browser can
-     * capture before/after snapshots and cross-fade (or slide) between them.
-     *
-     * Falls back to a plain `renderView` call on browsers that do not support
-     * the View Transition API.
+     * Runs the DOM swap inside `document.startViewTransition()` so snapshots can separate.
+     * The outgoing view's {@link ViewLifecycle.onHide} runs after pseudo-element teardown
+     * (see {@link withViewTransition} `onTransitionFinished`) so document-level view styles survive
+     * the disappear animation when applicable.
      */
     protected async renderViewWithTransition(element: HTMLElement): Promise<void> {
         if (!this.contentContainer) {
@@ -581,12 +669,6 @@ export abstract class ShellBase implements Shell {
                 ? this.loadedViews.get(previousId)
                 : undefined;
 
-        // Fire onHide BEFORE the transition so the old view's state is stable
-        // when the browser captures the "old" snapshot.
-        if (prevEntry?.view.lifecycle?.onHide) {
-            prevEntry.view.lifecycle.onHide();
-        }
-
         const direction = getTransitionDirection(previousId ?? "", this.currentView.value);
 
         await withViewTransition(
@@ -596,6 +678,17 @@ export abstract class ShellBase implements Shell {
                 // Level 2 type labels for richer CSS targeting via
                 // :active-view-transition-type() (Chrome 125+).
                 types: [direction, `to-${this.currentView.value}`],
+                // WHY: Defer lifecycle.onHide until the outgoing pseudo-element animation completes
+                // so document-level adopted view styles stay applied while the viewport animates away.
+                onTransitionFinished: () => {
+                    if (prevEntry?.view.lifecycle?.onHide) {
+                        try {
+                            prevEntry.view.lifecycle.onHide();
+                        } catch (error) {
+                            console.warn(`[${this.id}] View ${previousId} onHide error:`, error);
+                        }
+                    }
+                },
             },
         );
         this.invokeCurrentViewOnShow();
@@ -905,6 +998,7 @@ export abstract class ShellBase implements Shell {
                     .then(() => {
                         if (navToken !== this.navigationToken) return;
                         scheduleViewModulePrefetch(viewId);
+                        this.hideShellLoadingPlaceholder();
                     })
                     .catch(console.error);
             }
@@ -921,20 +1015,11 @@ export abstract class ShellBase implements Shell {
             }
         }
 
-        // Settings.scss depends on inherited M3 tokens (`--color-surface`, etc.). Cold start can paint
-        // before Veela `light-dark()` + `color-scheme` fully reconcile; visiting another view forces a
-        // repaint. Re-apply saved appearance + notify LUR.E dynamic theme after the view sheet mounts.
-        if (this.currentView.value === "settings") {
-            this.resyncDocumentThemeAfterSettingsShown();
+        // Views that attach document-level adopted sheets (Settings.scss, Work Center, …): cold-start
+        // first paint can miss Veela token + `color-scheme` reconciliation until a navigation forces it.
+        if (this.currentView.value === "settings" || this.currentView.value === "workcenter") {
+            resyncThemeAfterAdoptedViewSheet();
         }
-    }
-
-    /**
-     * Re-run theme bridge + token consumers after Settings view adopts its document stylesheet.
-     * WHY: Fixes hybrid light chrome / dark content on first paint when deep-linking to /settings.
-     */
-    private resyncDocumentThemeAfterSettingsShown(): void {
-        resyncThemeAfterAdoptedViewSheet();
     }
 
     /**

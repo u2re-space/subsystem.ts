@@ -299,7 +299,18 @@ const isTextLikeFile = (file: File): boolean => {
 
 const hydrateTextPayloadFromFiles = async (shareData: ShareDataInput): Promise<ShareDataInput> => {
     const files = Array.isArray(shareData.files) ? shareData.files.filter((f): f is File => f instanceof File) : [];
-    if (!files.length || String(shareData.text || "").trim()) return shareData;
+    if (!files.length) return shareData;
+
+    const existingInline = String(shareData.text || "").trim();
+
+    /** OS launch-queue merges / pending payloads can retain old `text` while `files[]` is the real doc. */
+    const sourceKey = String(shareData.source || "");
+    const preferReadFromFiles =
+        sourceKey === "launch-queue" ||
+        sourceKey === "cached-bootstrap" ||
+        !existingInline;
+
+    if (!preferReadFromFiles) return shareData;
 
     const firstTextFile = files.find(isTextLikeFile);
     if (!firstTextFile) return shareData;
@@ -423,43 +434,76 @@ const routeToTransferView = async (
         silentRoute = false;
     }
 
-    if (!silentRoute && currentPath !== resolved.routePath) {
-        // WHY: when the payload is already delivered (or safely staged in the
-        // pending inbox), reuse the current shell instead of bouncing through a
-        // hard reload. This keeps markdown/viewer launches on the same surface.
-        if (delivered) {
-            try {
-                const { bootLoader } = await import("boot/ts/BootLoader");
-                const shell = bootLoader.getShell();
-                const supportsSingletonViewReuse = shell && !["window", "tabbed", "environment"].includes(shell.id);
-                if (supportsSingletonViewReuse && shell.getElement?.()?.isConnected) {
-                    await shell.navigate(resolved.destination);
-                    console.log("[ViewTransfer] Routed through live shell:", resolved.routePath);
-                    return delivered;
-                }
-            } catch (error) {
-                console.warn("[ViewTransfer] Live shell routing failed, falling back to hard navigation:", error);
+    const tryNavigateLiveShell = async (): Promise<boolean> => {
+        if (!delivered) return false;
+        try {
+            const { bootLoader } = await import("boot/ts/BootLoader");
+            const shell = bootLoader.getShell();
+            const supportsSingletonViewReuse =
+                shell && !["window", "tabbed", "environment"].includes(shell.id);
+            if (!supportsSingletonViewReuse || !shell.getElement?.()?.isConnected) {
+                return false;
             }
-        }
 
-        const nextUrl = new URL(globalThis?.location?.href);
-        nextUrl.pathname = resolved.routePath;
-        nextUrl.search = "";
-        nextUrl.hash = "";
-        if (pending) {
-            // Cold-start handoff: force cache-backed share bootstrap on next load.
-            nextUrl.searchParams.set("shared", "1");
+            const activeView = shell.getContext?.().navigationState?.currentView;
+
+            /**
+             * WHY: Ingress replay (launch-queue / pending) defaults markdown/text to destination
+             * `viewer`. After the user opens Work Center, routing here would call `navigate('viewer')`
+             * and hide Work Center even though payloads were already delivered via unified messaging.
+             * Share Target flows keep `source === "share-target"` and still bump to the viewer when appropriate.
+             */
+            if (
+                resolved.destination === "viewer" &&
+                activeView === "workcenter" &&
+                source !== "share-target"
+            ) {
+                console.log("[ViewTransfer] Skipping steal to viewer — staying on Work Center", {
+                    source,
+                    pending,
+                    delivered
+                });
+                return true;
+            }
+
+            // WHY: `force` bypasses same-view early-return so lifecycle `onShow` runs — fixes Work Center /
+            // viewer not repainting after automatic ingress while already on that route path.
+            await shell.navigate(resolved.destination, undefined, { force: true });
+            console.log("[ViewTransfer] Routed through live shell:", resolved.routePath);
+            return true;
+        } catch (error) {
+            console.warn("[ViewTransfer] Live shell routing failed, falling back to hard navigation:", error);
+            return false;
         }
-        console.log("[ViewTransfer] Navigating to resolved route:", nextUrl.toString());
-        globalThis.location.href = nextUrl.toString();
-    } else {
-        if (silentRoute && currentPath !== resolved.routePath) {
+    };
+
+    if (silentRoute) {
+        if (currentPath !== resolved.routePath) {
             console.log("[ViewTransfer] Silent mode: skipping navigation; delivery via channels only:", resolved.routePath);
         } else {
-            console.log("[ViewTransfer] Already on resolved route:", resolved.routePath);
+            await tryNavigateLiveShell();
         }
+        return delivered;
     }
 
+    if (currentPath !== resolved.routePath) {
+        const liveOk = await tryNavigateLiveShell();
+        if (!liveOk) {
+            const nextUrl = new URL(globalThis?.location?.href);
+            nextUrl.pathname = resolved.routePath;
+            nextUrl.search = "";
+            nextUrl.hash = "";
+            if (pending) {
+                nextUrl.searchParams.set("shared", "1");
+            }
+            console.log("[ViewTransfer] Navigating to resolved route:", nextUrl.toString());
+            globalThis.location.href = nextUrl.toString();
+        }
+        return delivered;
+    }
+
+    await tryNavigateLiveShell();
+    console.log("[ViewTransfer] Already on resolved route:", resolved.routePath);
     return delivered;
 };
 

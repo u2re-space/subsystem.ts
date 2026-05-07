@@ -19,7 +19,7 @@ export type ViewTransferChannelPayload = {
     message: unknown;
 };
 
-export type ViewOpenTarget = "window" | "frame" | "shell" | "base" | "minimal" | "headless";
+export type ViewOpenTarget = "window" | "frame" | "shell" | "base" | "minimal" | "immersive" | "headless";
 
 export type ViewOpenRequest = {
     viewId: string;
@@ -153,10 +153,12 @@ export function subscribeViewChannel(
 export function requestOpenView(request: ViewOpenRequest): void {
     const viewId = String(request?.viewId || "").trim().toLowerCase();
     if (!viewId) return;
+    const rawTarget = (request?.target || "window") as ViewOpenTarget;
+    const target = rawTarget === "base" ? "immersive" : rawTarget;
     globalThis?.dispatchEvent?.(new CustomEvent("cw:view-open-request", {
         detail: {
             viewId,
-            target: request?.target || "window",
+            target,
             params: request?.params || {},
             pid: request?.pid || null,
             body: request?.body,

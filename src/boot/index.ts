@@ -11,9 +11,6 @@ export * from "./shells";
 export * from "shared/routing/registry";
 export { ShellRegistry, ViewRegistry, getDefaultBootConfig } from "shared/routing/registry";
 
-export { BaseShell, createShell as createBaseShell } from "./base";
-export { ContentShell, createShell as createContentShell } from "./content";
-
 export * from "./registry";
 
 /**

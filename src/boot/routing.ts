@@ -322,7 +322,7 @@ export const loadSubAppWithShell = async (
 ): Promise<AppLoaderResult> => {
     const shell = normalizeShellPreference(shellId || getSavedShellPreference() || "minimal");
     const shellDefaultView =
-        shell === "base" || shell === "minimal" ? "viewer" : "home";
+        shell === "base" || shell === "immersive" || shell === "minimal" ? "viewer" : "home";
     const view = pickEnabledView(initialView || getViewFromPath() || shellDefaultView, "home");
     
     console.log('[App] Loading sub-app with shell:', shell, 'view:', view);
@@ -432,7 +432,7 @@ export function resolvePathToView(pathname: string): ViewId | null {
 export function createBootConfigFromUrl(): BootConfig {
     const shell = normalizeShellPreference(getSavedShellPreference() || "minimal");
     const shellDefaultView =
-        shell === "base" || shell === "minimal" ? "viewer" : "home";
+        shell === "base" || shell === "immersive" || shell === "minimal" ? "viewer" : "home";
     const view = pickEnabledView(getViewFromPath() || shellDefaultView, "home");
     const params = Object.fromEntries(new URLSearchParams(location.search));
 

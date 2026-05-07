@@ -169,9 +169,9 @@ export const applyTheme = (settings: AppSettings) => {
 };
 
 /**
- * Re-apply persisted appearance after a view adopts a document-level constructed stylesheet (e.g. Settings.scss).
- * WHY: First paint on `/settings` can show mixed shell chrome vs Veela `light-dark()` token resolution until
- * something triggers a full style pass; microtask + rAF + idle re-run matches what happens after navigating away/back.
+ * Re-apply persisted appearance after a view adopts a document-level constructed stylesheet (Settings, Work Center, …).
+ * WHY: First paint after cold boot can leave mixed shell chrome vs Veela `light-dark()` token resolution until
+ * something triggers a full style pass; microtask + rAF + idle re-run matches navigating away/back.
  * INVARIANT: Safe to call multiple times; each pass is idempotent `applyTheme(loadSettings())`.
  */
 export const resyncThemeAfterAdoptedViewSheet = (): void => {

@@ -8,9 +8,17 @@ import {
     hasPendingMessages,
     registerComponent,
     processInitialContent,
-    enqueuePendingMessage
+    enqueuePendingMessage,
+    createMessageWithOverrides,
+    type UnifiedMessage
 } from "com/core/UnifiedMessaging";
-import { createMessageWithOverrides } from "com/core/UnifiedMessaging";
+import {
+    pickAuthoritativeTransferFiles,
+    textIngressLooksCorrupt,
+    validateIngressBeforeViewHandle,
+    validateReadableFileForIngress,
+} from "com/core/view-ingress-validation";
+import { settleIngressPaintForMinimalShell } from "./view-inbound-timing";
 import type { ContentContext, ContentType } from "com/core/UnifiedAIConfig";
 
 // Import file handling components that are always needed
@@ -279,18 +287,6 @@ export const mountShellApp = (mountElement: HTMLElement, options: ShellOptions =
     const routeView = getViewFromPathname();
     const defaultView = options.initialView || routeView || (hasExistingContent ? "markdown-viewer" : "file-picker");
 
-    /**
-     * Create unified messaging handler for view switching
-     */
-    const createViewHandler = (destination: string, view: ShellView) => ({
-        canHandle: (msg: any) => msg.destination === destination,
-        handle: async (_msg: any) => {
-            state.view = view;
-            setViewHash(view);
-            render();
-        }
-    });
-
     const isAttachmentMessage = (msg: any): boolean => {
         const type = String(msg?.type || "").trim().toLowerCase();
         return type === "content-attach" || type === "file-attach";
@@ -470,37 +466,159 @@ export const mountShellApp = (mountElement: HTMLElement, options: ShellOptions =
         }, duration);
     };
 
+    /** Minimal-shell path: same stale-inline-text issue as BootLoader viewer (`content-load` + `files[]`). */
+    const hydrateViewerMarkdownFromUnifiedMessage = async (msg: any, deliveryGen: number): Promise<boolean> => {
+        const data = (msg?.data && typeof msg.data === "object" ? msg.data : {}) as Record<string, unknown>;
+        const msgType = String(msg?.type || "");
+        const openIntent =
+            msgType === "content-load" ||
+            msgType === "content-view" ||
+            msgType === "markdown-content";
+
+        if (!openIntent) return false;
+
+        const ingressPrecheck = validateIngressBeforeViewHandle(msg as UnifiedMessage, msgType);
+        if (!ingressPrecheck.ok) {
+            console.warn("[Shell] Markdown hydrator skipped:", ingressPrecheck.reason);
+            return false;
+        }
+
+        const meta =
+            msg?.metadata && typeof msg.metadata === "object"
+                ? (msg.metadata as Record<string, unknown>)
+                : {};
+        const sourceMeta = typeof meta.source === "string" ? meta.source : "";
+        const routeMeta = typeof meta.route === "string" ? meta.route : "";
+        const fromLaunchQueue = sourceMeta.includes("launch-queue") || routeMeta.includes("launch-queue");
+
+        const textLikeMimeOrName = (file: File): boolean => {
+            const name = (file.name || "").toLowerCase();
+            const type = (file.type || "").toLowerCase();
+            if (!type || type.startsWith("text/")) return true;
+            if (type.includes("markdown") || type.includes("json") || type.includes("xml")) return true;
+            return [".md", ".markdown", ".mdown", ".mkd", ".mkdn", ".txt", ".html", ".htm"].some((ext) =>
+                name.endsWith(ext)
+            );
+        };
+
+        const hintName =
+            typeof data.filename === "string" && data.filename.trim().length > 0
+                ? String(data.filename).trim()
+                : typeof (data as { hint?: { filename?: string } }).hint?.filename === "string"
+                  ? String((data as { hint: { filename: string } }).hint.filename).trim()
+                  : undefined;
+
+        let fileEarly: File | null = data.file instanceof File ? data.file : null;
+
+        const fileList =
+            Array.isArray(data.files) ? data.files.filter((f): f is File => f instanceof File) : [];
+        if (fileList.length > 0) {
+            fileEarly =
+                pickAuthoritativeTransferFiles(fileList, {
+                    hintFilename: hintName,
+                    isTextLike: textLikeMimeOrName,
+                }) ?? fileEarly;
+        }
+
+        if (fileEarly) {
+            const vr = validateReadableFileForIngress(fileEarly);
+            if (!vr.ok) {
+                console.warn("[Shell] Ingress file skipped:", vr.reason, fileEarly.name);
+                fileEarly = null;
+            }
+        }
+
+        const textLikeLaunchFile =
+            fromLaunchQueue && !!(fileEarly && textLikeMimeOrName(fileEarly));
+
+        if (openIntent && fileEarly && textLikeMimeOrName(fileEarly)) {
+            try {
+                const txt = await fileEarly.text();
+                if (deliveryGen !== markdownSurfaceGeneration) return false;
+                if (typeof txt === "string") {
+                    if (txt.trim().length === 0) return false;
+                    if (textIngressLooksCorrupt(txt)) {
+                        state.markdown =
+                            "> Received content does not look like UTF-8 text/markdown (binary or unsupported format).\n\n";
+                        return true;
+                    }
+                    state.markdown = txt;
+                    return true;
+                }
+            } catch {
+                /* fall through */
+            }
+            if (fromLaunchQueue && fileEarly) {
+                state.markdown = `> Failed to read transferred file:\n> ${fileEarly.name}`;
+                return true;
+            }
+        }
+
+        const inline = data.text ?? data.content;
+        if (!textLikeLaunchFile && inline != null && String(inline).trim()) {
+            const md = typeof inline === "string" ? inline : JSON.stringify(inline, null, 2);
+            if (textIngressLooksCorrupt(md)) {
+                state.markdown =
+                    "> Inline payload looks like binary data — try opening a `.md` file or copying as plain text.\n\n";
+                return true;
+            }
+            state.markdown = md;
+            return true;
+        }
+        return false;
+    };
+
+    /** Burst ingress (launch-queue, mail replay) serialized per surface — matches full-shell ingress ordering. */
+    const minimalIngressChains = new Map<string, Promise<void>>();
+    const runSequentialMinimalIngress = (key: string, task: () => Promise<void>): Promise<void> => {
+        const prev = minimalIngressChains.get(key) ?? Promise.resolve();
+        const next = prev
+            .then(() => task())
+            .catch((e) => console.warn("[Shell] Minimal ingress failed:", key, e));
+        minimalIngressChains.set(key, next);
+        return next;
+    };
+
+    /** Shared across `markdown-viewer` + `viewer` destinations: rapid opens coalesce to the latest. */
+    let markdownSurfaceGeneration = 0;
+
     // Initialize unified messaging for this app instance
     // Initialize unified messaging handlers using helper functions
     unifiedMessaging.registerHandler('markdown-viewer', {
         canHandle: (msg: any) => msg.destination === 'markdown-viewer',
         handle: async (msg: any) => {
-            if (msg.data?.text) {
-                state.markdown = msg.data.text;
-                state.view = 'markdown-viewer';
-                persistMarkdown();
-                render();
-            }
+            const g = ++markdownSurfaceGeneration;
+            await runSequentialMinimalIngress("markdown-surface", async () => {
+                if (g !== markdownSurfaceGeneration) return;
+                await settleIngressPaintForMinimalShell();
+                if (g !== markdownSurfaceGeneration) return;
+                const ok = await hydrateViewerMarkdownFromUnifiedMessage(msg, g);
+                if (ok) {
+                    state.view = 'markdown-viewer';
+                    persistMarkdown();
+                    render();
+                }
+            });
         }
     });
-
-    unifiedMessaging.registerHandler('workcenter', createViewHandler('workcenter', 'workcenter'));
 
     // Handler for viewer (places/renders content in view)
     unifiedMessaging.registerHandler('viewer', {
         canHandle: (msg: any) => msg.destination === 'viewer',
         handle: async (msg: any) => {
-            // Default action: place/render content in view
-            if (msg.data?.text || msg.data?.content) {
-                const content = msg.data.text || msg.data.content;
-                state.markdown = typeof content === 'string' ? content : JSON.stringify(content, null, 2);
+            const g = ++markdownSurfaceGeneration;
+            await runSequentialMinimalIngress("markdown-surface", async () => {
+                if (g !== markdownSurfaceGeneration) return;
+                await settleIngressPaintForMinimalShell();
+                if (g !== markdownSurfaceGeneration) return;
+                const ok = await hydrateViewerMarkdownFromUnifiedMessage(msg, g);
+                if (!ok) return;
                 state.view = 'markdown-viewer';
                 setViewHash('markdown-viewer');
                 persistMarkdown();
-                // Path-based navigation may not trigger hash-driven re-rendering.
                 render();
                 showStatusMessage("Content loaded in viewer");
-            }
+            });
         }
     });
 
@@ -510,32 +628,35 @@ export const mountShellApp = (mountElement: HTMLElement, options: ShellOptions =
     unifiedMessaging.registerHandler('workcenter', {
         canHandle: (msg: any) => msg.destination === 'workcenter',
         handle: async (msg: any) => {
-            const instance = state.managers?.workCenter?.instance;
-            if (instance) {
-                try {
-                    if (isAttachmentMessage(msg)) {
-                        await handleWorkCenterAttachment(msg, state, setViewHash, render, showStatusMessage, true);
-                    } else if (instance?.handleExternalMessage) {
-                        await instance.handleExternalMessage(msg);
+            await runSequentialMinimalIngress("workcenter", async () => {
+                await settleIngressPaintForMinimalShell();
+                const instance = state.managers?.workCenter?.instance;
+                if (instance) {
+                    try {
+                        if (isAttachmentMessage(msg)) {
+                            await handleWorkCenterAttachment(msg, state, setViewHash, render, showStatusMessage, true);
+                        } else if (instance?.handleExternalMessage) {
+                            await instance.handleExternalMessage(msg);
+                        }
+                    } catch (e) {
+                        console.error('[Shell] WorkCenter message handling failed:', e);
                     }
-                } catch (e) {
-                    console.error('[Shell] WorkCenter message handling failed:', e);
+                    return;
                 }
-                return;
-            }
 
-            try {
-                enqueuePendingMessage('workcenter', msg as any);
-            } catch (e) {
-                console.warn('[Shell] Failed to enqueue pending workcenter message:', e);
-            }
+                try {
+                    enqueuePendingMessage('workcenter', msg as any);
+                } catch (e) {
+                    console.warn('[Shell] Failed to enqueue pending workcenter message:', e);
+                }
 
-            // Auto-open WorkCenter so queued messages get processed and shown.
-            if (state.view !== 'workcenter') {
-                state.view = 'workcenter';
-                setViewHash('workcenter');
-                render();
-            }
+                // Auto-open WorkCenter so queued messages get processed and shown.
+                if (state.view !== 'workcenter') {
+                    state.view = 'workcenter';
+                    setViewHash('workcenter');
+                    render();
+                }
+            });
         }
     });
 
@@ -543,98 +664,106 @@ export const mountShellApp = (mountElement: HTMLElement, options: ShellOptions =
     unifiedMessaging.registerHandler('explorer', {
         canHandle: (msg: any) => msg.destination === 'explorer',
         handle: async (msg: any) => {
-            // Ensure explorer view is active
-            if (state.view !== 'file-explorer') {
-                state.view = 'file-explorer';
-                setViewHash('file-explorer');
-                render();
-            }
-
-            // Handle different explorer actions
-            setTimeout(async () => {
-                try {
-                    const action = msg.data?.action || 'save';
-                    const path = msg.data?.path || msg.data?.into || '/';
-
-                    if (action === 'save' && (msg.data?.file || msg.data?.text || msg.data?.content)) {
-                        // Save content to OPFS
-                        let fileToSave: File | null = null;
-
-                        if (msg.data.file instanceof File) {
-                            fileToSave = msg.data.file;
-                        } else if (msg.data.blob instanceof Blob) {
-                            const filename = msg.data.filename || `file-${Date.now()}`;
-                            fileToSave = new File([msg.data.blob], filename, { type: msg.data.blob.type });
-                        } else if (msg.data.text || msg.data.content) {
-                            const content = msg.data.text || msg.data.content;
-                            const textContent = typeof content === 'string' ? content : JSON.stringify(content, null, 2);
-                            const filename = msg.data.filename || `content-${Date.now()}.txt`;
-                            fileToSave = new File([textContent], filename, { type: 'text/plain' });
-                        }
-
-                        if (fileToSave && state.components.explorer.element) {
-                            // Navigate to target path first
-                            if (path && path !== state.components.explorer.element.path) {
-                                state.components.explorer.element.path = path;
-                            }
-
-                            // Use the file explorer's upload functionality
-                            // This simulates uploading a file to the current directory
-                            console.log(`[Shell] Saving file ${fileToSave.name} to Explorer at: ${path}`);
-                            state.message = `Saved ${fileToSave.name} to Explorer`;
-                            renderStatus();
-                            setTimeout(() => {
-                                state.message = "";
-                                renderStatus();
-                            }, 3000);
-                        }
-                    } else if (action === 'view' && msg.data?.path) {
-                        // Navigate to path for viewing
-                        if (state.components.explorer.element && path) {
-                            state.components.explorer.element.path = path;
-                            console.log(`[Shell] Navigated Explorer to path: ${path}`);
-                            state.message = `Opened Explorer at ${path}`;
-                            renderStatus();
-                            setTimeout(() => {
-                                state.message = "";
-                                renderStatus();
-                            }, 2000);
-                        }
-                    } else if (action === 'place' && msg.data?.place && msg.data?.into) {
-                        // Place data into specific path
-                        const targetPath = msg.data.into;
-                        if (state.components.explorer.element && targetPath) {
-                            state.components.explorer.element.path = targetPath;
-                            console.log(`[Shell] Navigated Explorer to place data at: ${targetPath}`);
-                            state.message = `Explorer ready at ${targetPath}`;
-                            renderStatus();
-                            setTimeout(() => {
-                                state.message = "";
-                                renderStatus();
-                            }, 3000);
-                        }
-                    } else if (action === 'navigate' && path) {
-                        // Simple navigation
-                        if (state.components.explorer.element) {
-                            state.components.explorer.element.path = path;
-                            state.message = `Explorer navigated to ${path}`;
-                            renderStatus();
-                            setTimeout(() => {
-                                state.message = "";
-                                renderStatus();
-                            }, 2000);
-                        }
-                    }
-                } catch (error) {
-                    console.warn('[Shell] Failed to handle explorer action:', error);
-                    state.message = "Failed to perform Explorer action";
-                    renderStatus();
-                    setTimeout(() => {
-                        state.message = "";
-                        renderStatus();
-                    }, 3000);
+            await runSequentialMinimalIngress("explorer", async () => {
+                await settleIngressPaintForMinimalShell();
+                // Ensure explorer view is active
+                if (state.view !== 'file-explorer') {
+                    state.view = 'file-explorer';
+                    setViewHash('file-explorer');
+                    render();
                 }
-            }, 100);
+
+                // Handle different explorer actions
+                await new Promise<void>((resolve) => {
+                    setTimeout(async () => {
+                        try {
+                            const action = msg.data?.action || "save";
+                            const path = msg.data?.path || msg.data?.into || "/";
+
+                            if (action === "save" && (msg.data?.file || msg.data?.text || msg.data?.content)) {
+                                // Save content to OPFS
+                                let fileToSave: File | null = null;
+
+                                if (msg.data.file instanceof File) {
+                                    fileToSave = msg.data.file;
+                                } else if (msg.data.blob instanceof Blob) {
+                                    const filename = msg.data.filename || `file-${Date.now()}`;
+                                    fileToSave = new File([msg.data.blob], filename, { type: msg.data.blob.type });
+                                } else if (msg.data.text || msg.data.content) {
+                                    const content = msg.data.text || msg.data.content;
+                                    const textContent =
+                                        typeof content === "string" ? content : JSON.stringify(content, null, 2);
+                                    const filename = msg.data.filename || `content-${Date.now()}.txt`;
+                                    fileToSave = new File([textContent], filename, { type: "text/plain" });
+                                }
+
+                                if (fileToSave && state.components.explorer.element) {
+                                    // Navigate to target path first
+                                    if (path && path !== state.components.explorer.element.path) {
+                                        state.components.explorer.element.path = path;
+                                    }
+
+                                    // Use the file explorer's upload functionality
+                                    // This simulates uploading a file to the current directory
+                                    console.log(`[Shell] Saving file ${fileToSave.name} to Explorer at: ${path}`);
+                                    state.message = `Saved ${fileToSave.name} to Explorer`;
+                                    renderStatus();
+                                    setTimeout(() => {
+                                        state.message = "";
+                                        renderStatus();
+                                    }, 3000);
+                                }
+                            } else if (action === "view" && msg.data?.path) {
+                                // Navigate to path for viewing
+                                if (state.components.explorer.element && path) {
+                                    state.components.explorer.element.path = path;
+                                    console.log(`[Shell] Navigated Explorer to path: ${path}`);
+                                    state.message = `Opened Explorer at ${path}`;
+                                    renderStatus();
+                                    setTimeout(() => {
+                                        state.message = "";
+                                        renderStatus();
+                                    }, 2000);
+                                }
+                            } else if (action === "place" && msg.data?.place && msg.data?.into) {
+                                // Place data into specific path
+                                const targetPath = msg.data.into;
+                                if (state.components.explorer.element && targetPath) {
+                                    state.components.explorer.element.path = targetPath;
+                                    console.log(`[Shell] Navigated Explorer to place data at: ${targetPath}`);
+                                    state.message = `Explorer ready at ${targetPath}`;
+                                    renderStatus();
+                                    setTimeout(() => {
+                                        state.message = "";
+                                        renderStatus();
+                                    }, 3000);
+                                }
+                            } else if (action === "navigate" && path) {
+                                // Simple navigation
+                                if (state.components.explorer.element) {
+                                    state.components.explorer.element.path = path;
+                                    state.message = `Explorer navigated to ${path}`;
+                                    renderStatus();
+                                    setTimeout(() => {
+                                        state.message = "";
+                                        renderStatus();
+                                    }, 2000);
+                                }
+                            }
+                        } catch (error) {
+                            console.warn("[Shell] Failed to handle explorer action:", error);
+                            state.message = "Failed to perform Explorer action";
+                            renderStatus();
+                            setTimeout(() => {
+                                state.message = "";
+                                renderStatus();
+                            }, 3000);
+                        } finally {
+                            resolve();
+                        }
+                    }, 100);
+                });
+            });
         }
     });
 
@@ -642,15 +771,18 @@ export const mountShellApp = (mountElement: HTMLElement, options: ShellOptions =
     unifiedMessaging.registerHandler('print', {
         canHandle: (msg: any) => msg.destination === 'print',
         handle: async (msg: any) => {
-            // Default action: render as printable content
-            if (msg.data?.text || msg.data?.content) {
-                const content = msg.data.text || msg.data.content;
-                const printableContent = typeof content === 'string' ? content : JSON.stringify(content, null, 2);
+            await runSequentialMinimalIngress("print", async () => {
+                await settleIngressPaintForMinimalShell();
+                // Default action: render as printable content
+                if (msg.data?.text || msg.data?.content) {
+                    const content = msg.data.text || msg.data.content;
+                    const printableContent =
+                        typeof content === "string" ? content : JSON.stringify(content, null, 2);
 
-                // Open print dialog with the content
-                const printWindow = globalThis?.open?.('', '_blank', 'width=800,height=600');
-                if (printWindow) {
-                    printWindow.document.write(`
+                    // Open print dialog with the content
+                    const printWindow = globalThis?.open?.("", "_blank", "width=800,height=600");
+                    if (printWindow) {
+                        printWindow.document.write(`
                         <!DOCTYPE html>
                         <html>
                         <head>
@@ -662,14 +794,15 @@ export const mountShellApp = (mountElement: HTMLElement, options: ShellOptions =
                             </style>
                         </head>
                         <body>
-                            <pre>${printableContent.replace(/</g, '&lt;').replace(/>/g, '&gt;')}</pre>
+                            <pre>${printableContent.replace(/</g, "&lt;").replace(/>/g, "&gt;")}</pre>
                         </body>
                         </html>
                     `);
-                    printWindow.document.close();
-                    printWindow.print();
+                        printWindow.document.close();
+                        printWindow.print();
+                    }
                 }
-            }
+            });
         }
     });
 
