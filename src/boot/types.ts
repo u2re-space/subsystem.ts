@@ -128,6 +128,11 @@ export interface ShellContext {
     getToolbarContainer: () => HTMLElement | null;
     /** Register a view toolbar */
     setViewToolbar: (toolbar: HTMLElement | null) => void;
+    /**
+     * Prefer this for transient UI (menus, modals) so layers stack above window frames when the host sets it.
+     * Falls back to {@link getOverlayContainer} / global resolution inside {@link ShellBase.getContext}.
+     */
+    resolveOverlayMountPoint?: (anchor?: Element | null) => HTMLElement;
 }
 
 /**

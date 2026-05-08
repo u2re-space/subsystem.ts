@@ -19,6 +19,8 @@ import {
     type ShellElement,
     ensureShellElementDefined
 } from "./shell-elements";
+export * from "./shell-slots";
+import { resolveOverlayMountPoint as resolveGlobalOverlayMount } from "./shell-slots";
 import { showToast } from "./toast";
 
 //@ts-ignore
@@ -589,7 +591,12 @@ export abstract class ShellBase implements Shell {
             getContentContainer: () => this.contentContainer!,
             getOverlayContainer: () => this.overlayContainer,
             getToolbarContainer: () => this.toolbarContainer,
-            setViewToolbar: (toolbar) => this.setViewToolbar(toolbar)
+            setViewToolbar: (toolbar) => this.setViewToolbar(toolbar),
+            resolveOverlayMountPoint: (anchor?: Element | null) => {
+                const c = this.overlayContainer;
+                if (c) return c;
+                return resolveGlobalOverlayMount(anchor ?? null);
+            }
         };
     }
 

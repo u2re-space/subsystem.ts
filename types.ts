@@ -6,6 +6,11 @@ export interface ShellContext {
     openView?: (viewId: ViewId, options?: ViewOptions) => void | Promise<void>;
     showMessage?: (message: string, options?: Record<string, unknown>) => void;
     emit?: (type: string, payload?: unknown) => void | Promise<void>;
+    /**
+     * Stack for transient UI (menus, tooltips, modals, toasts) **above** routed views and `.wf-frame` bodies.
+     * Environment workspace and `cw-shell-*` implement this; view code should prefer it over appending to `document.body`.
+     */
+    resolveOverlayMountPoint?: (anchor?: Element | null) => HTMLElement;
     [key: string]: unknown;
 }
 
@@ -26,6 +31,11 @@ export interface ViewOptions {
 
 export type BaseViewOptions = ViewOptions;
 
+/**
+ * View contract: `render()` yields a **bounded container** (subtree) for a shell default slot or `.wf-frame-body`.
+ * Tooltip, context menu, toast, and modal layers belong on `shellContext.resolveOverlayMountPoint` / `boot/shell-slots`,
+ * not inside the view root, so they are not clipped by window frames.
+ */
 export interface View {
     id: ViewId;
     name?: string;
