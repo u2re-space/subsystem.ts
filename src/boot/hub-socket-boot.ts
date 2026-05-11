@@ -95,15 +95,15 @@ export function installAirpadHubLifecycleRecovery(): void {
  * Load stored settings, apply AirPad / shell runtime, then connect or disconnect the hub socket.
  */
 export async function bootHubSocketFromStoredSettings(): Promise<void> {
-    installAirpadHubLifecycleRecovery();
     const settings = await loadSettings();
     await applyHubSocketFromSettings(settings);
 }
 
 /**
- * Apply after any settings mutation (Save, storage sync). Idempotent with {@link applyAirpadRuntimeFromAppSettings}.
+ * Apply after boot or any settings mutation (Save, storage sync). Idempotent with {@link applyAirpadRuntimeFromAppSettings}.
  */
 export async function applyHubSocketFromSettings(settings: AppSettings): Promise<void> {
+    installAirpadHubLifecycleRecovery();
     if (await shouldDeferCrxHubSocketBootstrap(settings)) {
         return;
     }

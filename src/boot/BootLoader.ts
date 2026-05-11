@@ -604,7 +604,7 @@ export async function bootTabbed(
     container: HTMLElement,
     view: ViewId = "home"
 ): Promise<Shell> {
-    const channels = ["workcenter", "settings", "viewer", "explorer", "history", "editor", "airpad", "home"]
+    const channels = ["workcenter", "settings", "viewer", "explorer", "history", "editor", "home"]
         .filter((channelId) => isEnabledView(channelId)) as ServiceChannelId[];
     const defaultView = pickEnabledView(view, "home");
     const channelPriorityId: ServiceChannelId | undefined =
@@ -623,7 +623,7 @@ export async function bootEnvironment(
     container: HTMLElement,
     view: ViewId = "home"
 ): Promise<Shell> {
-    const channels = ["workcenter", "settings", "viewer", "explorer", "history", "editor", "airpad", "home"]
+    const channels = ["workcenter", "settings", "viewer", "explorer", "history", "editor", "home"]
         .filter((channelId) => isEnabledView(channelId)) as ServiceChannelId[];
     const defaultView = pickEnabledView(view, "home");
     const channelPriorityId: ServiceChannelId | undefined =
@@ -667,7 +667,7 @@ export async function bootWindow(
     container: HTMLElement,
     view: ViewId = "home"
 ): Promise<Shell> {
-    const channels = ["workcenter", "settings", "viewer", "explorer", "history", "editor", "airpad", "home"]
+    const channels = ["workcenter", "settings", "viewer", "explorer", "history", "editor", "home"]
         .filter((channelId) => isEnabledView(channelId)) as ServiceChannelId[];
     const defaultView = pickEnabledView(view, "home");
     const channelPriorityId: ServiceChannelId | undefined =
@@ -716,7 +716,7 @@ export async function bootContent(
     view: ViewId = "home",
     options?: BootShellEntryOptions
 ): Promise<Shell> {
-    const defaultChannelIds = ["workcenter", "settings", "viewer", "explorer", "history", "editor", "airpad", "home"] as const;
+    const defaultChannelIds = ["workcenter", "settings", "viewer", "explorer", "history", "editor", "home"] as const;
     const defaultChannels = defaultChannelIds.filter((channelId) => isEnabledView(channelId)) as ServiceChannelId[];
     const channels =
         options?.channels !== undefined ? options.channels : defaultChannels;

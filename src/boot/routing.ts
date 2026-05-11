@@ -14,7 +14,6 @@
  * - `/explorer` → Explorer
  * - `/history` → History
  * - `/editor` → Editor
- * - `/airpad` → Airpad
  * - `/print` → Print view
  * 
  * Shell is configured separately (via preferences), not encoded in URL pathname.

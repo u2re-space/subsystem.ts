@@ -28,7 +28,6 @@ import {
     VIEW_ENABLED_SETTINGS,
     VIEW_ENABLED_HISTORY,
     VIEW_ENABLED_EXPLORER,
-    VIEW_ENABLED_AIRPAD,
     VIEW_ENABLED_EDITOR,
     VIEW_ENABLED_HOME,
     VIEW_ENABLED_PRINT
@@ -412,15 +411,6 @@ export function registerDefaultViews(): void {
             name: "Explorer",
             icon: "folder",
             loader: () => import("views/explorer")
-        });
-    }
-
-    if (VIEW_ENABLED_AIRPAD) {
-        ViewRegistry.register({
-            id: "airpad",
-            name: "Airpad",
-            icon: "hand-pointing",
-            loader: () => import("views/airpad")
         });
     }
 

@@ -22,7 +22,6 @@ export type ShellId = "base" | "window" | "tabbed" | "minimal" | "environment" |
 export type ViewId = 
     | "viewer" 
     | "workcenter" 
-    | "airpad" 
     | "settings" 
     | "history" 
     | "explorer" 

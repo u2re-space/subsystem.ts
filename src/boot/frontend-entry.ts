@@ -34,9 +34,7 @@ export default async function frontend(
     options: ShellOptions = {}
 ): Promise<void> {
     const { mountShellApp } = await import("shared/routing/channel-unknown");
-    void import("shared/transport/hub-socket-boot")
-        .then((m) => m.bootHubSocketFromStoredSettings())
-        .catch(() => undefined);
+    /* Hub socket: BootLoader applies settings; duplicate boot removed (default WS maintenance is off). */
 
     try {
         const { initIngressPWA } = await import("shared/routing/pwa/sw-handling");

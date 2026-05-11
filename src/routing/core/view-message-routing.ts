@@ -10,7 +10,6 @@ const VIEW_MESSAGE_FALLBACKS: Record<string, string[]> = {
     settings: ["settings-update"],
     history: ["history-update"],
     home: ["home-update"],
-    airpad: ["content-load"],
     print: ["content-view"]
 };
 

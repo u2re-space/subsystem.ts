@@ -67,7 +67,6 @@ export type ViewTransferDestination =
     | "history"
     | "settings"
     | "home"
-    | "airpad"
     | "print";
 
 export type ViewTransferActionHint = "open" | "attach" | "save" | "process";

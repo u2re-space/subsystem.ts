@@ -52,6 +52,9 @@
             "cwsp-shared/cws-client-wire-defaults": [
                 "./runtime/cws-client-wire-defaults.ts"
             ],
+            "cwsp-shared/airpad-cwsp-client-parity": [
+                "./runtime/airpad-cwsp-client-parity.ts"
+            ],
             "veela-lib": ["../../projects/veela.css/src/scss/index.scss"],
             "veela-lib/*": ["../../projects/veela.css/src/scss/*"],
             "core/misc/config": [

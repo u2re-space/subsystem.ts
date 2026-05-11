@@ -4,7 +4,6 @@ export const VIEW_ENABLED_VIEWER = "viewer";
 export const VIEW_ENABLED_EDITOR = "editor";
 export const VIEW_ENABLED_WORKCENTER = "workcenter";
 export const VIEW_ENABLED_EXPLORER = "explorer";
-export const VIEW_ENABLED_AIRPAD = "airpad";
 export const VIEW_ENABLED_SETTINGS = "settings";
 export const VIEW_ENABLED_HISTORY = "history";
 export const VIEW_ENABLED_HOME = "home";
@@ -16,7 +15,6 @@ const VIEW_FLAGS: Record<string, string> = {
     editor: VIEW_ENABLED_EDITOR,
     workcenter: VIEW_ENABLED_WORKCENTER,
     explorer: VIEW_ENABLED_EXPLORER,
-    airpad: VIEW_ENABLED_AIRPAD,
     settings: VIEW_ENABLED_SETTINGS,
     history: VIEW_ENABLED_HISTORY,
     home: VIEW_ENABLED_HOME,

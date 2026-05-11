@@ -28,7 +28,6 @@ export type ServiceChannelId =
     | "settings"
     | "viewer"
     | "explorer"
-    | "airpad"
     | "print"
     | "history"
     | "editor"
@@ -62,12 +61,6 @@ export const SERVICE_CHANNEL_CONFIG: Record<ServiceChannelId, ServiceChannelConf
         routeHash: ROUTE_HASHES.FILE_EXPLORER,
         component: COMPONENTS.FILE_EXPLORER,
         description: "File explorer and browser"
-    },
-    airpad: {
-        broadcastName: "rs-airpad",
-        routeHash: "#airpad",
-        component: "airpad",
-        description: "Touch-friendly input pad"
     },
     print: {
         broadcastName: BROADCAST_CHANNELS.PRINT_CHANNEL,
