@@ -1,7 +1,12 @@
-export async function readClipboardText(): Promise<string> {
-    return globalThis.navigator?.clipboard?.readText?.() ?? "";
-}
-
-export async function writeClipboardText(text: string): Promise<void> {
-    await globalThis.navigator?.clipboard?.writeText?.(text);
-}
+/**
+ * Vite/runtime alias target for `shared/native/clipboard-device`.
+ * Re-exports the canonical Capacitor + web clipboard bridge.
+ */
+export {
+    isNativeClipboardShell,
+    isCapacitorNativeShell,
+    writeClipboardTextToDevice,
+    readClipboardTextFromDevice,
+    openNativeNotificationSettings,
+    openAppClipboardRelatedSettings,
+} from "../src/routing/native/clipboard-device";
