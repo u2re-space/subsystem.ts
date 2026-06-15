@@ -30,7 +30,8 @@ import {
     VIEW_ENABLED_EXPLORER,
     VIEW_ENABLED_EDITOR,
     VIEW_ENABLED_HOME,
-    VIEW_ENABLED_PRINT
+    VIEW_ENABLED_PRINT,
+    VIEW_ENABLED_AIRPAD
 } from "./views";
 import type { ChannelMessage } from "fest/uniform";
 import type { ServiceChannelId } from "../channel/ServiceChannels";
@@ -393,6 +394,15 @@ export function registerDefaultViews(): void {
             name: "Settings",
             icon: "gear",
             loader: () => import("views/settings")
+        });
+    }
+
+    if (VIEW_ENABLED_AIRPAD) {
+        ViewRegistry.register({
+            id: "airpad",
+            name: "AirPad",
+            icon: "hand-pointing",
+            loader: () => import("views/airpad")
         });
     }
 

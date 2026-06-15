@@ -186,6 +186,7 @@ export const ROUTE_HASHES = {
     FILE_PICKER: '#file-picker',
     FILE_EXPLORER: '#file-explorer',
     PRINT: '#print',
+    AIRPAD: '#airpad',
 
     // Work center specific hashes
     WORKCENTER_FILES: '#workcenter-files',

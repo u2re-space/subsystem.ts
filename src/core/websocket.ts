@@ -39,6 +39,10 @@ import {
     readClipboardTextFromDevice,
     writeClipboardTextToDevice,
 } from "../routing/native/clipboard-device";
+import {
+    CWSP_DEFAULT_HTTPS_PORTS,
+    CWSP_DEFAULT_HTTP_PORTS,
+} from "cwsp-shared/cwsp-endpoint-resolve";
 import { setAirpadCredentialInvalidator } from "views/airpad/credential-cache-bridge";
 
 let socket: Socket | null = null;
@@ -1254,7 +1258,7 @@ export function connectWS() {
     const inferProtocol = (): 'http' | 'https' => {
         if (remoteProtocol === 'http' || remoteProtocol === 'https') return remoteProtocol;
         if (remotePort === '443' || remotePort === '8443' || remotePort === '8444') return 'https';
-        if (remotePort === '80' || remotePort === '8080') return 'http';
+        if (remotePort === '80' || remotePort === '8080' || remotePort === '8081') return 'http';
         // Hybrid Android: shell is https:// but LAN cwsp is almost always HTTP :8080 (cleartext in network_security_config).
         if (
             isCapacitorNativeShell() &&
@@ -1275,9 +1279,8 @@ export function connectWS() {
     void tryRequestLocalNetworkPermission(probeOrigin, probeHost);
     const fallbackProtocol = primaryProtocol === 'https' ? 'http' : 'https';
     const defaultPortsByProtocol = {
-        http: ['8080', '80'],
-        /** 8444 matches CWSP public-port fallbacks when 443 is unavailable (e.g. Windows without elevation). */
-        https: ['8443', '443', '8444'],
+        http: [...CWSP_DEFAULT_HTTP_PORTS],
+        https: [...CWSP_DEFAULT_HTTPS_PORTS],
     } as const;
     const locationPort = location.port?.trim?.() || '';
 
@@ -1288,8 +1291,9 @@ export function connectWS() {
             : ([primaryProtocol, fallbackProtocol] as const);
 
     const isLikelyHttpsPort = (port: string): boolean =>
-        port === '443' || port === '8443' || port === '8444';
-    const isLikelyHttpPort = (port: string): boolean => port === '80' || port === '8080';
+        (CWSP_DEFAULT_HTTPS_PORTS as readonly string[]).includes(port);
+    const isLikelyHttpPort = (port: string): boolean =>
+        (CWSP_DEFAULT_HTTP_PORTS as readonly string[]).includes(port);
 
     const getPortsForProtocol = (protocol: 'http' | 'https', preferredPort?: string) => {
         const ports: string[] = [];

@@ -27,6 +27,7 @@ export type ViewId =
     | "explorer" 
     | "editor"
     | "home"
+    | "airpad"
     | string; // Allow custom views
 
 /**

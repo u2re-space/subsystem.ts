@@ -48,12 +48,17 @@
             "shared/native/clipboard-device": ["./runtime/clipboard-device.ts"],
             "shared/transport/websocket": ["./runtime/websocket.ts"],
             "shared/transport/hub-socket-boot": ["./runtime/hub-socket-boot.ts"],
+            "boot/capacitor-permissions": ["./runtime/capacitor-permissions.ts"],
+            "boot/capacitor-share-intent": ["./runtime/capacitor-share-intent.ts"],
             "cwsp-shared/wire-target-id": ["./runtime/wire-target-id.ts"],
             "cwsp-shared/cws-client-wire-defaults": [
                 "./runtime/cws-client-wire-defaults.ts"
             ],
             "cwsp-shared/airpad-cwsp-client-parity": [
                 "./runtime/airpad-cwsp-client-parity.ts"
+            ],
+            "cwsp-shared/cwsp-endpoint-resolve": [
+                "./runtime/cwsp-endpoint-resolve.ts"
             ],
             "veela-lib": ["../../projects/veela.css/src/scss/index.scss"],
             "veela-lib/*": ["../../projects/veela.css/src/scss/*"],
