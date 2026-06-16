@@ -5,7 +5,6 @@
 
 import { loadSettings, shouldDeferCrxHubSocketBootstrap } from "com/other/config/Settings";
 import type { AppSettings } from "com/other/config/SettingsTypes";
-import { isCapacitorCwsNativeShell } from "com/routing/native/cws-bridge";
 import {
     applyAirpadRuntimeFromAppSettings,
     getRemoteHost,
@@ -19,8 +18,13 @@ const PWA_STALE_BACKGROUND_MS = 12_000;
 let hubLifecycleRecoveryInstalled = false;
 let lastDocumentHiddenAt = 0;
 
+function nativeShellOwnsExclusiveHubWebsocket(): boolean {
+    // WHY: NativeScript owns `/ws` via CwspClipboardSession; Capacitor still uses WebView transport.
+    return (globalThis as { __CWS_NATIVE__?: boolean }).__CWS_NATIVE__ === true && isPreferNativeWebsocketEnabled();
+}
+
 function shouldRunHubRecovery(): boolean {
-    if (isCapacitorCwsNativeShell() && isPreferNativeWebsocketEnabled()) return false;
+    if (nativeShellOwnsExclusiveHubWebsocket()) return false;
     if (!isMaintainHubSocketConnectionEnabled()) return false;
     if (!getRemoteHost().trim()) return false;
     return true;
@@ -109,9 +113,8 @@ export async function applyHubSocketFromSettings(settings: AppSettings): Promise
     }
     applyAirpadRuntimeFromAppSettings(settings);
 
-    // WHY: native shells can own the socket lifecycle themselves, so the web
-    // hub should stand down when the user prefers native websocket transport.
-    if (isCapacitorCwsNativeShell() && isPreferNativeWebsocketEnabled()) {
+    // WHY: only NativeScript (`__CWS_NATIVE__`) owns an exclusive native `/ws` session.
+    if (nativeShellOwnsExclusiveHubWebsocket()) {
         return;
     }
 
