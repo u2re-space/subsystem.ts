@@ -22,8 +22,8 @@ import { LS_BOOT_SHELL_LAST_ACTIVE } from "./shell-preference";
 import { serviceChannels, type ServiceChannelId } from "com/routing/channel/ServiceChannels";
 import { darkTheme, defaultTheme, initializeRegistries, lightTheme, ShellRegistry } from "com/routing/core/registry";
 import { initializeLayers } from "com/routing/core/layer-manager";
-import { initCwsNativeBridge } from "com/routing/native/cws-bridge";
-import { loadSettings } from "com/other/config/Settings";
+import { initCwsNativeBridge, isCapacitorCwsNativeShell } from "com/routing/native/cws-bridge";
+import { loadSettings, ensureCapacitorCwspSettingsSeeded } from "com/other/config/Settings";
 import { DEFAULT_SETTINGS, type AppSettings } from "com/other/config/SettingsTypes";
 import { applyTheme } from "com/other/utils";
 import { startImplicitViewMessagingBridge } from "com/routing/core/implicit-view-bridge";
@@ -237,6 +237,12 @@ export class BootLoader {
             void initCwsNativeBridge().catch(() => {
                 /* Capacitor / CWSAndroid bridge is optional on pure web */
             });
+            try {
+                const { initFrontendDebugCapture } = await import("./frontend-debug-capture");
+                initFrontendDebugCapture();
+            } catch {
+                /* optional */
+            }
 
             // Phase 0: Settings first — apply appearance to :root before Veela/shell CSS loads so
             // M3 tokens + color-scheme resolve to the saved theme on first paint (avoids light→dark flash).
@@ -244,10 +250,15 @@ export class BootLoader {
                 console.warn("[BootLoader] Failed to load settings:", error);
                 return null;
             });
-            if (persistedSettings) {
-                void applyHubSocketFromSettings(persistedSettings).catch(() => undefined);
+            let effectiveSettings = persistedSettings;
+            if (isCapacitorCwsNativeShell()) {
+                const seeded = await ensureCapacitorCwspSettingsSeeded().catch(() => null);
+                if (seeded) effectiveSettings = seeded;
             }
-            applyTheme(persistedSettings ?? DEFAULT_SETTINGS);
+            if (effectiveSettings) {
+                void applyHubSocketFromSettings(effectiveSettings).catch(() => undefined);
+            }
+            applyTheme(effectiveSettings ?? DEFAULT_SETTINGS);
 
             // PWA: register SW, clipboard/share receivers, consume ?shared=1 / pending share payloads.
             // Dynamic import avoids wiring the whole stack into unrelated boot paths (extensions, demos).

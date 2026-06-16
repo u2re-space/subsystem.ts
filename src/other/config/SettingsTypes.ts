@@ -184,6 +184,10 @@ export type ShellSettings = {
     acceptContactsBridgeData?: boolean;
     /** When true, allow SMS-related payloads from native/coordinator bridges (future). */
     acceptSmsBridgeData?: boolean;
+    /** Start Java CWSP runtime after device boot (maps to `cwsp.autoStartOnBoot`). */
+    autoStartOnBoot?: boolean;
+    /** Keep foreground service / daemon for clipboard + share (maps to `cwsp.bridgeDaemonEnabled`). */
+    bridgeDaemonEnabled?: boolean;
 };
 
 export type AppSettings = {
@@ -275,6 +279,8 @@ export type AppSettings = {
         };
         ops?: {
             allowUnencrypted?: boolean;
+            /** Direct peer HTTPS origin/host (Capacitor / AirPad routed mode). */
+            directUrl?: string;
             httpTargets?: RemoteTarget[];
             wsTargets?: RemoteTarget[];
             syncTargets?: RemoteTarget[];
@@ -400,6 +406,7 @@ export const DEFAULT_SETTINGS: AppSettings = {
         },
         ops: {
             allowUnencrypted: false,
+            directUrl: "",
             httpTargets: [],
             wsTargets: [],
             syncTargets: []
@@ -420,7 +427,9 @@ export const DEFAULT_SETTINGS: AppSettings = {
         clipboardShareDestinationIds: "",
         accessTokenBypassesClipboardAllowlist: false,
         acceptContactsBridgeData: false,
-        acceptSmsBridgeData: false
+        acceptSmsBridgeData: false,
+        autoStartOnBoot: true,
+        bridgeDaemonEnabled: true
     },
     ai: {
         apiKey: "",

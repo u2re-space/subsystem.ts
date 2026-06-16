@@ -248,6 +248,8 @@ const defaultFetch = (): typeof fetch | undefined => {
     }
 };
 
+const DEFAULT_PROBE_TIMEOUT_MS = 2500;
+
 /** Best-effort reachability probe (CWSP `/lna-probe`). */
 export const probeEndpointOrigin = async (
     origin: string,
@@ -258,10 +260,11 @@ export const probeEndpointOrigin = async (
     const base = trim(origin).replace(/\/+$/, "");
     if (!base) return false;
 
+    const timeoutMs = opts.timeoutMs ?? DEFAULT_PROBE_TIMEOUT_MS;
     const controller = typeof AbortController !== "undefined" ? new AbortController() : undefined;
     const timer =
-        controller && opts.timeoutMs
-            ? globalThis.setTimeout(() => controller.abort(), opts.timeoutMs)
+        controller && timeoutMs > 0
+            ? globalThis.setTimeout(() => controller.abort(), timeoutMs)
             : undefined;
 
     try {
@@ -334,6 +337,13 @@ export const discoverEndpointOrigin = async (
     return null;
 };
 
+const hasExplicitOrigin = (raw: string): boolean => {
+    const t = trim(raw);
+    if (!t) return false;
+    if (/^[a-z][a-z0-9+.-]*:\/\//i.test(t)) return true;
+    return Boolean(parseConnectHostInput(t)?.port);
+};
+
 /** Resolve bare host / partial URL to a full origin; probes alternate ports when the configured one is down. */
 export const resolveConnectHostToOrigin = async (
     raw: string,
@@ -341,7 +351,8 @@ export const resolveConnectHostToOrigin = async (
 ): Promise<string> => {
     const trimmed = trim(raw);
     if (!trimmed) return "";
-    if (opts.discover !== false) {
+    const shouldDiscover = opts.discover !== false && !hasExplicitOrigin(trimmed);
+    if (shouldDiscover) {
         const found = await discoverEndpointOrigin(trimmed, opts);
         if (found?.origin) return found.origin;
     }

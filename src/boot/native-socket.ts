@@ -78,15 +78,23 @@ export class NativeSocket {
             };
 
             this.ws.onmessage = (event) => {
+                if (event.data instanceof ArrayBuffer) {
+                    this.emitLocal("binary", event.data);
+                    return;
+                }
+                if (typeof Blob !== "undefined" && event.data instanceof Blob) {
+                    void event.data.arrayBuffer().then((buf) => this.emitLocal("binary", buf));
+                    return;
+                }
                 try {
-                    const data = JSON.parse(event.data);
+                    const data = JSON.parse(String(event.data));
                     if (data.event && data.payload) {
                         // COMPAT: old generated files may still wrap inbound frames as {event,payload}.
                         this.emitLocal(data.event, data.payload);
                     } else {
                         this.emitLocal("data", data);
                     }
-                } catch (err) {
+                } catch {
                     this.emitLocal("data", event.data);
                 }
             };
@@ -121,6 +129,12 @@ export class NativeSocket {
         if (this.connected && this.ws) {
             this.ws.send(typeof packet === "string" ? packet : JSON.stringify(packet));
         }
+    }
+
+    /** Send legacy 8-byte AirPad binary frame (endpoint + Java {@code CwspBinaryAirpad} parity). */
+    sendBinary(data: ArrayBuffer | Uint8Array): void {
+        if (!this.connected || !this.ws) return;
+        this.ws.send(data);
     }
 
     /** @deprecated Prefer send(packet); kept so old callers still compile. */

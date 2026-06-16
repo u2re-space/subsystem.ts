@@ -1,5 +1,5 @@
 /**
- * **AirPad** web (`localStorage` key below) ↔ **CWSAndroid** (`ApplicationSettings`, `cwsp.*`) contracts.
+ * **AirPad** web (`localStorage` key below) ↔ **CWSAndroid** Java (`SharedPreferences` prefs.db, `cwsp.*`) contracts.
  * Canonical for shell / view builds that must not import from `runtime/cwsp` sources.
  *
  * **Storage:** {@link AIRPAD_REMOTE_CONFIG_STORAGE_KEY} holds JSON {@link CwspRemoteConnectionV1}.
@@ -11,6 +11,30 @@
 /** AirPad popup / view persisted remote block (`airpad-view` / embedding shells). */
 export const AIRPAD_REMOTE_CONFIG_STORAGE_KEY = "airpad.remote.connection.v1";
 
+/** COMPAT: split `L-110,L-210` prefs (Java {@code CwspRouteTargets.parseRouteTargetHint} parity). */
+const parseRouteTargetHintLocal = (value: unknown): string => {
+    const raw = String(value || "").trim();
+    if (!raw) return "";
+    const parts = raw.split(/[,;\s]+/).map((p) => p.trim()).filter(Boolean);
+    for (const part of parts.length ? parts : [raw]) {
+        if (part && part !== "*" && part.toLowerCase() !== "all" && part.toLowerCase() !== "broadcast") {
+            return part;
+        }
+    }
+    return "";
+};
+
+/** Normalize {@code cwsp.destinationNodeIds} before syncing to Android (single desk id on wire). */
+const normalizeDestinationNodeIdsForWire = (raw: unknown, fallbackDesk = "L-192.168.0.110"): string => {
+    const hint = parseRouteTargetHintLocal(raw);
+    if (hint) return hint;
+    const trimmed = String(raw || "").trim();
+    if (!trimmed || trimmed === "*" || trimmed.toLowerCase() === "all" || trimmed.toLowerCase() === "broadcast") {
+        return fallbackDesk;
+    }
+    return trimmed;
+};
+
 /**
  * Optional `BroadcastChannel` / worker pool name for sharing the same logical blob as localStorage
  * (tabs, service worker, embedding shell). Consumers may no-op when `BroadcastChannel` is missing.
@@ -20,8 +44,8 @@ export const CWSP_REMOTE_CONFIG_SYNC_CHANNEL = "cwsp.remote.connection.v1";
 /** `v` field inside {@link CwspRemoteConnectionV1} JSON (forward migrations). */
 export const CWSP_REMOTE_CONNECTION_JSON_VERSION = 1 as const;
 
-/** NativeScript CWSP settings use `cwsp.*` keys via `ApplicationSettings`. Single source — import from Android via this object. */
-export const CWSP_ANDROID_APPLICATION_SETTINGS_KEYS = {
+/** Java CWSP settings use `cwsp.*` keys in `SharedPreferences` (`prefs.db`). Single source — import from Android via this object. */
+export const CWSP_ANDROID_PREFS_KEYS = {
     endpointUrl: "cwsp.endpointUrl",
     relayHttpsUrl: "cwsp.relayHttpsUrl",
     directHttpsUrl: "cwsp.directHttpsUrl",
@@ -47,10 +71,13 @@ export const CWSP_ANDROID_APPLICATION_SETTINGS_KEYS = {
     wireTransport: "cwsp.wireTransport"
 } as const;
 
-/** Legacy alias read by older builds; prefer {@link CWSP_ANDROID_APPLICATION_SETTINGS_KEYS.accessToken}. */
+/** @deprecated Prefer {@link CWSP_ANDROID_PREFS_KEYS}. */
+export const CWSP_ANDROID_APPLICATION_SETTINGS_KEYS = CWSP_ANDROID_PREFS_KEYS;
+
+/** Legacy alias read by older builds; prefer {@link CWSP_ANDROID_PREFS_KEYS.accessToken}. */
 export const CWSP_ANDROID_LEGACY_AIRPAD_CONTROL_TOKEN_KEY = "cwsp.airpadControlToken";
 
-/** Prefix for ApplicationSettings discrimination / logging. */
+/** Prefix for SharedPreferences discrimination / logging. */
 export const CWS_ANDROID_SETTINGS_KEY_PREFIX = "cwsp.";
 
 /**
@@ -68,7 +95,7 @@ export type CwspRemoteConnectionV1 = {
     destinationId?: string;
     /** Control / hub access (= native `accessToken`). */
     accessToken?: string;
-    /** Node id (= native `associatedClientId` / ApplicationSettings `cwsp.clientId`). */
+    /** Node id (= native `associatedClientId` / prefs `cwsp.clientId`). */
     clientId?: string;
     peerInstanceId?: string;
     /** Identification / handshake token (= native `identificationToken` / `cwsp.token`). */
@@ -105,10 +132,10 @@ export const AIRPAD_TO_CWS_ANDROID_FIELDS = [
 export const CWSP_WIRE_ENVELOPE_V2 = "v2";
 
 /**
- * Android advertises `nativescript-cwsp` so endpoint logs can distinguish the shell; PWA AirPad often uses `airpad`.
+ * Android advertises `java-cwsp` so endpoint logs can distinguish the shell; PWA AirPad often uses `airpad`.
  * Both are valid peers for the same CWSP coordinator actions (`mouse:*`, `keyboard:*`, `clipboard:*`).
  */
-export const CWSP_NATIVE_SHELL_ARCHETYPE = "nativescript-cwsp";
+export const CWSP_NATIVE_SHELL_ARCHETYPE = "java-cwsp";
 
 export const CWSP_AIRPAD_PWA_ARCHETYPE = "airpad";
 
@@ -143,7 +170,7 @@ export function cwspClientSettingsToRemoteConnectionV1(settings: CwspClientSetti
 }
 
 /**
- * Values to merge into native `CwspClientSettings` / ApplicationSettings. Only keys present in `blob` are set.
+ * Values to merge into native `CwspClientSettings` / SharedPreferences. Only keys present in `blob` are set.
  */
 export function remoteConnectionV1ToNativeSettingsPatch(blob: CwspRemoteConnectionV1): Partial<CwspClientSettingsWireMirror> {
     const out: Partial<CwspClientSettingsWireMirror> = {};
@@ -157,18 +184,18 @@ export function remoteConnectionV1ToNativeSettingsPatch(blob: CwspRemoteConnecti
     if (blob.endpointUrl !== undefined) set("relayHttpsUrl", String(blob.endpointUrl || "").trim());
     if (blob.directUrl !== undefined) set("directHttpsUrl", String(blob.directUrl || "").trim());
     if (blob.quickConnectValue !== undefined) set("quickConnectValue", String(blob.quickConnectValue || "").trim());
-    if (blob.destinationId !== undefined) set("destinationNodeIds", String(blob.destinationId || "").trim());
+    const destRaw =
+        blob.destinationId !== undefined && String(blob.destinationId || "").trim()
+            ? blob.destinationId
+            : blob.routeTarget;
+    if (destRaw !== undefined) {
+        set("destinationNodeIds", normalizeDestinationNodeIdsForWire(destRaw));
+    }
     if (blob.identificationToken !== undefined) set("identificationToken", String(blob.identificationToken || "").trim());
     if (blob.clientAccessToken !== undefined) set("clientAccessToken", String(blob.clientAccessToken || "").trim());
     if (blob.clientId !== undefined) set("associatedClientId", String(blob.clientId || "").trim());
     if (blob.peerInstanceId !== undefined) set("peerInstanceId", String(blob.peerInstanceId || "").trim());
     if (blob.wireTransport === "ws" || blob.wireTransport === "socket.io") set("wireTransport", "ws");
-
-    const destProvided = blob.destinationId !== undefined;
-    const rt = blob.routeTarget;
-    if ((!destProvided || !String(blob.destinationId || "").trim()) && rt !== undefined) {
-        set("destinationNodeIds", String(rt || "").trim());
-    }
 
     if (blob.accessToken !== undefined) set("accessToken", String(blob.accessToken || "").trim());
     else if (blob.authToken !== undefined) set("accessToken", String(blob.authToken || "").trim());
@@ -194,8 +221,7 @@ function trimOrUndef(s: string): string | undefined {
     return t || undefined;
 }
 
-/** Full AirPad JSON blob mirrored in native `ApplicationSettings` for WebView ↔ NS sync. */
-export const CWSP_AIRPAD_CONNECTION_JSON_KEY = "cwsp.airpadConnectionJson";
+/** Full AirPad JSON blob mirrored in native SharedPreferences for WebView ↔ Java sync. */
 
 /** Monotonic revision written by {@code CwsBridgePlugin} after each settings patch. */
 export const CWSP_SETTINGS_REVISION_MS_KEY = "cwsp.settingsRevisionMs";
@@ -266,6 +292,9 @@ export function appSettingsShellToNativeExtras(appSettings: Record<string, unkno
     if (shell.acceptInboundClipboardData !== undefined) {
         out.acceptInboundClipboard = (shell.acceptInboundClipboardData ?? true) !== false;
     }
+    if (shell.applyRemoteClipboardToDevice !== undefined) {
+        out.applyRemoteClipboardToDevice = (shell.applyRemoteClipboardToDevice ?? true) !== false;
+    }
     if (shell.accessTokenBypassesClipboardAllowlist !== undefined) {
         out.accessTokenBypassesIdPolicy = shell.accessTokenBypassesClipboardAllowlist === true;
     }
@@ -274,6 +303,12 @@ export function appSettingsShellToNativeExtras(appSettings: Record<string, unkno
     }
     if (shell.acceptSmsBridgeData !== undefined) {
         out.acceptSmsData = shell.acceptSmsBridgeData === true;
+    }
+    if (shell.autoStartOnBoot !== undefined) {
+        out.autoStartOnBoot = shell.autoStartOnBoot !== false;
+    }
+    if (shell.bridgeDaemonEnabled !== undefined) {
+        out.bridgeDaemonEnabled = shell.bridgeDaemonEnabled !== false;
     }
     return out;
 }

@@ -5,6 +5,13 @@
 import type { PluginListenerHandle } from "@capacitor/core";
 import { registerPlugin, WebPlugin } from "@capacitor/core";
 import { createProtocolEnvelope, isProtocolEnvelope, normalizeProtocolEnvelope, type UniformProtocolEnvelope } from "fest/uniform";
+import {
+    AIRPAD_REMOTE_CONFIG_STORAGE_KEY,
+    CWSP_REMOTE_CONFIG_SYNC_CHANNEL,
+    appSettingsShellToNativeExtras,
+    appSettingsToRemoteConnectionV1,
+    stringifyCwspRemoteConnectionV1
+} from "cwsp-shared/airpad-cwsp-client-parity";
 import { createInteropEnvelope } from "../channel/UniformInterop";
 
 export interface CwsShellInfo {
@@ -286,7 +293,20 @@ export async function invokeCwsPlatformIPC(input: CwsNativeIpcInput): Promise<Cw
             envelope: normalizeInvokeResultEnvelope(channel, payload, result)
         };
     } catch (error) {
-        console.warn("[cws-bridge] native invoke failed, using web fallback:", error);
+        console.warn("[cws-bridge] native invoke failed:", error);
+        // WHY: On CWSAndroid, web fallback reports ok:true but never writes prefs.db.
+        if (isCapacitorCwsNativeShell()) {
+            return {
+                ok: false,
+                channel,
+                echo: { ...(payload ?? {}), error: String(error instanceof Error ? error.message : error) },
+                envelope: normalizeInvokeResultEnvelope(channel, payload, {
+                    ok: false,
+                    channel,
+                    echo: payload ?? {}
+                })
+            };
+        }
         const web = new CwsBridgeWeb();
         const result = await web.invoke({ channel, payload, envelope });
         return {
@@ -306,17 +326,21 @@ export async function getNativeUnifiedSettings(): Promise<Record<string, unknown
     }
 }
 
+export type NativeSettingsPatchResult = {
+    ok: boolean;
+    error?: string;
+};
+
 /** Patch native-side settings through the same bridge used by transport/runtime configuration. */
 export async function patchNativeUnifiedSettings(appSettings: Record<string, unknown>): Promise<boolean> {
-    try {
-        const {
-            AIRPAD_REMOTE_CONFIG_STORAGE_KEY,
-            CWSP_REMOTE_CONFIG_SYNC_CHANNEL,
-            appSettingsShellToNativeExtras,
-            appSettingsToRemoteConnectionV1,
-            stringifyCwspRemoteConnectionV1
-        } = await import("../../../runtime/airpad-cwsp-client-parity");
+    const result = await patchNativeUnifiedSettingsDetailed(appSettings);
+    return result.ok;
+}
 
+export async function patchNativeUnifiedSettingsDetailed(
+    appSettings: Record<string, unknown>
+): Promise<NativeSettingsPatchResult> {
+    try {
         const blob = appSettingsToRemoteConnectionV1(appSettings);
         const airpadJson = stringifyCwspRemoteConnectionV1(blob);
         const shellPatch = appSettingsShellToNativeExtras(appSettings);
@@ -338,8 +362,12 @@ export async function patchNativeUnifiedSettings(appSettings: Record<string, unk
             channel: "settings:patch",
             payload: { appSettings, airpadJson, shellPatch }
         });
-        return Boolean(result?.ok);
-    } catch {
-        return false;
+        if (!result?.ok) {
+            const err = String((result?.echo as Record<string, unknown> | undefined)?.error ?? "settings:patch rejected");
+            return { ok: false, error: err };
+        }
+        return { ok: true };
+    } catch (e) {
+        return { ok: false, error: String(e instanceof Error ? e.message : e) };
     }
 }

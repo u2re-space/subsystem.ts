@@ -15,6 +15,16 @@ export type LoadSettingsOptions = {
     nativeOverlay?: boolean;
 };
 
+export type SettingsSaveReport = {
+    /** null when not a native shell (no bridge expected). */
+    nativeSynced: boolean | null;
+    nativeError?: string;
+};
+
+let lastSettingsSaveReport: SettingsSaveReport = { nativeSynced: null };
+
+export const getLastSettingsSaveReport = (): SettingsSaveReport => ({ ...lastSettingsSaveReport });
+
 const trimSetting = (v: unknown): string => (typeof v === "string" ? v.trim() : "");
 
 const isCapacitorNativeShell = (): boolean => {
@@ -24,6 +34,106 @@ const isCapacitorNativeShell = (): boolean => {
     } catch {
         return false;
     }
+};
+
+/** First-boot CWSP defaults for CWSAndroid when IDB still has dev/empty endpoint fields. */
+const CAPACITOR_CWSP_BOOTSTRAP: Partial<AppSettings> = {
+    core: {
+        endpointUrl: "https://192.168.0.200:8443",
+        userKey: "n3v3rm1nd",
+        allowInsecureTls: true,
+        useCoreIdentityForAirPad: true,
+        ops: {
+            directUrl: "https://192.168.0.110:8443"
+        },
+        socket: {
+            routeTarget: "L-192.168.0.110",
+            accessToken: "n3v3rm1nd",
+            allowAccessTokenWithoutUserKey: true,
+            protocol: "auto"
+        },
+        interop: {
+            preferNativeWebsocket: true
+        }
+    },
+    shell: {
+        bridgeDaemonEnabled: true,
+        autoStartOnBoot: true,
+        enableRemoteClipboardBridge: true,
+        acceptInboundClipboardData: true,
+        applyRemoteClipboardToDevice: true,
+        maintainHubSocketConnection: false
+    }
+};
+
+const needsCapacitorCwspBootstrap = (settings: AppSettings): boolean => {
+    if (!isCapacitorNativeShell()) return false;
+    const ep = trimSetting(settings.core?.endpointUrl);
+    const uid = trimSetting(settings.core?.userId);
+    const access = trimSetting(settings.core?.socket?.accessToken);
+    const defaultEp = trimSetting(DEFAULT_SETTINGS.core?.endpointUrl);
+    if (!uid || !access) return true;
+    if (!ep || ep === defaultEp || /localhost|127\.0\.0\.1|:6065/i.test(ep)) return true;
+    return false;
+};
+
+/** Seed mobile CWSP settings + sync to Java prefs on first Capacitor boot. */
+let capacitorCwspSeedDone = false;
+export const ensureCapacitorCwspSettingsSeeded = async (): Promise<AppSettings | null> => {
+    if (!isCapacitorNativeShell()) return null;
+    if (capacitorCwspSeedDone) return null;
+
+    let nativeUserId = "";
+    try {
+        const { getNativeUnifiedSettings, isCwsNativeIpcAvailable } = await import("../../routing/native/cws-bridge");
+        if (isCwsNativeIpcAvailable()) {
+            nativeUserId = trimSetting((await getNativeUnifiedSettings())?.core?.userId);
+        }
+    } catch {
+        /* bridge optional during early boot */
+    }
+
+    const current = await loadSettings({ nativeOverlay: false });
+    const currentUserId = trimSetting(current.core?.userId);
+    const needsBootstrap = needsCapacitorCwspBootstrap(current);
+    const identityDrift =
+        Boolean(nativeUserId) &&
+        Boolean(currentUserId) &&
+        nativeUserId !== currentUserId &&
+        currentUserId === "L-192.168.0.196";
+
+    if (!needsBootstrap && !identityDrift) {
+        capacitorCwspSeedDone = true;
+        return null;
+    }
+    const merged = {
+        ...current,
+        core: {
+            ...current.core,
+            ...CAPACITOR_CWSP_BOOTSTRAP.core,
+            userId: nativeUserId || currentUserId || "",
+            ops: {
+                ...(current.core?.ops || {}),
+                ...(CAPACITOR_CWSP_BOOTSTRAP.core?.ops || {})
+            },
+            socket: {
+                ...(current.core?.socket || {}),
+                ...(CAPACITOR_CWSP_BOOTSTRAP.core?.socket || {}),
+                selfId: nativeUserId || trimSetting(current.core?.socket?.selfId) || ""
+            },
+            interop: {
+                ...(current.core?.interop || {}),
+                ...(CAPACITOR_CWSP_BOOTSTRAP.core?.interop || {})
+            }
+        },
+        shell: {
+            ...(current.shell || {}),
+            ...(CAPACITOR_CWSP_BOOTSTRAP.shell || {})
+        }
+    } as AppSettings;
+    console.log("[Settings] seeding Capacitor CWSP defaults");
+    capacitorCwspSeedDone = true;
+    return saveSettings(merged);
 };
 
 const readLocalStorageSettingsMirror = (): unknown | null => {
@@ -278,6 +388,13 @@ async function idbOpen(): Promise<IDBDatabase> {
 //
 export const idbGetSettings = async (key: string = SETTINGS_KEY): Promise<any> => {
     try {
+        if (isCapacitorNativeShell()) {
+            const mirror = readLocalStorageSettingsMirror();
+            if (mirror != null) {
+                return mirror;
+            }
+        }
+
         if (hasChromeStorage()) {
             console.log("[Settings] Using chrome.storage.local for get");
             const chromeValue = await new Promise<any>((res) => {
@@ -669,16 +786,29 @@ export const saveSettings = async (settings: AppSettings) => {
         }
     };
     await idbPutSettings(merged);
+    lastSettingsSaveReport = { nativeSynced: null };
     try {
-        const { initCwsNativeBridge, patchNativeUnifiedSettings, isCwsNativeIpcAvailable } = await import("../../routing/native/cws-bridge");
+        const {
+            initCwsNativeBridge,
+            patchNativeUnifiedSettingsDetailed,
+            isCwsNativeIpcAvailable
+        } = await import("../../routing/native/cws-bridge");
         if (isCwsNativeIpcAvailable()) {
             await initCwsNativeBridge().catch(() => null);
-            const patched = await patchNativeUnifiedSettings(merged as unknown as Record<string, unknown>);
-            if (!patched) {
-                console.warn("[Settings] native settings patch did not confirm ok");
+            const patch = await patchNativeUnifiedSettingsDetailed(merged as unknown as Record<string, unknown>);
+            lastSettingsSaveReport = {
+                nativeSynced: patch.ok,
+                nativeError: patch.error
+            };
+            if (!patch.ok) {
+                console.warn("[Settings] native settings patch did not confirm ok:", patch.error);
             }
         }
     } catch (e) {
+        lastSettingsSaveReport = {
+            nativeSynced: false,
+            nativeError: String(e instanceof Error ? e.message : e)
+        };
         console.warn("[Settings] native settings patch failed:", e);
     }
     try {

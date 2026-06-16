@@ -11,7 +11,7 @@
  * restrictions differ, especially Chromium extension pages versus normal tabs.
  */
 
-import { createWsSocket, Socket } from './native-socket';
+import { createWsSocket, NativeSocket, Socket } from './native-socket';
 import { log, getWsStatusEl } from "views/airpad/utils/utils";
 import {
     getRemoteHost,
@@ -43,6 +43,7 @@ import {
     CWSP_DEFAULT_HTTPS_PORTS,
     CWSP_DEFAULT_HTTP_PORTS,
 } from "cwsp-shared/cwsp-endpoint-resolve";
+import { CWSP_WIRE_ENVELOPE_V2 } from "cwsp-shared/cws-client-wire-defaults";
 import { setAirpadCredentialInvalidator } from "views/airpad/credential-cache-bridge";
 
 let socket: Socket | null = null;
@@ -301,8 +302,13 @@ function notifyClipboardHandlers(text: string, meta?: { source?: string }) {
 }
 
 /** Suppress echo when applying remote text to the device clipboard vs. push polling. */
+const CLIPBOARD_ECHO_SUPPRESS_MS = 3500;
 let lastClipboardPushSent = "";
+let lastClipboardPushSentAt = 0;
 let lastClipboardWrittenFromRemote = "";
+let clipboardEchoSuppressUntil = 0;
+let lastInboundClipboardNormalized = "";
+let lastInboundClipboardAt = 0;
 
 let clipboardPushIntervalId: ReturnType<typeof setInterval> | null = null;
 
@@ -329,9 +335,13 @@ async function tickLocalClipboardPush(): Promise<void> {
     if (!entries.length) return;
     try {
         const text = await readClipboardTextFromDevice();
-        const t = String(text ?? "");
-        if (!t || t === lastClipboardPushSent) return;
+        const t = String(text ?? "").trim();
+        if (!t) return;
+        const now = Date.now();
+        if (now < clipboardEchoSuppressUntil && t === lastClipboardWrittenFromRemote) return;
+        if (t === lastClipboardPushSent && now - lastClipboardPushSentAt < CLIPBOARD_ECHO_SUPPRESS_MS) return;
         lastClipboardPushSent = t;
+        lastClipboardPushSentAt = now;
         const groups = groupWireTargetsByAccessToken(entries, getWireAccessToken());
         for (const g of groups) {
             sendCoordinatorAct("clipboard:update", { text: t }, g.nodeIds, {
@@ -346,14 +356,27 @@ async function tickLocalClipboardPush(): Promise<void> {
 async function applyIncomingClipboardText(text: string, meta?: { source?: string }): Promise<void> {
     if (!isShellRemoteClipboardBridgeEnabled()) return;
     const t = typeof text === "string" ? text : "";
+    const normalized = t.trim();
+    const now = Date.now();
+    if (
+        normalized &&
+        normalized === lastInboundClipboardNormalized &&
+        now - lastInboundClipboardAt < CLIPBOARD_ECHO_SUPPRESS_MS
+    ) {
+        return;
+    }
+    lastInboundClipboardNormalized = normalized;
+    lastInboundClipboardAt = now;
     lastServerClipboardText = t;
     notifyClipboardHandlers(t, meta);
-    if (!isApplyRemoteClipboardToDeviceEnabled() || !t) return;
-    if (t === lastClipboardWrittenFromRemote) return;
+    if (!isApplyRemoteClipboardToDeviceEnabled() || !normalized) return;
+    if (normalized === lastClipboardWrittenFromRemote && now < clipboardEchoSuppressUntil) return;
     try {
-        await writeClipboardTextToDevice(t);
-        lastClipboardWrittenFromRemote = t;
-        lastClipboardPushSent = t;
+        await writeClipboardTextToDevice(normalized);
+        lastClipboardWrittenFromRemote = normalized;
+        lastClipboardPushSent = normalized;
+        lastClipboardPushSentAt = now;
+        clipboardEchoSuppressUntil = now + CLIPBOARD_ECHO_SUPPRESS_MS;
     } catch (error) {
         console.warn("[cwsp:clipboard] device write failed", {
             length: t.length,
@@ -966,12 +989,7 @@ async function tryRequestLocalNetworkPermission(origin: string, host: string): P
     }
 }
 
-/**
- * Fire-and-forget coordinator action.
- *
- * NOTE: acts are queued briefly while the socket is reconnecting so clipboard
- * and UI actions do not disappear during short transport flaps.
- */
+/** Fire-and-forget coordinator action. */
 export function sendCoordinatorAct(
     what: string,
     payload: any,
@@ -988,6 +1006,17 @@ export function sendCoordinatorAct(
     queuedCoordinatorActs.push(packet);
     connectWS();
     return true;
+}
+
+/** Send compact binary AirPad frame when JSON act would be heavier (Java/CWSP legacy path). */
+export function sendWsBinary(data: ArrayBuffer | Uint8Array): boolean {
+    if (!socket?.connected) return false;
+    const sock = socket as NativeSocket & { sendBinary?: (d: ArrayBuffer | Uint8Array) => void };
+    if (typeof sock.sendBinary === "function") {
+        sock.sendBinary(data);
+        return true;
+    }
+    return false;
 }
 
 /** Send a request/response-style coordinator ask and wait for one correlated reply. */
@@ -1293,9 +1322,19 @@ export function connectWS() {
         if (remoteProtocol === 'http' || remoteProtocol === 'https') return remoteProtocol;
         if (remotePort === '443' || remotePort === '8443' || remotePort === '8444') return 'https';
         if (remotePort === '80' || remotePort === '8080' || remotePort === '8081') return 'http';
-        // Hybrid Android: shell is https:// but LAN cwsp is almost always HTTP :8080 (cleartext in network_security_config).
+        // Capacitor WebView on https://localhost blocks ws:// (mixed content) even when cleartext HTTP is allowed.
         if (
             isCapacitorNativeShell() &&
+            location.protocol === 'https:' &&
+            firstHostIpv4 &&
+            isIpv4Literal(firstHostIpv4) &&
+            isPrivateIp(firstHostIpv4)
+        ) {
+            return 'https';
+        }
+        if (
+            isCapacitorNativeShell() &&
+            location.protocol !== 'https:' &&
             firstHostIpv4 &&
             isIpv4Literal(firstHostIpv4) &&
             isPrivateIp(firstHostIpv4)
@@ -1434,8 +1473,8 @@ export function connectWS() {
     const httpsOrderedHostEntries = reorderHostEntriesForHttps(candidateHostEntries);
 
     const candidates: WSConnectCandidate[] = [];
-    /** Capacitor WebView: mixed content allowed in {@code CapacitorWebActivity} so `ws:` to LAN HTTP works. */
-    const allowHttpSocketFromHttpsShell = isCapacitorNativeShell();
+    /** WebView mixed-content blocks `ws:` from `https:` origins — use native Java /ws or `wss:` only. */
+    const allowHttpSocketFromHttpsShell = false;
     for (const protocol of protocolOrder) {
         if (location.protocol === 'https:' && protocol === 'http' && !allowHttpSocketFromHttpsShell) continue;
         const hostList = protocol === 'https' ? httpsOrderedHostEntries : candidateHostEntries;
@@ -1549,6 +1588,15 @@ export function connectWS() {
         }
         queryParams.connectionType = getAirPadHandshakeConnectionType();
         queryParams.archetype = getAirPadHandshakeArchetype();
+        queryParams.cwspEnvelope = CWSP_WIRE_ENVELOPE_V2;
+        if (clientId) {
+            queryParams.clientId = clientId;
+            queryParams.userId = clientId;
+        }
+        if (clientToken) {
+            queryParams.token = clientToken;
+            queryParams.userKey = clientToken;
+        }
         queryParams[CWSP_ROUTE_QUERY.via] = !isSameAsTargetHost() ? "tunnel" : candidate.source || "unknown";
         queryParams[CWSP_ROUTE_QUERY.localEndpoint] = isSameAsTargetHost() ? "1" : "0";
         let effectiveRoute = resolvedRouteTarget;

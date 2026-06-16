@@ -19,9 +19,22 @@ const PWA_STALE_BACKGROUND_MS = 12_000;
 let hubLifecycleRecoveryInstalled = false;
 let lastDocumentHiddenAt = 0;
 
+function capacitorNativeBridgeOwnsHubWebsocket(): boolean {
+    try {
+        const cap = (globalThis as { Capacitor?: { isNativePlatform?: () => boolean } }).Capacitor;
+        return typeof cap?.isNativePlatform === "function" && cap.isNativePlatform() && isPreferNativeWebsocketEnabled();
+    } catch {
+        return false;
+    }
+}
+
 function nativeShellOwnsExclusiveHubWebsocket(): boolean {
-    // WHY: NativeScript owns `/ws` via CwspClipboardSession; Capacitor still uses WebView transport.
-    return (globalThis as { __CWS_NATIVE__?: boolean }).__CWS_NATIVE__ === true && isPreferNativeWebsocketEnabled();
+    // WHY: NativeScript owns `/ws` via CwspClipboardSession.
+    if ((globalThis as { __CWS_NATIVE__?: boolean }).__CWS_NATIVE__ === true && isPreferNativeWebsocketEnabled()) {
+        return true;
+    }
+    // WHY: CWSAndroid Java CwspRuntime already holds background `/ws`; WebView hub duplicates clientId + dedupe fights.
+    return capacitorNativeBridgeOwnsHubWebsocket();
 }
 
 function shouldRunHubRecovery(): boolean {
