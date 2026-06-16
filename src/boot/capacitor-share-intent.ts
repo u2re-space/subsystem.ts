@@ -6,6 +6,7 @@
  */
 
 import { isCapacitorNative } from "./capacitor-permissions";
+import { isCapacitorCwsNativeShell } from "com/routing/native/cws-bridge";
 
 type ShareIntentDetail = { text?: string; action?: string } | string;
 
@@ -41,6 +42,8 @@ let installed = false;
 
 export const installCapacitorShareIntentBridge = (): void => {
     if (!isCapacitorNative() || installed) return;
+    // CWSAndroid: NativeScript owns SEND/PROCESS_TEXT via Activity intent + native `/ws`.
+    if (isCapacitorCwsNativeShell()) return;
     installed = true;
 
     const handler = (ev: Event): void => {

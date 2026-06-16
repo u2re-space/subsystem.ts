@@ -193,3 +193,87 @@ function trimOrUndef(s: string): string | undefined {
     const t = String(s || "").trim();
     return t || undefined;
 }
+
+/** Full AirPad JSON blob mirrored in native `ApplicationSettings` for WebView ↔ NS sync. */
+export const CWSP_AIRPAD_CONNECTION_JSON_KEY = "cwsp.airpadConnectionJson";
+
+/** Monotonic revision written by {@code CwsBridgePlugin} after each settings patch. */
+export const CWSP_SETTINGS_REVISION_MS_KEY = "cwsp.settingsRevisionMs";
+
+function readNestedString(root: unknown, path: string[]): string | undefined {
+    let cur: unknown = root;
+    for (const key of path) {
+        if (!cur || typeof cur !== "object" || Array.isArray(cur)) return undefined;
+        cur = (cur as Record<string, unknown>)[key];
+    }
+    return trimOrUndef(String(cur ?? ""));
+}
+
+/**
+ * Map CrossWord {@link AppSettings} (Settings UI / IDB) → {@link CwspRemoteConnectionV1} for native parity.
+ */
+export function appSettingsToRemoteConnectionV1(appSettings: Record<string, unknown>): CwspRemoteConnectionV1 {
+    const core = (appSettings.core && typeof appSettings.core === "object" && !Array.isArray(appSettings.core))
+        ? (appSettings.core as Record<string, unknown>)
+        : {};
+    const socket = (core.socket && typeof core.socket === "object" && !Array.isArray(core.socket))
+        ? (core.socket as Record<string, unknown>)
+        : {};
+
+    const endpointUrl =
+        readNestedString(appSettings, ["core", "endpointUrl"]) ||
+        readNestedString(appSettings, ["core", "admin", "httpsOrigin"]);
+
+    const accessToken =
+        trimOrUndef(String(socket.accessToken ?? socket.airpadAuthToken ?? "")) ||
+        undefined;
+
+    const identificationToken =
+        readNestedString(appSettings, ["core", "userKey"]) ||
+        readNestedString(appSettings, ["core", "socket", "clientAccessToken"]) ||
+        readNestedString(appSettings, ["core", "socket", "accessToken"]);
+
+    return {
+        v: CWSP_REMOTE_CONNECTION_JSON_VERSION,
+        endpointUrl,
+        directUrl: readNestedString(appSettings, ["core", "ops", "directUrl"]),
+        quickConnectValue: readNestedString(appSettings, ["core", "network", "quickConnect"]),
+        destinationId: readNestedString(appSettings, ["core", "socket", "routeTarget"]),
+        routeTarget: readNestedString(appSettings, ["core", "socket", "routeTarget"]),
+        accessToken,
+        authToken: accessToken,
+        clientId:
+            readNestedString(appSettings, ["core", "socket", "selfId"]) ||
+            readNestedString(appSettings, ["core", "userId"]) ||
+            readNestedString(appSettings, ["core", "appClientId"]),
+        peerInstanceId: readNestedString(appSettings, ["core", "appClientId"]),
+        identificationToken,
+        clientAccessToken: readNestedString(appSettings, ["core", "socket", "clientAccessToken"]),
+        wireTransport: "ws"
+    };
+}
+
+/** Shell toggles that have no field on {@link CwspRemoteConnectionV1} but map to native `CwspClientSettings`. */
+export function appSettingsShellToNativeExtras(appSettings: Record<string, unknown>): Record<string, unknown> {
+    const shell = (appSettings.shell && typeof appSettings.shell === "object" && !Array.isArray(appSettings.shell))
+        ? (appSettings.shell as Record<string, unknown>)
+        : {};
+    const out: Record<string, unknown> = {};
+    const shareDest = trimOrUndef(String(shell.clipboardShareDestinationIds ?? ""));
+    if (shareDest !== undefined) out.shareIntentDestinationIds = shareDest;
+    const inboundAllow = trimOrUndef(String(shell.clipboardInboundAllowIds ?? ""));
+    if (inboundAllow !== undefined) out.allowClipboardReadFromIds = inboundAllow;
+    if (shell.acceptInboundClipboardData !== undefined) {
+        out.acceptInboundClipboard = (shell.acceptInboundClipboardData ?? true) !== false;
+    }
+    if (shell.accessTokenBypassesClipboardAllowlist !== undefined) {
+        out.accessTokenBypassesIdPolicy = shell.accessTokenBypassesClipboardAllowlist === true;
+    }
+    if (shell.acceptContactsBridgeData !== undefined) {
+        out.acceptContactsData = shell.acceptContactsBridgeData === true;
+    }
+    if (shell.acceptSmsBridgeData !== undefined) {
+        out.acceptSmsData = shell.acceptSmsBridgeData === true;
+    }
+    return out;
+}

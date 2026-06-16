@@ -8,6 +8,7 @@ import type { AppSettings } from "com/other/config/SettingsTypes";
 import {
     applyAirpadRuntimeFromAppSettings,
     getRemoteHost,
+    isClipboardHubBootstrapEnabled,
     isMaintainHubSocketConnectionEnabled,
     isPreferNativeWebsocketEnabled
 } from "views/airpad/config/config";
@@ -25,7 +26,7 @@ function nativeShellOwnsExclusiveHubWebsocket(): boolean {
 
 function shouldRunHubRecovery(): boolean {
     if (nativeShellOwnsExclusiveHubWebsocket()) return false;
-    if (!isMaintainHubSocketConnectionEnabled()) return false;
+    if (!isMaintainHubSocketConnectionEnabled() && !isClipboardHubBootstrapEnabled()) return false;
     if (!getRemoteHost().trim()) return false;
     return true;
 }
@@ -118,7 +119,7 @@ export async function applyHubSocketFromSettings(settings: AppSettings): Promise
         return;
     }
 
-    if (!isMaintainHubSocketConnectionEnabled()) {
+    if (!isMaintainHubSocketConnectionEnabled() && !isClipboardHubBootstrapEnabled()) {
         // Do not disconnect: user may still use a manual AirPad "WS" connection.
         return;
     }

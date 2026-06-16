@@ -354,8 +354,12 @@ async function applyIncomingClipboardText(text: string, meta?: { source?: string
         await writeClipboardTextToDevice(t);
         lastClipboardWrittenFromRemote = t;
         lastClipboardPushSent = t;
-    } catch {
-        // WebView may block clipboard without gesture
+    } catch (error) {
+        console.warn("[cwsp:clipboard] device write failed", {
+            length: t.length,
+            source: meta?.source,
+            error: describeError(error)
+        });
     }
 }
 
@@ -367,14 +371,37 @@ function safeJson(value: unknown): string {
     }
 }
 
-const extractClipboardText = (value: any): string => {
+const extractClipboardText = (value: unknown): string => {
     if (typeof value === "string") return value;
     if (!value || typeof value !== "object") return "";
-    if (typeof value.text === "string") return value.text;
-    if (typeof value.content === "string") return value.content;
-    if (typeof value.data === "string") return value.data;
-    if (typeof value.result === "string") return value.result;
+    const record = value as Record<string, unknown>;
+    for (const key of ["text", "content", "body"] as const) {
+        const direct = record[key];
+        if (typeof direct === "string") return direct;
+    }
+    if (typeof record.result === "string") return record.result;
+    const nested = record.payload ?? record.data;
+    if (nested && nested !== value) {
+        const inner = extractClipboardText(nested);
+        if (inner) return inner;
+    }
     return "";
+};
+
+const isInboundClipboardWhat = (what: string): boolean => {
+    const normalized = String(what || "").trim().toLowerCase();
+    return (
+        normalized === "clipboard:update" ||
+        normalized === "clipboard:write" ||
+        normalized.startsWith("airpad:clipboard:")
+    );
+};
+
+const extractClipboardTextFromPacket = (packet: CoordinatorPacket): string => {
+    const payload = packet.payload ?? packet.data ?? packet.result ?? packet.results;
+    const fromPayload = extractClipboardText(payload);
+    if (fromPayload) return fromPayload;
+    return extractClipboardText(packet);
 };
 
 const getCoordinatorPacketSenderId = (packet: unknown): string => {
@@ -591,13 +618,17 @@ const handleCoordinatorPacket = async (packet: CoordinatorPacket): Promise<void>
         return;
     }
 
-    if (what === "clipboard:update") {
+    if (isInboundClipboardWhat(what)) {
         if (!isClipboardSenderAllowedForInbound(getCoordinatorPacketSenderId(packet))) {
             return;
         }
-        const clipboardPayload = packet.result ?? packet.results ?? packet.payload;
-        const text = extractClipboardText(clipboardPayload);
-        void applyIncomingClipboardText(text, { source: clipboardPayload?.source });
+        const clipboardPayload = packet.payload ?? packet.data ?? packet.result ?? packet.results;
+        const text = extractClipboardTextFromPacket(packet);
+        void applyIncomingClipboardText(text, {
+            source: typeof clipboardPayload === "object" && clipboardPayload
+                ? String((clipboardPayload as Record<string, unknown>).source || "")
+                : undefined
+        });
     }
 };
 
@@ -1649,7 +1680,7 @@ export function connectWS() {
             if (!isClipboardSenderAllowedForInbound(sender)) {
                 return;
             }
-            const text = extractClipboardText(decoded);
+            const text = extractClipboardTextFromPacket(decoded as CoordinatorPacket);
             void applyIncomingClipboardText(text, { source: decoded?.source });
         });
         socket.on("data", async (packet: any) => {

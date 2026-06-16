@@ -228,12 +228,13 @@ export const isElectronCwsNativeShell = (): boolean => {
 /** Report whether frontend code can rely on native IPC instead of web-only fallbacks. */
 export const isCwsNativeIpcAvailable = (): boolean => {
     if (isElectronCwsNativeShell()) return true;
-    if (!isCapacitorCwsNativeShell()) return false;
+    // WHY: Capacitor CWSAndroid always has a native bridge once CwsBridgePlugin is registered.
+    if (isCapacitorCwsNativeShell()) return true;
     try {
         const shell = globalThis.window?.__CWS_SHELL_INFO__;
         return Boolean(shell?.native);
     } catch {
-        return true;
+        return false;
     }
 };
 
@@ -278,11 +279,21 @@ export async function invokeCwsPlatformIPC(input: CwsNativeIpcInput): Promise<Cw
             envelope: normalizeInvokeResultEnvelope(channel, payload, result)
         };
     }
-    const result = await CwsBridge.invoke({ channel, payload, envelope });
-    return {
-        ...result,
-        envelope: normalizeInvokeResultEnvelope(channel, payload, result)
-    };
+    try {
+        const result = await CwsBridge.invoke({ channel, payload, envelope });
+        return {
+            ...result,
+            envelope: normalizeInvokeResultEnvelope(channel, payload, result)
+        };
+    } catch (error) {
+        console.warn("[cws-bridge] native invoke failed, using web fallback:", error);
+        const web = new CwsBridgeWeb();
+        const result = await web.invoke({ channel, payload, envelope });
+        return {
+            ...result,
+            envelope: normalizeInvokeResultEnvelope(channel, payload, result)
+        };
+    }
 }
 
 export async function getNativeUnifiedSettings(): Promise<Record<string, unknown> | null> {
@@ -298,7 +309,35 @@ export async function getNativeUnifiedSettings(): Promise<Record<string, unknown
 /** Patch native-side settings through the same bridge used by transport/runtime configuration. */
 export async function patchNativeUnifiedSettings(appSettings: Record<string, unknown>): Promise<boolean> {
     try {
-        const result = await invokeCwsPlatformIPC({ channel: "settings:patch", payload: { appSettings } });
+        const {
+            AIRPAD_REMOTE_CONFIG_STORAGE_KEY,
+            CWSP_REMOTE_CONFIG_SYNC_CHANNEL,
+            appSettingsShellToNativeExtras,
+            appSettingsToRemoteConnectionV1,
+            stringifyCwspRemoteConnectionV1
+        } = await import("../../../runtime/airpad-cwsp-client-parity");
+
+        const blob = appSettingsToRemoteConnectionV1(appSettings);
+        const airpadJson = stringifyCwspRemoteConnectionV1(blob);
+        const shellPatch = appSettingsShellToNativeExtras(appSettings);
+
+        try {
+            globalThis.localStorage?.setItem?.(AIRPAD_REMOTE_CONFIG_STORAGE_KEY, airpadJson);
+        } catch {
+            /* WebView storage optional */
+        }
+        try {
+            const ch = new BroadcastChannel(CWSP_REMOTE_CONFIG_SYNC_CHANNEL);
+            ch.postMessage({ airpadJson, shellPatch });
+            ch.close();
+        } catch {
+            /* optional */
+        }
+
+        const result = await invokeCwsPlatformIPC({
+            channel: "settings:patch",
+            payload: { appSettings, airpadJson, shellPatch }
+        });
         return Boolean(result?.ok);
     } catch {
         return false;

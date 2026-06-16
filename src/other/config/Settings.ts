@@ -7,6 +7,118 @@ import { writeFileSmart } from "fest/lure";
 
 //
 export const SETTINGS_KEY = "rs-settings";
+/** localStorage mirror for Capacitor WebView when IndexedDB is flaky or empty. */
+export const SETTINGS_LS_MIRROR_KEY = "rs-settings.v1";
+
+export type LoadSettingsOptions = {
+    /** When false, skip merging native ApplicationSettings overlay (use before save merge). */
+    nativeOverlay?: boolean;
+};
+
+const trimSetting = (v: unknown): string => (typeof v === "string" ? v.trim() : "");
+
+const isCapacitorNativeShell = (): boolean => {
+    try {
+        const c = (globalThis as { Capacitor?: { isNativePlatform?: () => boolean } }).Capacitor;
+        return typeof c?.isNativePlatform === "function" && Boolean(c.isNativePlatform());
+    } catch {
+        return false;
+    }
+};
+
+const readLocalStorageSettingsMirror = (): unknown | null => {
+    try {
+        const raw = globalThis.localStorage?.getItem?.(SETTINGS_LS_MIRROR_KEY);
+        if (!raw) return null;
+        return JSON.parse(raw) as unknown;
+    } catch {
+        return null;
+    }
+};
+
+const writeLocalStorageSettingsMirror = (value: unknown): boolean => {
+    try {
+        globalThis.localStorage?.setItem?.(SETTINGS_LS_MIRROR_KEY, JSON.stringify(value));
+        return true;
+    } catch {
+        return false;
+    }
+};
+
+/** Only apply native fields that carry a non-empty value — empty bridge rows must not wipe IDB. */
+const mergeNativeSettingsOverlay = (
+    base: AppSettings,
+    native: Partial<AppSettings> | null | undefined
+): AppSettings => {
+    if (!native || typeof native !== "object") return base;
+    const patch: Partial<AppSettings> = {};
+    const corePatch: NonNullable<Partial<AppSettings>["core"]> = {};
+    let touched = false;
+
+    const ep = trimSetting(native.core?.endpointUrl);
+    if (ep) {
+        corePatch.endpointUrl = ep;
+        touched = true;
+    }
+    const userId = trimSetting(native.core?.userId);
+    if (userId) {
+        corePatch.userId = userId;
+        touched = true;
+    }
+    const userKey = trimSetting(native.core?.userKey);
+    if (userKey) {
+        corePatch.userKey = userKey;
+        touched = true;
+    }
+    const appClientId = trimSetting(native.core?.appClientId);
+    if (appClientId) {
+        corePatch.appClientId = appClientId;
+        touched = true;
+    }
+
+    const socketPatch: NonNullable<Partial<AppSettings>["core"]>["socket"] = {};
+    let socketTouched = false;
+    const routeTarget = trimSetting(native.core?.socket?.routeTarget);
+    if (routeTarget) {
+        socketPatch.routeTarget = routeTarget;
+        socketTouched = true;
+    }
+    const accessToken = trimSetting(native.core?.socket?.accessToken);
+    if (accessToken) {
+        socketPatch.accessToken = accessToken;
+        socketTouched = true;
+    }
+    const clientAccessToken = trimSetting(native.core?.socket?.clientAccessToken);
+    if (clientAccessToken) {
+        socketPatch.clientAccessToken = clientAccessToken;
+        socketTouched = true;
+    }
+    if (socketTouched) {
+        corePatch.socket = socketPatch;
+        touched = true;
+    }
+
+    const shellPatch: Partial<NonNullable<AppSettings["shell"]>> = {};
+    let shellTouched = false;
+    const shareDest = trimSetting(native.shell?.clipboardShareDestinationIds);
+    if (shareDest) {
+        shellPatch.clipboardShareDestinationIds = shareDest;
+        shellTouched = true;
+    }
+    const inboundAllow = trimSetting(native.shell?.clipboardInboundAllowIds);
+    if (inboundAllow) {
+        shellPatch.clipboardInboundAllowIds = inboundAllow;
+        shellTouched = true;
+    }
+    if (shellTouched) {
+        patch.shell = shellPatch;
+        touched = true;
+    }
+
+    if (!touched) return base;
+    patch.core = corePatch;
+    return mergeAppSettingsShape(base, patch);
+};
 
 //
 export const splitPath = (path: string) => path.split(".");
@@ -168,7 +280,7 @@ export const idbGetSettings = async (key: string = SETTINGS_KEY): Promise<any> =
     try {
         if (hasChromeStorage()) {
             console.log("[Settings] Using chrome.storage.local for get");
-            return new Promise((res) => {
+            const chromeValue = await new Promise<any>((res) => {
                 try {
                     chrome.storage.local.get([key], (result) => {
                         if (chrome.runtime.lastError) {
@@ -184,71 +296,90 @@ export const idbGetSettings = async (key: string = SETTINGS_KEY): Promise<any> =
                     res(null);
                 }
             });
+            if (chromeValue != null) return chromeValue;
         }
 
-        // Check if indexedDB is available
-        if (typeof indexedDB === "undefined") {
+        if (typeof indexedDB !== "undefined") {
+            console.log("[Settings] Using IndexedDB for get");
+            const db = await idbOpen();
+            const idbValue = await new Promise<any>((res, rej) => {
+                const tx = db.transaction(STORE, "readonly");
+                const req = tx.objectStore(STORE).get(key);
+                req.onsuccess = () => {
+                    console.log("[Settings] IndexedDB get success, has data:", !!req.result?.value);
+                    res(req.result?.value);
+                    db.close();
+                };
+                req.onerror = () => {
+                    console.warn("[Settings] IndexedDB get error:", req.error);
+                    rej(req.error);
+                    db.close();
+                };
+            });
+            if (idbValue != null) return idbValue;
+        } else {
             console.warn("[Settings] IndexedDB not available");
-            return null;
         }
-
-        console.log("[Settings] Using IndexedDB for get");
-        const db = await idbOpen();
-        return new Promise((res, rej) => {
-            const tx = db.transaction(STORE, 'readonly');
-            const req = tx.objectStore(STORE).get(key);
-            req.onsuccess = () => {
-                console.log("[Settings] IndexedDB get success, has data:", !!req.result?.value);
-                res(req.result?.value);
-                db.close();
-            }
-            req.onerror = () => {
-                console.warn("[Settings] IndexedDB get error:", req.error);
-                rej(req.error);
-                db.close();
-            };
-        });
     } catch (e) {
         console.warn("[Settings] Settings storage access failed:", e);
-        return null;
     }
+
+    const mirror = readLocalStorageSettingsMirror();
+    if (mirror != null) {
+        console.log("[Settings] Using localStorage mirror fallback for get");
+        return mirror;
+    }
+    return null;
 }
 
 //
 export const idbPutSettings = async (value: any, key: string = SETTINGS_KEY): Promise<void> => {
-    try {
-        if (hasChromeStorage()) {
-            return new Promise((res, rej) => {
-                try {
-                    chrome.storage.local.set({ [key]: value }, () => {
-                        if (chrome.runtime.lastError) {
-                            rej(chrome.runtime.lastError);
-                        } else {
-                            res();
-                        }
-                    });
-                } catch (e) {
-                    console.warn("chrome.storage write failed:", e);
-                    rej(e);
-                }
-            });
-        }
+    let idbOk = false;
+    let lsOk = false;
 
-        // Check if indexedDB is available
+    if (hasChromeStorage()) {
+        await new Promise<void>((res, rej) => {
+            try {
+                chrome.storage.local.set({ [key]: value }, () => {
+                    if (chrome.runtime.lastError) {
+                        rej(chrome.runtime.lastError);
+                    } else {
+                        res();
+                    }
+                });
+            } catch (e) {
+                rej(e);
+            }
+        });
+        return;
+    }
+
+    lsOk = writeLocalStorageSettingsMirror(value);
+
+    try {
         if (typeof indexedDB === "undefined") {
-            console.warn("IndexedDB not available");
+            if (!lsOk && isCapacitorNativeShell()) {
+                throw new Error("Settings storage unavailable (no IndexedDB or localStorage)");
+            }
             return;
         }
 
         const db = await idbOpen();
-        return new Promise((res, rej) => {
+        await new Promise<void>((res, rej) => {
             const tx = db.transaction(STORE, 'readwrite');
             tx.objectStore(STORE).put({ key, value });
-            tx.oncomplete = () => { res(void 0); db.close(); };
+            tx.oncomplete = () => { idbOk = true; res(); db.close(); };
             tx.onerror = () => { rej(tx.error); db.close(); };
         });
     } catch (e) {
-        console.warn("Settings storage write failed:", e);
+        console.warn("[Settings] IndexedDB write failed:", e);
+        if (!lsOk && isCapacitorNativeShell()) {
+            throw new Error("Settings could not be saved (IndexedDB and localStorage failed)");
+        }
+    }
+
+    if (!idbOk && lsOk) {
+        console.log("[Settings] persisted to localStorage mirror (IndexedDB skipped or failed)");
     }
 }
 
@@ -308,9 +439,12 @@ export const shouldDeferCrxHubSocketBootstrap = async (settings: AppSettings): P
 };
 
 //
-export const loadSettings = async (): Promise<AppSettings> => {
+export const loadSettings = async (opts?: LoadSettingsOptions): Promise<AppSettings> => {
     try {
-        const raw = await idbGetSettings();
+        let raw = await idbGetSettings();
+        if (raw == null) {
+            raw = readLocalStorageSettingsMirror();
+        }
         const stored = typeof raw === "string" ? JSOX.parse(raw) as any : raw;
 
         console.log("[Settings] loadSettings - raw type:", typeof raw, "stored type:", typeof stored);
@@ -378,15 +512,19 @@ export const loadSettings = async (): Promise<AppSettings> => {
             };
 
             // CWSAndroid bridge may expose canonical native settings projection.
+            // WHY: On Capacitor WebView, IDB/localStorage is the Settings UI source of truth;
+            // native prefs are a downstream sink — overlaying stale native values wipes saved fields.
             try {
-                const { getNativeUnifiedSettings, isCwsNativeIpcAvailable } = await import("../../routing/native/cws-bridge");
-                if (isCwsNativeIpcAvailable()) {
-                    const nativeSettings = await getNativeUnifiedSettings();
-                    if (nativeSettings && typeof nativeSettings === "object") {
-                        result = mergeAppSettingsShape(
-                            result as AppSettings,
-                            nativeSettings as Partial<AppSettings>
-                        );
+                if (opts?.nativeOverlay !== false && !isCapacitorNativeShell()) {
+                    const { getNativeUnifiedSettings, isCwsNativeIpcAvailable } = await import("../../routing/native/cws-bridge");
+                    if (isCwsNativeIpcAvailable()) {
+                        const nativeSettings = await getNativeUnifiedSettings();
+                        if (nativeSettings && typeof nativeSettings === "object") {
+                            result = mergeNativeSettingsOverlay(
+                                result as AppSettings,
+                                nativeSettings as Partial<AppSettings>
+                            );
+                        }
                     }
                 }
             } catch {
@@ -411,7 +549,7 @@ export const loadSettings = async (): Promise<AppSettings> => {
 
 //
 export const saveSettings = async (settings: AppSettings) => {
-    const current = await loadSettings();
+    const current = await loadSettings({ nativeOverlay: false });
 
     // For arrays and special fields, prefer explicit values from settings,
     // then fall back to current, then to defaults.
@@ -532,12 +670,23 @@ export const saveSettings = async (settings: AppSettings) => {
     };
     await idbPutSettings(merged);
     try {
-        const { patchNativeUnifiedSettings, isCwsNativeIpcAvailable } = await import("../../routing/native/cws-bridge");
+        const { initCwsNativeBridge, patchNativeUnifiedSettings, isCwsNativeIpcAvailable } = await import("../../routing/native/cws-bridge");
         if (isCwsNativeIpcAvailable()) {
-            void patchNativeUnifiedSettings(merged as unknown as Record<string, unknown>);
+            await initCwsNativeBridge().catch(() => null);
+            const patched = await patchNativeUnifiedSettings(merged as unknown as Record<string, unknown>);
+            if (!patched) {
+                console.warn("[Settings] native settings patch did not confirm ok");
+            }
         }
-    } catch {
-        // bridge optional
+    } catch (e) {
+        console.warn("[Settings] native settings patch failed:", e);
+    }
+    try {
+        const { applyAirpadRuntimeFromAppSettings, syncAirpadRemoteConfigFromAppSettings } = await import("views/airpad/config/config");
+        applyAirpadRuntimeFromAppSettings(merged);
+        syncAirpadRemoteConfigFromAppSettings(merged, { persist: true });
+    } catch (e) {
+        console.warn("[Settings] AirPad runtime sync failed:", e);
     }
     updateWebDavSettings(merged)?.catch?.(console.warn.bind(console));
     return merged;

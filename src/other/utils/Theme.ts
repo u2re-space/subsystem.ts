@@ -143,8 +143,8 @@ export const syncBrowserChromeTheme = (
 };
 
 //
-export const applyTheme = (settings: AppSettings) => {
-    if (typeof document === "undefined") {
+export const applyTheme = (settings: AppSettings | null | undefined) => {
+    if (typeof document === "undefined" || !settings) {
         // Service worker/offscreen-like runtimes have no DOM. Keep this a no-op.
         return;
     }
