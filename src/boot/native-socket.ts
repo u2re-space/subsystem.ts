@@ -1,52 +1,78 @@
+export type NativeWsSocketOptions = {
+    query?: Record<string, unknown>;
+    auth?: Record<string, unknown>;
+    timeout?: number;
+};
+
+const appendParams = (target: URL, params: unknown): void => {
+    if (!params || typeof params !== "object") return;
+    for (const [key, value] of Object.entries(params as Record<string, unknown>)) {
+        if (!key || value === undefined || value === null || value === "") continue;
+        target.searchParams.set(key, String(value));
+    }
+};
+
+/**
+ * Normalize user-entered endpoint origins and old `/socket.io` URLs to the native
+ * CWSP websocket endpoint while preserving route/auth query metadata.
+ */
+export function normalizeWsEndpointUrl(
+    rawUrl: string,
+    query?: Record<string, unknown>,
+    auth?: Record<string, unknown>
+): string {
+    const urlObj = new URL(rawUrl.includes("://") ? rawUrl : `https://${rawUrl}`);
+    if (urlObj.protocol === "http:") urlObj.protocol = "ws:";
+    else if (urlObj.protocol === "https:") urlObj.protocol = "wss:";
+    else if (urlObj.protocol !== "ws:" && urlObj.protocol !== "wss:") {
+        urlObj.protocol = "wss:";
+    }
+    if (!urlObj.pathname || urlObj.pathname === "/" || /^\/socket\.io\/?$/i.test(urlObj.pathname)) {
+        urlObj.pathname = "/ws";
+    }
+    for (const staleKey of ["EIO", "transport", "sid"]) {
+        urlObj.searchParams.delete(staleKey);
+    }
+    appendParams(urlObj, query);
+    appendParams(urlObj, auth);
+    return urlObj.toString();
+}
+
 export class NativeSocket {
     public connected = false;
+    public connecting = false;
     public id = "";
     private ws: WebSocket | null = null;
     private listeners = new Map<string, Set<(...args: any[]) => void>>();
-    private connectTimeout: any;
+    private connectTimeout: ReturnType<typeof setTimeout> | undefined;
 
-    constructor(private url: string, private options: any) {
+    constructor(private url: string, private options: NativeWsSocketOptions = {}) {
         this.connect();
     }
 
     private connect() {
         try {
-            // Build query string from options
-            const urlObj = new URL(this.url);
-            if (this.options.query) {
-                for (const [key, value] of Object.entries(this.options.query)) {
-                    urlObj.searchParams.set(key, String(value));
-                }
-            }
-            if (this.options.auth) {
-                for (const [key, value] of Object.entries(this.options.auth)) {
-                    urlObj.searchParams.set(key, String(value));
-                }
-            }
-
-            // Change http/https to ws/wss
-            if (urlObj.protocol === "http:") urlObj.protocol = "ws:";
-            if (urlObj.protocol === "https:") urlObj.protocol = "wss:";
-
-            // Ensure path is /ws
-            if (!urlObj.pathname || urlObj.pathname === "/") {
-                urlObj.pathname = "/ws";
-            }
-
-            this.ws = new WebSocket(urlObj.toString());
+            const endpointUrl = normalizeWsEndpointUrl(this.url, this.options.query, this.options.auth);
+            this.connecting = true;
+            this.ws = new WebSocket(endpointUrl);
 
             this.ws.onopen = () => {
                 this.connected = true;
+                this.connecting = false;
+                if (this.connectTimeout) clearTimeout(this.connectTimeout);
                 this.emitLocal("connect");
             };
 
             this.ws.onclose = (event) => {
                 this.connected = false;
+                this.connecting = false;
+                if (this.connectTimeout) clearTimeout(this.connectTimeout);
                 this.emitLocal("disconnect", event.reason || "closed");
                 this.emitLocal("close", event.code, event.reason);
             };
 
             this.ws.onerror = (error) => {
+                this.connecting = false;
                 this.emitLocal("connect_error", new Error("WebSocket error"));
                 this.emitLocal("error", error);
             };
@@ -55,6 +81,7 @@ export class NativeSocket {
                 try {
                     const data = JSON.parse(event.data);
                     if (data.event && data.payload) {
+                        // COMPAT: old generated files may still wrap inbound frames as {event,payload}.
                         this.emitLocal(data.event, data.payload);
                     } else {
                         this.emitLocal("data", data);
@@ -67,12 +94,14 @@ export class NativeSocket {
             if (this.options.timeout) {
                 this.connectTimeout = setTimeout(() => {
                     if (!this.connected) {
+                        this.connecting = false;
                         this.ws?.close();
                         this.emitLocal("connect_error", new Error("timeout"));
                     }
                 }, this.options.timeout);
             }
         } catch (err) {
+            this.connecting = false;
             setTimeout(() => this.emitLocal("connect_error", err), 0);
         }
     }
@@ -88,16 +117,15 @@ export class NativeSocket {
         this.listeners.get(event)?.delete(listener);
     }
 
-    emit(event: string, ...args: any[]) {
-        if (event === "data" || event === "message") {
-            if (this.connected && this.ws) {
-                this.ws.send(typeof args[0] === "string" ? args[0] : JSON.stringify(args[0]));
-            }
-        } else {
-            if (this.connected && this.ws) {
-                this.ws.send(JSON.stringify({ event, payload: args[0] }));
-            }
+    send(packet: unknown): void {
+        if (this.connected && this.ws) {
+            this.ws.send(typeof packet === "string" ? packet : JSON.stringify(packet));
         }
+    }
+
+    /** @deprecated Prefer send(packet); kept so old callers still compile. */
+    emit(_event: string, ...args: any[]) {
+        this.send(args[0]);
     }
 
     private emitLocal(event: string, ...args: any[]) {
@@ -120,6 +148,7 @@ export class NativeSocket {
             this.ws = null;
         }
         this.connected = false;
+        this.connecting = false;
     }
 
     disconnect() {
@@ -129,6 +158,9 @@ export class NativeSocket {
 
 export { NativeSocket as Socket };
 
-export function io(url: string, options: any): NativeSocket {
+export function createWsSocket(url: string, options?: NativeWsSocketOptions): NativeSocket {
     return new NativeSocket(url, options);
 }
+
+/** @deprecated Use createWsSocket. */
+export const io = createWsSocket;

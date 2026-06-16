@@ -11,7 +11,7 @@
  * restrictions differ, especially Chromium extension pages versus normal tabs.
  */
 
-import { io, Socket } from './native-socket';
+import { createWsSocket, Socket } from './native-socket';
 import { log, getWsStatusEl } from "views/airpad/utils/utils";
 import {
     getRemoteHost,
@@ -55,14 +55,14 @@ let connectAttemptId = 0;
 const activeProbeSockets = new Set<Socket>();
 let manualDisconnectRequested = false;
 let autoReconnectAttempts = 0;
+let autoReconnectTimer: ReturnType<typeof globalThis.setTimeout> | null = null;
 type WSConnectCandidate = {
     url: string;
     protocol: 'http' | 'https';
     host: string;
     source: 'remote' | 'page';
     port: string;
-    useWebSocketOnly: boolean;
-    preferPollingFirst: boolean;
+    privateLanHint: boolean;
 };
 let lastWsCandidates: WSConnectCandidate[] = [];
 let nextWsCandidateOffset = 0;
@@ -80,6 +80,22 @@ const AIRPAD_VERBOSE_QUERY_KEY = "CWS_AIRPAD_VERBOSE_QUERY";
 /** Coordinator ask/act wait — was 12s, tighter for snappier UI. */
 const AIRPAD_COORDINATOR_TIMEOUT_MS = 8000;
 
+const clearAutoReconnectTimer = (): void => {
+    if (!autoReconnectTimer) return;
+    globalThis.clearTimeout(autoReconnectTimer);
+    autoReconnectTimer = null;
+};
+
+type ProbeSocketWithTimer = Socket & { __cwspProbeTimer?: ReturnType<typeof globalThis.setTimeout> };
+
+const clearProbeTimer = (socketWithTimer: Socket): void => {
+    const probe = socketWithTimer as ProbeSocketWithTimer;
+    if (probe.__cwspProbeTimer) {
+        globalThis.clearTimeout(probe.__cwspProbeTimer);
+        delete probe.__cwspProbeTimer;
+    }
+};
+
 /** CWSP v2 transport / route hint query keys (canonical `cwsp_*`; see network stack spec). */
 const CWSP_ROUTE_QUERY = {
     via: "cwsp_via",
@@ -93,20 +109,6 @@ const CWSP_ROUTE_QUERY = {
     viaPort: "cwsp_via_port",
     protocol: "cwsp_protocol"
 } as const;
-
-/**
- * Chrome/Edge MV3: content-script XHR (Engine.IO polling) to LAN often fails with
- * `xhr poll error` / `unsafeHeaders` / `net::ERR_FAILED` while `wss:` still works.
- * Normal tabs keep polling-first for Private Network Access; extension skips polling to private IPs.
- */
-const isChromiumExtensionRuntime = (): boolean => {
-    try {
-        const chromeApi = (globalThis as unknown as { chrome?: { runtime?: { id?: string } } }).chrome;
-        return typeof chromeApi?.runtime?.id === "string" && chromeApi.runtime.id.length > 0;
-    } catch {
-        return false;
-    }
-};
 
 const shouldUseVerboseAirpadQuery = (): boolean => {
     try {
@@ -188,13 +190,14 @@ type CoordinatorPacket = {
     [key: string]: unknown;
 };
 
-const FRAME_PROTOCOL_SOCKET = "socket";
-const LEGACY_SOCKET_TRANSPORT = "ws";
+const FRAME_PROTOCOL_WS = "ws";
+const WS_TRANSPORT = "ws";
 
 const normalizeCoordinatorProtocol = (value: unknown): string => {
     const raw = String(value || "").trim().toLowerCase();
-    if (!raw) return FRAME_PROTOCOL_SOCKET;
-    if (raw === "ws" || raw === "wss" || raw === "socket.io" || raw === "socketio") return FRAME_PROTOCOL_SOCKET;
+    if (!raw) return FRAME_PROTOCOL_WS;
+    // COMPAT: old settings may still say socket.io; the active web rail is native /ws.
+    if (raw === "ws" || raw === "wss" || raw === "socket" || raw === "socket.io" || raw === "socketio") return FRAME_PROTOCOL_WS;
     return raw;
 };
 
@@ -401,12 +404,6 @@ const describeError = (error: unknown): string => {
     return safeJson(error);
 };
 
-type EngineLike = {
-    on?: (event: string, listener: (...args: unknown[]) => void) => void;
-    off?: (event: string, listener: (...args: unknown[]) => void) => void;
-    transport?: { name?: string };
-};
-
 function getTransportMode(): AirPadTransportMode {
     return getAirPadTransportMode() === "secure" ? "secure" : "plaintext";
 }
@@ -496,8 +493,6 @@ const mapFrameOpToRuntimeOp = (value: CoordinatorPacket["op"]): CoordinatorPacke
 };
 
 const mapRuntimeOpToFrameOp = (value: CoordinatorPacket["op"]): CoordinatorPacket["op"] => {
-    if (value === "ask") return "request";
-    if (value === "result" || value === "resolve") return "response";
     return value;
 };
 
@@ -528,7 +523,7 @@ const toCanonicalCoordinatorPacket = (packet: CoordinatorPacket): CoordinatorPac
         op: mapRuntimeOpToFrameOp(packet.op),
         type: String(packet.type || packet.what || "").trim() || packet.what,
         protocol: normalizeCoordinatorProtocol(packet.protocol),
-        transport: String(packet.transport || LEGACY_SOCKET_TRANSPORT).trim() || LEGACY_SOCKET_TRANSPORT,
+        transport: String(packet.transport || WS_TRANSPORT).trim() || WS_TRANSPORT,
         purpose: String(packet.purpose || inferPacketPurpose(String(packet.what || packet.type || ""))).trim() || "general",
         sender,
         byId,
@@ -609,7 +604,7 @@ const handleCoordinatorPacket = async (packet: CoordinatorPacket): Promise<void>
 /** Emit one already-built coordinator packet if the live socket is ready. */
 const emitCoordinatorPacket = (packet: CoordinatorPacket): boolean => {
     if (!socket || !socket.connected) return false;
-    socket.emit("data", toCanonicalCoordinatorPacket(packet));
+    socket.send(toCanonicalCoordinatorPacket(packet));
     return true;
 };
 
@@ -631,8 +626,8 @@ const buildCoordinatorPacket = (
         what,
         type: what,
         purpose: inferPacketPurpose(what),
-        protocol: FRAME_PROTOCOL_SOCKET,
-        transport: LEGACY_SOCKET_TRANSPORT,
+        protocol: FRAME_PROTOCOL_WS,
+        transport: WS_TRANSPORT,
         payload,
         nodes: options.nodes ?? getCoordinatorNodes(),
         destinations: options.nodes ?? getCoordinatorNodes(),
@@ -768,7 +763,7 @@ const wrapObjectForTransport = async (payload: any): Promise<any> => {
 
 const emitPayload = (value: any): void => {
     if (!socket || !socket.connected) return;
-    socket.emit("message", value);
+    socket.send(value);
 };
 
 const emitSignedObjectMessage = async (payload: any): Promise<void> => {
@@ -1102,13 +1097,13 @@ function handleServerMessage(msg: any) {
 /**
  * Tear down the hub transport and immediately run a fresh {@link connectWS} probe.
  * Used when the PWA returns from background / bfcache: OS often kills WebSockets while
- * Socket.IO still reports `connected` until a failed send, so a soft resume reconnect
- * restores endpoint clipboard/coordinator without requiring a manual WS tap.
+ * a soft resume reconnect restores endpoint clipboard/coordinator without requiring a manual WS tap.
  */
 export function reconnectTransportAfterLifecycleResume(reason: string): void {
     if (typeof window === "undefined") return;
     logWsState("lifecycle-reconnect", reason);
     stopClipboardPushLoop();
+    clearAutoReconnectTimer();
     connectAttemptId += 1;
     manualDisconnectRequested = false;
     for (const [uuid, pending] of coordinatorPending.entries()) {
@@ -1117,6 +1112,7 @@ export function reconnectTransportAfterLifecycleResume(reason: string): void {
         coordinatorPending.delete(uuid);
     }
     for (const probe of [...activeProbeSockets]) {
+        clearProbeTimer(probe);
         probe.removeAllListeners();
         probe.close();
         activeProbeSockets.delete(probe);
@@ -1148,6 +1144,7 @@ export function connectWS() {
     if (isConnecting) return;
     if (socket && (socket.connected || (socket as any).connecting)) return;
     if (activeProbeSockets.size > 0) return;
+    clearAutoReconnectTimer();
     connectAttemptId += 1;
     const attemptId = connectAttemptId;
     manualDisconnectRequested = false;
@@ -1424,24 +1421,18 @@ export function connectWS() {
                 const hostLooksPrivate = isIpv4Literal(hostBare) && isPrivateIp(hostBare);
                 const crossOriginHttpsToPrivateLan =
                     location.protocol === "https:" && !isLocalPageHost && hostLooksPrivate;
-                const inExtension = isChromiumExtensionRuntime();
                 const nativeShell = isCapacitorNativeShell();
-                // Capacitor/WebView: avoid Engine.IO **polling** to LAN — XHR often fails (false "untrusted cert" UX) even when WSS works.
-                // Public PWA (e.g. u2re.space) → RFC1918: polling first lets Chrome finish LNA/PNA before WS upgrade.
-                const preferPollingFirst = !nativeShell && crossOriginHttpsToPrivateLan && !inExtension;
-                // Local/LAN page: WS-only. Extension + https + private target: WS-only. Native + private: WS-only.
-                const useWebSocketOnly =
+                const privateLanHint =
                     (nativeShell && hostLooksPrivate) ||
                     (location.protocol === "https:" && isLocalPageHost && hostLooksPrivate) ||
-                    (inExtension && crossOriginHttpsToPrivateLan && hostLooksPrivate);
+                    (crossOriginHttpsToPrivateLan && hostLooksPrivate);
                 candidates.push({
                     url: `${protocol}://${host}:${port}`,
                     protocol,
                     host,
                     source,
                     port,
-                    useWebSocketOnly,
-                    preferPollingFirst
+                    privateLanHint
                 });
             }
         }
@@ -1570,13 +1561,6 @@ export function connectWS() {
         candidate: WSConnectCandidate,
         index: number,
         url: string,
-        clientToken: string,
-        accessToken: string,
-        clientId: string,
-        peerInstanceId: string,
-        engine: EngineLike | undefined,
-        onEngineClose: (...args: unknown[]) => void,
-        onEngineError: (error: unknown) => void
     ) => {
         socket = probeSocket;
         logWsState(
@@ -1585,19 +1569,9 @@ export function connectWS() {
         );
         isConnecting = false;
         autoReconnectAttempts = 0;
+        clearAutoReconnectTimer();
         setWsStatus(true);
         startClipboardPushLoop();
-        socket.emit("hello", {
-            id: peerInstanceId || clientId,
-            byId: clientId,
-            from: clientId,
-            peerInstanceId: peerInstanceId || undefined,
-            token: clientToken || undefined,
-            userKey: clientToken || undefined,
-            accessToken: accessToken || undefined,
-            clientAccessToken: getClientAccessToken() || undefined,
-            nodes: getCoordinatorNodes()
-        });
 
         socket.on("disconnect", (reason?: string) => {
             stopClipboardPushLoop();
@@ -1605,8 +1579,6 @@ export function connectWS() {
                 "disconnected",
                 `candidate=${index + 1}/${uniqueCandidates.length} candidate_url=${url} reason=${reason || "unknown"}`
             );
-            engine?.off?.("close", onEngineClose);
-            engine?.off?.("error", onEngineError);
             isConnecting = false;
             setWsStatus(false);
             updateButtonLabel();
@@ -1639,7 +1611,9 @@ export function connectWS() {
 
             autoReconnectAttempts = attempt;
             const delay = Math.min(AUTO_RECONNECT_BASE_DELAY_MS * attempt, 5000);
-            setTimeout(() => {
+            clearAutoReconnectTimer();
+            autoReconnectTimer = globalThis.setTimeout(() => {
+                autoReconnectTimer = null;
                 if (isConnecting || wsConnected || (socket && socket.connected) || (socket as any)?.connecting) {
                     return;
                 }
@@ -1649,12 +1623,6 @@ export function connectWS() {
                 logWsState("auto-reconnect", `attempt=${attemptLabel} reason=${reason || "unknown reason"}`);
                 connectWS();
             }, delay);
-        });
-
-        socket.on("hello-ack", (data: any) => {
-            if (data?.id) {
-                log(`WebSocket hello ack: ${String(data.id)}`);
-            }
         });
 
         socket.on("connect_error", (error) => {
@@ -1739,18 +1707,10 @@ export function connectWS() {
                 index: number,
                 url: string,
                 hs: ReturnType<typeof buildHandshakeForCandidate>,
-                engine: EngineLike | undefined,
-                oec: (...args: unknown[]) => void,
-                oee: (error: unknown) => void
             ) => {
                 if (settled) return;
                 settled = true;
                 won = true;
-                const clearProbeTimer = (s: Socket) => {
-                    const t = (s as unknown as { __cwspProbeTimer?: ReturnType<typeof globalThis.setTimeout> }).__cwspProbeTimer;
-                    if (t) globalThis.clearTimeout(t);
-                    delete (s as unknown as { __cwspProbeTimer?: ReturnType<typeof globalThis.setTimeout> }).__cwspProbeTimer;
-                };
                 for (const s of [...activeProbeSockets]) {
                     if (s !== winner) {
                         clearProbeTimer(s);
@@ -1761,7 +1721,7 @@ export function connectWS() {
                 }
                 clearProbeTimer(winner);
                 activeProbeSockets.delete(winner);
-                finalizeConnectedSocket(winner, candidate, index, url, hs.clientToken, hs.accessToken, hs.clientId, hs.peerInstanceId, engine, oec, oee);
+                finalizeConnectedSocket(winner, candidate, index, url);
                 resolve(true);
             };
 
@@ -1789,47 +1749,26 @@ export function connectWS() {
                         `transport=${candidate.protocol} source=${candidate.source} host=${candidate.host}:${candidate.port} target=${targetHost}:${targetPort}`
                 );
 
-                const probeSocket = io(url, {
+                const probeSocket = createWsSocket(url, {
                     auth: handshakeAuth,
                     query: queryParams,
-                    transports: candidate.useWebSocketOnly
-                        ? ["websocket"]
-                        : candidate.preferPollingFirst
-                          ? ["polling", "websocket"]
-                          : ["websocket", "polling"],
-                    upgrade: !candidate.useWebSocketOnly,
-                    reconnection: false,
-                    timeout: AIRPAD_PROBE_IO_TIMEOUT_MS,
-                    secure: candidate.protocol === "https",
-                    forceNew: true
+                    timeout: AIRPAD_PROBE_IO_TIMEOUT_MS
                 });
-                const engine = (probeSocket as any).io?.engine as EngineLike | undefined;
-                const onEngineClose = (...args: unknown[]) => {
-                    const code = typeof args[0] === "number" ? args[0] : undefined;
-                    const reason = args.length > 1 ? args[1] : undefined;
-                    logWsState(
-                        "engine-close",
-                        `candidate=${index + 1}/${uniqueCandidates.length} candidate_url=${url} ` +
-                            `code=${code ?? "n/a"} reason=${typeof reason === "string" ? reason : safeJson(reason)} transport=${engine?.transport?.name || "unknown"}`
-                    );
-                };
-                const onEngineError = (error: unknown) => {
-                    logWsState(
-                        "engine-error",
-                        `candidate=${index + 1}/${uniqueCandidates.length} candidate_url=${url} reason=${describeError(error)}`
-                    );
-                };
-                engine?.on?.("close", onEngineClose);
-                engine?.on?.("error", onEngineError);
                 activeProbeSockets.add(probeSocket);
 
                 const hardTimer = globalThis.setTimeout(() => {
+                    if (attemptId !== connectAttemptId) {
+                        clearProbeTimer(probeSocket);
+                        probeSocket.removeAllListeners();
+                        probeSocket.close();
+                        activeProbeSockets.delete(probeSocket);
+                        return;
+                    }
                     if (won || settled || probeSocket.connected) return;
+                    clearProbeTimer(probeSocket);
                     probeSocket.removeAllListeners();
                     probeSocket.close();
                     activeProbeSockets.delete(probeSocket);
-                    engine?.off?.("close", onEngineClose);
-                    engine?.off?.("error", onEngineError);
                     logWsState("connect-failed", `candidate=${index + 1}/${uniqueCandidates.length} candidate_url=${url} reason=probe-hard-timeout`);
                     finishAllDead();
                 }, AIRPAD_PROBE_HARD_CAP_MS);
@@ -1837,31 +1776,25 @@ export function connectWS() {
                     hardTimer;
 
                 probeSocket.on("connect", () => {
-                    globalThis.clearTimeout(hardTimer);
+                    clearProbeTimer(probeSocket);
                     if (attemptId !== connectAttemptId) {
                         probeSocket.removeAllListeners();
                         probeSocket.close();
                         activeProbeSockets.delete(probeSocket);
-                        engine?.off?.("close", onEngineClose);
-                        engine?.off?.("error", onEngineError);
                         return;
                     }
                     if (won || settled) {
                         probeSocket.removeAllListeners();
                         probeSocket.close();
                         activeProbeSockets.delete(probeSocket);
-                        engine?.off?.("close", onEngineClose);
-                        engine?.off?.("error", onEngineError);
                         return;
                     }
-                    finishWin(probeSocket, candidate, index, url, hs, engine, onEngineClose, onEngineError);
+                    finishWin(probeSocket, candidate, index, url, hs);
                 });
 
                 probeSocket.on("connect_error", (error) => {
-                    globalThis.clearTimeout(hardTimer);
+                    clearProbeTimer(probeSocket);
                     activeProbeSockets.delete(probeSocket);
-                    engine?.off?.("close", onEngineClose);
-                    engine?.off?.("error", onEngineError);
                     if (won || settled) {
                         probeSocket.removeAllListeners();
                         probeSocket.close();
@@ -1872,7 +1805,7 @@ export function connectWS() {
                     const details = (error as any)?.description || (error as any)?.context || "";
                     const errorMessage = String((error as any)?.message || error || "");
                     const combinedProbeErr = `${errorMessage} ${String(details)}`;
-                    const weakEngineIoTlsSuspect =
+                    const weakWsTlsSuspect =
                         candidate.protocol === "https" &&
                         isPrivateIp(candidate.host) &&
                         /xhr poll error|websocket error/i.test(errorMessage);
@@ -1885,7 +1818,7 @@ export function connectWS() {
                     );
                     const nativeAir = isCapacitorNativeShell();
                     if (
-                        weakEngineIoTlsSuspect &&
+                        weakWsTlsSuspect &&
                         !batchTlsCertUrl &&
                         (tlsKeywordsInErr || (!nativeAir && !plainTransportFailure))
                     ) {
@@ -1908,8 +1841,8 @@ export function connectWS() {
                         }
                     }
                     if (
-                        candidate.useWebSocketOnly &&
-                        /xhr poll error|cors|private network|address space|failed fetch/i.test(errorMessage)
+                        candidate.privateLanHint &&
+                        /cors|private network|address space|failed fetch/i.test(errorMessage)
                     ) {
                         logWsState(
                             "connect-failed",
@@ -1954,9 +1887,11 @@ export function connectWS() {
 /** Stop probe sockets, tear down the primary transport, and mark the disconnect as user-requested. */
 export function disconnectWS() {
     stopClipboardPushLoop();
+    clearAutoReconnectTimer();
     connectAttemptId += 1;
     manualDisconnectRequested = true;
     for (const probe of [...activeProbeSockets]) {
+        clearProbeTimer(probe);
         probe.removeAllListeners();
         probe.close();
         activeProbeSockets.delete(probe);

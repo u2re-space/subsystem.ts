@@ -75,7 +75,7 @@ export type CwspRemoteConnectionV1 = {
     identificationToken?: string;
     /** Inbound ACL / reverse listener hint (= native `clientAccessToken`). */
     clientAccessToken?: string;
-    /** Canonical `/ws` vs Socket.IO compat (= native `wireTransport`). */
+    /** Native `/ws` transport. Deprecated `socket.io` is accepted only as a migration alias. */
     wireTransport?: "ws" | "socket.io";
     /** Legacy PWA-only fields — ignored by native converters unless mapped elsewhere. */
     host?: string;
@@ -97,11 +97,11 @@ export const AIRPAD_TO_CWS_ANDROID_FIELDS = [
     { airpadField: "accessToken", nativeField: "accessToken", note: "Unified control / route token (query + acts)" },
     { airpadField: "identificationToken", nativeField: "identificationToken", note: "Native `cwsp.token` wire identification" },
     { airpadField: "clientAccessToken", nativeField: "clientAccessToken", note: "Optional inbound / reverse ACL token" },
-    { airpadField: "wireTransport", nativeField: "wireTransport", note: "`ws` vs `socket.io`" },
+    { airpadField: "wireTransport", nativeField: "wireTransport", note: "`ws`; legacy `socket.io` migrates to `ws`" },
     { airpadField: "routeTarget", nativeField: "destinationNodeIds (+ cwsp_route_*)", note: "Probe target; native encodes in connect prep" }
 ] as const;
 
-/** Envelope profile on `/ws` query `cwspEnvelope` and Socket.IO handshake (forward-compatible v2). */
+/** Envelope profile on `/ws` query `cwspEnvelope` (forward-compatible v2). */
 export const CWSP_WIRE_ENVELOPE_V2 = "v2";
 
 /**
@@ -114,7 +114,7 @@ export const CWSP_AIRPAD_PWA_ARCHETYPE = "airpad";
 
 /** Narrow native settings shape used for import/export helpers (avoid platform deps in this module). */
 export type CwspClientSettingsWireMirror = {
-    wireTransport: "ws" | "socket.io";
+    wireTransport: "ws";
     relayHttpsUrl: string;
     directHttpsUrl: string;
     quickConnectValue: string;
@@ -138,7 +138,7 @@ export function cwspClientSettingsToRemoteConnectionV1(settings: CwspClientSetti
         peerInstanceId: trimOrUndef(settings.peerInstanceId),
         identificationToken: trimOrUndef(settings.identificationToken),
         clientAccessToken: trimOrUndef(settings.clientAccessToken),
-        wireTransport: settings.wireTransport
+        wireTransport: "ws"
     };
 }
 
@@ -162,7 +162,7 @@ export function remoteConnectionV1ToNativeSettingsPatch(blob: CwspRemoteConnecti
     if (blob.clientAccessToken !== undefined) set("clientAccessToken", String(blob.clientAccessToken || "").trim());
     if (blob.clientId !== undefined) set("associatedClientId", String(blob.clientId || "").trim());
     if (blob.peerInstanceId !== undefined) set("peerInstanceId", String(blob.peerInstanceId || "").trim());
-    if (blob.wireTransport === "ws" || blob.wireTransport === "socket.io") set("wireTransport", blob.wireTransport);
+    if (blob.wireTransport === "ws" || blob.wireTransport === "socket.io") set("wireTransport", "ws");
 
     const destProvided = blob.destinationId !== undefined;
     const rt = blob.routeTarget;
