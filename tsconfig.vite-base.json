@@ -53,22 +53,31 @@
             "boot/capacitor-permissions": ["./runtime/capacitor-permissions.ts"],
             "boot/capacitor-settings-permissions": ["./runtime/capacitor-settings-permissions.ts"],
             "boot/capacitor-share-intent": ["./runtime/capacitor-share-intent.ts"],
-            "cwsp-shared/wire-target-id": ["./runtime/wire-target-id.ts"],
+            "cwsp-shared/wire-target-id": ["../../projects/cwsp-shared/src/wire-target-id.ts"],
             "cwsp-shared/cws-client-wire-defaults": [
-                "./runtime/cws-client-wire-defaults.ts"
+                "../../projects/cwsp-shared/src/cws-client-wire-defaults.ts"
             ],
             "cwsp-shared/airpad-cwsp-client-parity": [
-                "./runtime/airpad-cwsp-client-parity.ts"
+                "../../projects/cwsp-shared/src/airpad-cwsp-client-parity.ts"
             ],
             "cwsp-shared/cwsp-endpoint-resolve": [
-                "./runtime/cwsp-endpoint-resolve.ts"
+                "../../projects/cwsp-shared/src/cwsp-endpoint-resolve.ts"
             ],
             "cwsp-shared/cwsp-binary-airpad": [
-                "./runtime/cwsp-binary-airpad.ts"
+                "../../projects/cwsp-shared/src/cwsp-binary-airpad.ts"
             ],
             "cwsp-shared/input-command-timing": [
-                "./runtime/input-command-timing.ts"
+                "../../projects/cwsp-shared/src/input-command-timing.ts"
             ],
+            "cwsp-shared/packet-wire-hash": [
+                "../../projects/cwsp-shared/src/packet-wire-hash.ts"
+            ],
+            "cwsp-shared/wire-time64": ["../../projects/cwsp-shared/src/wire-time64.ts"],
+            "cwsp-shared/clipboard-wire-constants": [
+                "../../projects/cwsp-shared/src/clipboard-wire-constants.ts"
+            ],
+            "fest/cwsp-shared": ["../../projects/cwsp-shared/src/index.ts"],
+            "fest/cwsp-shared/*": ["../../projects/cwsp-shared/src/*"],
             "veela-lib": ["../../projects/veela.css/src/scss/index.scss"],
             "veela-lib/*": ["../../projects/veela.css/src/scss/*"],
             "core/misc/config": [

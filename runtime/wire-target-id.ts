@@ -1,21 +1,2 @@
-export interface WireTargetEntry {
-    id: string;
-    label?: string;
-}
-
-export function parseWireTargetList(value: unknown): WireTargetEntry[] {
-    if (Array.isArray(value)) {
-        return value
-            .map((entry) => (typeof entry === "string" ? { id: entry.trim() } : entry as WireTargetEntry))
-            .filter((entry) => Boolean(entry?.id));
-    }
-    if (typeof value !== "string") return [];
-    return value
-        .split(/[,\s]+/)
-        .map((id) => ({ id: id.trim() }))
-        .filter((entry) => Boolean(entry.id));
-}
-
-export function wireTargetNodeIds(entries: WireTargetEntry[]): string[] {
-    return entries.map((entry) => entry.id).filter(Boolean);
-}
+/** Canonical: `fest/cwsp-shared` — re-export for legacy `subsystem/runtime` paths. */
+export * from "../../cwsp-shared/src/wire-target-id.ts";

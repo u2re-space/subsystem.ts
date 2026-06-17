@@ -5,6 +5,7 @@
 import type { PluginListenerHandle } from "@capacitor/core";
 import { registerPlugin, WebPlugin } from "@capacitor/core";
 import { createProtocolEnvelope, isProtocolEnvelope, normalizeProtocolEnvelope, type UniformProtocolEnvelope } from "fest/uniform";
+import { withTimeout } from "fest/core";
 import {
     AIRPAD_REMOTE_CONFIG_STORAGE_KEY,
     CWSP_REMOTE_CONFIG_SYNC_CHANNEL,
@@ -358,10 +359,18 @@ export async function patchNativeUnifiedSettingsDetailed(
             /* optional */
         }
 
-        const result = await invokeCwsPlatformIPC({
+        const result = await withTimeout(
+            invokeCwsPlatformIPC({
+                channel: "settings:patch",
+                payload: { appSettings, airpadJson, shellPatch }
+            }),
+            6000,
+            "settings:patch timed out"
+        ).catch((error: unknown) => ({
+            ok: false,
             channel: "settings:patch",
-            payload: { appSettings, airpadJson, shellPatch }
-        });
+            echo: { error: String(error instanceof Error ? error.message : error) }
+        }));
         if (!result?.ok) {
             const err = String((result?.echo as Record<string, unknown> | undefined)?.error ?? "settings:patch rejected");
             return { ok: false, error: err };

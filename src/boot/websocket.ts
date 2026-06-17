@@ -48,6 +48,12 @@ import {
     annotateCoordinatorPayload,
     shouldAnnotateCoordinatorPayload
 } from "cwsp-shared/input-command-timing";
+import {
+    annotatePacketWireHash,
+    inferWireDedupeCategory,
+    packetWireDedupeGuard
+} from "cwsp-shared/packet-wire-hash";
+import { annotatePacketWireTime64 } from "cwsp-shared/wire-time64";
 import { setAirpadCredentialInvalidator } from "views/airpad/credential-cache-bridge";
 import {
     isNativeCoordinatorConnected,
@@ -240,6 +246,11 @@ const flushQueuedCoordinatorActs = (): void => {
     }
 };
 
+const isRealtimeInputAct = (what: string): boolean => {
+    const normalized = String(what || "").trim().toLowerCase();
+    return normalized === "mouse:move" || normalized === "mouse:scroll";
+};
+
 const ensureCoordinatorSocketConnected = async (timeoutMs = 7000): Promise<boolean> => {
     if (shouldUseNativeCoordinatorTransport()) {
         const connected = isNativeCoordinatorConnected() || (await refreshNativeCoordinatorStatus());
@@ -306,6 +317,11 @@ export async function refreshTransportConnectionStatus(): Promise<boolean> {
     const connected = Boolean(wsConnected || socket?.connected);
     setWsStatus(connected);
     return connected;
+}
+
+/** Force UI/subscribers to disconnected when native bridge reload failed before a status refresh is trustworthy. */
+export function markTransportDisconnected(): void {
+    setWsStatus(false);
 }
 
 export function getLastServerClipboard(): string {
@@ -626,10 +642,11 @@ const toCanonicalCoordinatorPacket = (packet: CoordinatorPacket): CoordinatorPac
             ? packet.userKey
             : clientToken || undefined,
         accessToken: wireAccessToken || undefined,
-        flags: packet.flags || { canonicalV2: true },
+        flags: { ...(packet.flags as Record<string, unknown> | undefined), canonicalV2: true },
         uuid,
         timestamp: Number(packet.timestamp || 0) > 0 ? Number(packet.timestamp) : now,
     };
+    return annotatePacketWireHash(base as Record<string, unknown>) as CoordinatorPacket;
 };
 
 const handleCoordinatorPacket = async (packet: CoordinatorPacket): Promise<void> => {
@@ -670,6 +687,15 @@ const handleCoordinatorPacket = async (packet: CoordinatorPacket): Promise<void>
             });
         }
         return;
+    }
+
+    if (op === "act" && what) {
+        const category = isInboundClipboardWhat(what)
+            ? "clipboard"
+            : inferWireDedupeCategory(what);
+        if (packetWireDedupeGuard.shouldSuppress(packet as Record<string, unknown>, category)) {
+            return;
+        }
     }
 
     if (isInboundClipboardWhat(what)) {
@@ -720,7 +746,8 @@ const buildCoordinatorPacket = (
         options.accessToken !== undefined
             ? String(options.accessToken).trim() || getWireAccessToken()
             : getWireAccessToken();
-    return {
+    return annotatePacketWireHash(
+        annotatePacketWireTime64({
         op: mapRuntimeOpToFrameOp(op),
         what,
         type: what,
@@ -747,7 +774,8 @@ const buildCoordinatorPacket = (
         userKey: clientToken || undefined,
         accessToken: accessTok || undefined,
         timestamp: Date.now()
-    };
+        })
+    ) as CoordinatorPacket;
 };
 
 const getAesKey = async (secret: string): Promise<CryptoKey | null> => {
@@ -1052,6 +1080,12 @@ export function sendCoordinatorAct(
     if (emitCoordinatorPacket(packet)) {
         return true;
     }
+    if (isRealtimeInputAct(what)) {
+        // PERF: relative AirPad deltas are only useful live. Queueing them while
+        // WS reconnects causes burst replay, cursor twitching, and stale control.
+        connectWS();
+        return false;
+    }
     if (queuedCoordinatorActs.length >= MAX_QUEUED_COORDINATOR_ACTS) {
         queuedCoordinatorActs.shift();
     }
@@ -1281,6 +1315,7 @@ export function reconnectTransportAfterLifecycleResume(reason: string): void {
     (window as any).__socket = null;
     setWsStatus(false);
     autoReconnectAttempts = 0;
+    packetWireDedupeGuard.clear();
     connectWS();
 }
 
@@ -2105,5 +2140,8 @@ function handleWsConnectButtonClick() {
 
 export {
     refreshNativeCoordinatorStatus,
+    reconnectNativeCoordinatorTransport,
+    startNativeAirMouse,
+    stopNativeAirMouse,
     shouldUseNativeCoordinatorTransport
 } from "./native-coordinator-bridge";

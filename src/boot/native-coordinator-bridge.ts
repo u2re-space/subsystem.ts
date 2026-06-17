@@ -8,6 +8,7 @@
  * - coordinator:status — { connected: boolean }
  */
 import { invokeCwsNative, isCapacitorCwsNativeShell } from "com/routing/native/cws-bridge";
+import { withTimeout } from "fest/core";
 import {
     annotateCoordinatorPayload,
     shouldAnnotateCoordinatorPayload
@@ -22,17 +23,47 @@ const NATIVE_STATUS_TTL_MS = 1200;
 export const shouldUseNativeCoordinatorTransport = (): boolean =>
     nativeShellOwnsExclusiveHubWebsocket() && isCapacitorCwsNativeShell() && isPreferNativeWebsocketEnabled();
 
+const NATIVE_BRIDGE_TIMEOUT_MS = 6000;
+
 export const refreshNativeCoordinatorStatus = async (): Promise<boolean> => {
     if (!shouldUseNativeCoordinatorTransport()) {
         nativeConnectedCache = false;
         return false;
     }
     try {
-        const result = await invokeCwsNative("coordinator:status", {});
+        const result = await withTimeout(
+            invokeCwsNative("coordinator:status", {}),
+            NATIVE_BRIDGE_TIMEOUT_MS,
+            "coordinator:status timed out"
+        );
         const connected = Boolean((result.echo as { connected?: boolean })?.connected ?? result.ok);
         nativeConnectedCache = connected;
         nativeStatusCheckedAt = Date.now();
         return connected;
+    } catch {
+        nativeConnectedCache = false;
+        nativeStatusCheckedAt = Date.now();
+        return false;
+    }
+};
+
+/** After AirPad Save & Reconnect: nudge native {@code CwspRuntime.reloadSettings} when bridge supports it. */
+export const reconnectNativeCoordinatorTransport = async (): Promise<boolean> => {
+    if (!shouldUseNativeCoordinatorTransport()) return false;
+    try {
+        const result = await withTimeout(
+            invokeCwsNative("runtime:reload-settings", {}),
+            NATIVE_BRIDGE_TIMEOUT_MS,
+            "runtime:reload-settings timed out"
+        );
+        if (!result?.ok) {
+            nativeConnectedCache = false;
+            nativeStatusCheckedAt = Date.now();
+            return false;
+        }
+        nativeConnectedCache = false;
+        nativeStatusCheckedAt = 0;
+        return refreshNativeCoordinatorStatus();
     } catch {
         nativeConnectedCache = false;
         nativeStatusCheckedAt = Date.now();
@@ -62,7 +93,7 @@ export const sendNativeCoordinatorBinary = async (data: ArrayBuffer | Uint8Array
     const b64 = btoa(binary);
     try {
         const result = await invokeCwsNative("coordinator:binary", { data: b64, encoding: "base64" });
-        const sent = Boolean((result.echo as { sent?: boolean })?.sent ?? result.ok);
+        const sent = Boolean((result as { sent?: boolean })?.sent ?? (result.echo as { sent?: boolean })?.sent ?? result.ok);
         if (sent) {
             nativeConnectedCache = true;
             nativeStatusCheckedAt = Date.now();
@@ -74,6 +105,26 @@ export const sendNativeCoordinatorBinary = async (data: ArrayBuffer | Uint8Array
         return false;
     }
 };
+
+const setNativeAirMouse = async (active: boolean): Promise<boolean> => {
+    if (!shouldUseNativeCoordinatorTransport()) return false;
+    try {
+        const result = await invokeCwsNative(active ? "airmouse:start" : "airmouse:stop", {});
+        const echo = (result.echo ?? {}) as { active?: boolean };
+        const ok = Boolean(result.ok);
+        if (ok) {
+            nativeConnectedCache = true;
+            nativeStatusCheckedAt = Date.now();
+        }
+        return active ? ok && echo.active !== false : ok;
+    } catch {
+        return false;
+    }
+};
+
+export const startNativeAirMouse = (): Promise<boolean> => setNativeAirMouse(true);
+
+export const stopNativeAirMouse = (): Promise<boolean> => setNativeAirMouse(false);
 
 export const sendNativeCoordinatorDispatch = async (input: {
     op: "act" | "ask";
