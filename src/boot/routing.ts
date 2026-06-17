@@ -39,6 +39,13 @@ import {
 // ROUTE TYPES
 // ============================================================================
 
+/** Default view when URL/localStorage do not specify one (Capacitor: Network home). */
+const resolveShellDefaultView = (shell: ShellId): ViewId => {
+    if (shell === "minimal" && isEnabledView("network")) return "network";
+    if (shell === "base" || shell === "immersive" || shell === "minimal") return "viewer";
+    return "home";
+};
+
 export interface Route {
     view: ViewId;
     params?: Record<string, string>;
@@ -320,8 +327,7 @@ export const loadSubAppWithShell = async (
     initialView?: ViewId
 ): Promise<AppLoaderResult> => {
     const shell = normalizeShellPreference(shellId || getSavedShellPreference() || "minimal");
-    const shellDefaultView =
-        shell === "base" || shell === "immersive" || shell === "minimal" ? "viewer" : "home";
+    const shellDefaultView = resolveShellDefaultView(shell);
     const view = pickEnabledView(initialView || getViewFromPath() || shellDefaultView, "home");
     
     console.log('[App] Loading sub-app with shell:', shell, 'view:', view);
@@ -430,8 +436,7 @@ export function resolvePathToView(pathname: string): ViewId | null {
  */
 export function createBootConfigFromUrl(): BootConfig {
     const shell = normalizeShellPreference(getSavedShellPreference() || "minimal");
-    const shellDefaultView =
-        shell === "base" || shell === "immersive" || shell === "minimal" ? "viewer" : "home";
+    const shellDefaultView = resolveShellDefaultView(shell);
     const view = pickEnabledView(getViewFromPath() || shellDefaultView, "home");
     const params = Object.fromEntries(new URLSearchParams(location.search));
 

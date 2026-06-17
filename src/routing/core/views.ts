@@ -10,29 +10,32 @@ export const VIEW_ENABLED_HOME = "home";
 export const VIEW_ENABLED_PRINT = "print";
 /** AirPad (remote trackpad/keyboard + clipboard) — used by the Capacitor shell and PWA. */
 export const VIEW_ENABLED_AIRPAD = "airpad";
+/** CWSP connection / probe diagnostics — primary Capacitor (CWSAndroid) home view. */
+export const VIEW_ENABLED_NETWORK = "network";
 export const DEFAULT_VIEW_ID = "viewer";
 
 const VIEW_FLAGS: Record<string, string> = {
+    network: VIEW_ENABLED_NETWORK,
+    airpad: VIEW_ENABLED_AIRPAD,
+    settings: VIEW_ENABLED_SETTINGS,
     viewer: VIEW_ENABLED_VIEWER,
     editor: VIEW_ENABLED_EDITOR,
     workcenter: VIEW_ENABLED_WORKCENTER,
     explorer: VIEW_ENABLED_EXPLORER,
-    settings: VIEW_ENABLED_SETTINGS,
     history: VIEW_ENABLED_HISTORY,
     home: VIEW_ENABLED_HOME,
     print: VIEW_ENABLED_PRINT,
-    airpad: VIEW_ENABLED_AIRPAD,
 };
 
 /**
- * Optional per-build allowlist: `VITE_ENABLED_VIEWS="airpad,settings"` restricts
- * which views are enabled (e.g. the Capacitor CWSAndroid shell: AirPad + Settings
+ * Optional per-build allowlist: `VITE_ENABLED_VIEWS="network,settings"` restricts
+ * which views are enabled (e.g. the Capacitor CWSAndroid shell: Network + Settings
  * only). When unset, all flagged views are enabled. Read from Vite env first,
  * then Node env, guarded for non-bundled (tsx) contexts.
  */
 const readEnabledViewsAllowlist = (): Set<string> | null => {
     let raw = "";
-    // 1) Runtime URL query (`?views=airpad,settings`) — lets the SAME frontend
+    // 1) Runtime URL query (`?views=network,settings`) — lets the SAME frontend
     //    bundle act as the restricted Capacitor shell without a separate build.
     try {
         const search = (globalThis as any)?.location?.search;
@@ -101,7 +104,8 @@ const BUILD_VIEW_FLAGS: Record<string, boolean | undefined> = {
     history: typeof __RS_VIEW_HISTORY__ !== "undefined" ? __RS_VIEW_HISTORY__ : undefined,
     home: typeof __RS_VIEW_HOME__ !== "undefined" ? __RS_VIEW_HOME__ : undefined,
     print: typeof __RS_VIEW_PRINT__ !== "undefined" ? __RS_VIEW_PRINT__ : undefined,
-    airpad: typeof __RS_VIEW_AIRPAD__ !== "undefined" ? __RS_VIEW_AIRPAD__ : undefined
+    airpad: typeof __RS_VIEW_AIRPAD__ !== "undefined" ? __RS_VIEW_AIRPAD__ : undefined,
+    network: typeof __RS_VIEW_NETWORK__ !== "undefined" ? __RS_VIEW_NETWORK__ : undefined
 };
 
 const buildAllows = (viewId: string): boolean => BUILD_VIEW_FLAGS[String(viewId).toLowerCase()] !== false;

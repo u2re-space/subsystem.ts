@@ -66,6 +66,9 @@
             "cwsp-shared/cwsp-binary-airpad": [
                 "./runtime/cwsp-binary-airpad.ts"
             ],
+            "cwsp-shared/input-command-timing": [
+                "./runtime/input-command-timing.ts"
+            ],
             "veela-lib": ["../../projects/veela.css/src/scss/index.scss"],
             "veela-lib/*": ["../../projects/veela.css/src/scss/*"],
             "core/misc/config": [

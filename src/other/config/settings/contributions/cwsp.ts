@@ -14,7 +14,7 @@ const connectionFields = (): SettingsPanelChild[] => [
     settingsHint("Persist to IDB; on Capacitor syncs to Java prefs via CwsBridge."),
     "Connection",
     settingsTextField("Relay host (IP or domain)", "core.endpointUrl", "192.168.0.200"),
-    settingsHint("Coordinator / gateway. Port auto-discovered (8443, 443, …) when omitted."),
+    settingsHint("Coordinator / gateway. Port auto-discovered (8434, 443, …) when omitted."),
     settingsTextField("Direct host (IP or domain)", "core.ops.directUrl", "192.168.0.110"),
     settingsHint("Direct peer / AirPad target."),
     settingsTextField("Client id", "core.userId", "L-192.168.0.196"),

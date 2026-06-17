@@ -4,6 +4,7 @@ import { JSOX } from "jsox";
 import type { AppSettings } from "com/config/SettingsTypes";
 import { DEFAULT_SETTINGS } from "com/config/SettingsTypes";
 import { writeFileSmart } from "fest/lure";
+import { migrateLegacyCwspPublicPort } from "cwsp-shared/cwsp-endpoint-resolve";
 
 //
 export const SETTINGS_KEY = "rs-settings";
@@ -39,12 +40,12 @@ const isCapacitorNativeShell = (): boolean => {
 /** First-boot CWSP defaults for CWSAndroid when IDB still has dev/empty endpoint fields. */
 const CAPACITOR_CWSP_BOOTSTRAP: Partial<AppSettings> = {
     core: {
-        endpointUrl: "https://192.168.0.200:8443",
+        endpointUrl: "https://192.168.0.200:8434",
         userKey: "n3v3rm1nd",
         allowInsecureTls: true,
         useCoreIdentityForAirPad: true,
         ops: {
-            directUrl: "https://192.168.0.110:8443"
+            directUrl: "https://192.168.0.110:8434"
         },
         socket: {
             routeTarget: "L-192.168.0.110",
@@ -513,6 +514,47 @@ export const normalizeCoreEndpointOrigin = (raw: string): string => {
     }
 };
 
+/** Rewrite legacy `:8443` URLs and listenPort in persisted settings after fleet port migration. */
+const applyLegacyCwspPortMigration = (settings: AppSettings): AppSettings => {
+    const core = settings.core;
+    if (!core) return settings;
+    const migrateList = (items: string[] | undefined): string[] | undefined =>
+        items?.map((entry) => migrateLegacyCwspPublicPort(entry));
+    const listenPortHttps =
+        core.network?.listenPortHttps === 8443 || core.network?.listenPortHttps === 8343
+            ? 8434
+            : core.network?.listenPortHttps;
+    return {
+        ...settings,
+        core: {
+            ...core,
+            endpointUrl: migrateLegacyCwspPublicPort(core.endpointUrl ?? ""),
+            ops: core.ops
+                ? {
+                      ...core.ops,
+                      directUrl: migrateLegacyCwspPublicPort(core.ops.directUrl ?? ""),
+                      httpTargets: migrateList(core.ops.httpTargets),
+                      wsTargets: migrateList(core.ops.wsTargets),
+                      syncTargets: migrateList(core.ops.syncTargets)
+                  }
+                : core.ops,
+            admin: core.admin
+                ? {
+                      ...core.admin,
+                      httpsOrigin: migrateLegacyCwspPublicPort(core.admin.httpsOrigin ?? "")
+                  }
+                : core.admin,
+            network: core.network
+                ? {
+                      ...core.network,
+                      listenPortHttps,
+                      destinations: migrateList(core.network.destinations)
+                  }
+                : core.network
+        }
+    };
+};
+
 /**
  * True when persisted settings explicitly contain `shell.maintainHubSocketConnection`
  * (Shell section was saved with that field — distinct from merge-time defaults).
@@ -654,7 +696,7 @@ export const loadSettings = async (opts?: LoadSettingsOptions): Promise<AppSetti
                 activeInstructionId: result.ai?.activeInstructionId || "(none)"
             });
 
-            return result as AppSettings;
+            return applyLegacyCwspPortMigration(result as AppSettings);
         }
 
         console.log("[Settings] loadSettings - no stored data, returning defaults");

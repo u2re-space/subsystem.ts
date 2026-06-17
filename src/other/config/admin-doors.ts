@@ -26,10 +26,10 @@ const resolveControlDoorUrls = (
     let httpOrigin = (core?.admin?.httpOrigin || "").trim();
     const host = hostFromEndpointUrl(core?.endpointUrl);
     if (host) {
-        if (!httpsOrigin) httpsOrigin = `https://${host}:8443`;
+        if (!httpsOrigin) httpsOrigin = `https://${host}:8434`;
         if (!httpOrigin) httpOrigin = `http://${host}:8080`;
     }
-    if (!httpsOrigin) httpsOrigin = "https://localhost:8443";
+    if (!httpsOrigin) httpsOrigin = "https://localhost:8434";
     if (!httpOrigin) httpOrigin = "http://localhost:8080";
 
     const join = (origin: string): string => {
@@ -42,7 +42,7 @@ const resolveControlDoorUrls = (
 };
 
 /**
- * Resolves HTTPS (default :8443) and HTTP (default :8080) admin/control URLs for the CWS / cwsp endpoint.
+ * Resolves HTTPS (default :8434) and HTTP (default :8080) admin/control URLs for the CWS / cwsp endpoint.
  * When `core.admin.*` is empty, uses `endpointUrl` hostname with standard ports, then localhost.
  */
 export function resolveAdminDoorUrls(core: AppSettings["core"] | undefined): { https: string; http: string } {

@@ -27,6 +27,17 @@ export type FrontendDebugApi = {
 
 const MAX_ENTRIES = 800;
 const FLUSH_MS = 2500;
+
+/** Opt-in: full console patch + native flush is expensive on Capacitor WebView. */
+const isDebugCaptureEnabled = (): boolean => {
+    try {
+        const env = (import.meta as { env?: { VITE_CWS_FRONTEND_DEBUG?: string } }).env?.VITE_CWS_FRONTEND_DEBUG;
+        if (/^(1|true|yes|on)$/i.test(String(env ?? ""))) return true;
+        return globalThis.localStorage?.getItem("cws-frontend-debug") === "1";
+    } catch {
+        return false;
+    }
+};
 const entries: FrontendDebugEntry[] = [];
 const pending: FrontendDebugEntry[] = [];
 let installed = false;
@@ -71,6 +82,10 @@ const scheduleFlush = (): void => {
 const flushPending = async (): Promise<void> => {
     if (!pending.length) return;
     if (!Capacitor.isNativePlatform?.()) return;
+    if (!api.enabled) {
+        pending.length = 0;
+        return;
+    }
     const batch = pending.splice(0, pending.length);
     try {
         await CwsBridge.invoke({
@@ -119,14 +134,17 @@ const api: FrontendDebugApi = {
     }
 };
 
-/** Install console/error hooks once (Capacitor + dev web). */
+/** Install error hooks once; console patch + native flush only when explicitly enabled. */
 export const initFrontendDebugCapture = (): FrontendDebugApi => {
     if (installed) return api;
     installed = true;
 
     (globalThis as { __CWSP_FRONTEND_DEBUG__?: FrontendDebugApi }).__CWSP_FRONTEND_DEBUG__ = api;
 
-    patchConsole();
+    const captureVerbose = isDebugCaptureEnabled();
+    if (captureVerbose) {
+        patchConsole();
+    }
 
     globalThis.addEventListener?.("error", (ev) => {
         const err = ev.error instanceof Error ? ev.error : undefined;
@@ -136,7 +154,12 @@ export const initFrontendDebugCapture = (): FrontendDebugApi => {
         pushEntry("error", "promise", serializeArg((ev as PromiseRejectionEvent).reason));
     });
 
-    api.log("boot", "info", `frontend-debug ready native=${Boolean(Capacitor.isNativePlatform?.())}`);
+    api.enabled = captureVerbose;
+    api.log(
+        "boot",
+        "info",
+        `frontend-debug ready native=${Boolean(Capacitor.isNativePlatform?.())} verbose=${captureVerbose}`
+    );
     return api;
 };
 

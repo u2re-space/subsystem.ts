@@ -5,7 +5,7 @@ import type { SettingsContributionContext } from "../SettingsContributions";
 export type SettingsShellProfile = "full" | "cwsp-mobile" | "extension";
 
 /**
- * CWSAndroid / Capacitor CWSP shells enable only `airpad` + `settings` — no workcenter,
+ * CWSAndroid / Capacitor CWSP shells enable only `network` + `settings` — no workcenter,
  * viewer, explorer AI stack, or CRX extension panels.
  */
 export const resolveSettingsShellProfile = (

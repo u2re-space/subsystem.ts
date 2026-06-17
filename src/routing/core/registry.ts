@@ -31,7 +31,8 @@ import {
     VIEW_ENABLED_EDITOR,
     VIEW_ENABLED_HOME,
     VIEW_ENABLED_PRINT,
-    VIEW_ENABLED_AIRPAD
+    VIEW_ENABLED_AIRPAD,
+    VIEW_ENABLED_NETWORK
 } from "./views";
 import type { ChannelMessage } from "fest/uniform";
 import type { ServiceChannelId } from "../channel/ServiceChannels";
@@ -195,6 +196,7 @@ class ViewRegistryClass {
             module?.createViewerView,
             module?.createExplorerView,
             module?.createSettingsView,
+            module?.createNetworkView,
             module?.createHistoryView,
             module?.createHomeView
         ];
@@ -403,6 +405,15 @@ export function registerDefaultViews(): void {
             name: "AirPad",
             icon: "hand-pointing",
             loader: () => import("views/airpad")
+        });
+    }
+
+    if (VIEW_ENABLED_NETWORK) {
+        ViewRegistry.register({
+            id: "network",
+            name: "Network",
+            icon: "wifi-high",
+            loader: () => import("views/network")
         });
     }
 

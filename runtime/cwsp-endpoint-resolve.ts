@@ -5,7 +5,7 @@
  * no port). When the port is omitted we probe common HTTPS/HTTP ports via `/lna-probe`.
  */
 
-export const CWSP_DEFAULT_HTTPS_PORTS = [7443, 9443, 18443, 8443, 8444, 8445, 443] as const;
+export const CWSP_DEFAULT_HTTPS_PORTS = [8434, 443, 9443, 7443, 8444, 8445, 18443] as const;
 export const CWSP_DEFAULT_HTTP_PORTS = [8080, 8081, 8082, 18080, 80, 8888] as const;
 
 export type ParsedConnectHost = {
@@ -115,6 +115,69 @@ export const normalizeHttpsOrigin = (value: string): string => normalizeConnectH
 const originFromParts = (protocol: "http" | "https", host: string, port: number | string): string =>
     `${protocol}://${host}:${port}/`;
 
+/** Fleet gateway HTTPS ingress when the configured WAN host is unreachable (RKN / routing). */
+export const CWSP_FLEET_GATEWAY_HTTPS_FALLBACKS = [
+    "https://192.168.0.200:8434/",
+    "https://45.147.121.152:8434/"
+] as const;
+
+/** Split multi-host settings (`endpointUrl`, bridge lists) on comma/semicolon. */
+export const splitConnectHostList = (value: string): string[] =>
+    trim(value)
+        .split(/[;,]/)
+        .map((item) => item.trim())
+        .filter(Boolean);
+
+/** Canonical CWSP HTTPS origin for probes (`https://host:8434`, no path). */
+export const normalizeProbeHttpsOrigin = (raw: string): string => {
+    const t = trim(raw).replace(/\/lna-probe\/?$/i, "").replace(/\/+$/, "");
+    if (!t) return "";
+    const parsed = parseConnectHostInput(t);
+    if (!parsed?.host) return t;
+    const proto = parsed.protocol ?? "https";
+    if (parsed.port) return `${proto}://${parsed.host}:${parsed.port}`;
+    return `${proto}://${parsed.host}:8434`;
+};
+
+/** COMPAT: rewrite persisted CWSP HTTPS URLs (legacy `:8443`, typo `:8343` → `:8434`). */
+export const migrateLegacyCwspPublicPort = (raw: string): string => {
+    const t = trim(raw);
+    if (!t) return t;
+    return t
+        .replace(/(?<![0-9]):8443(?![0-9])/g, ":8434")
+        .replace(/(?<![0-9]):8343(?![0-9])/g, ":8434");
+};
+
+export type EndpointProbeCandidateFields = {
+    relay?: string;
+    direct?: string;
+    /** Registry / VPN / Tailscale hosts from settings or native registry. */
+    extras?: string[];
+    /** Append fleet LAN+WAN fallbacks when not already listed (default true). */
+    fleetFallbacks?: boolean;
+};
+
+/**
+ * Ordered deduped HTTPS origins for reachability probes.
+ * WHY: WAN `45.147.121.152` may be blocked — try configured hosts first, then LAN gateway and other settings.
+ */
+export const collectEndpointProbeCandidates = (fields: EndpointProbeCandidateFields): string[] => {
+    const out: string[] = [];
+    const push = (raw: string): void => {
+        const origin = normalizeProbeHttpsOrigin(raw);
+        if (origin && !out.includes(origin)) out.push(origin);
+    };
+    for (const part of splitConnectHostList(fields.relay ?? "")) push(part);
+    for (const part of splitConnectHostList(fields.direct ?? "")) push(part);
+    if (fields.extras?.length) {
+        for (const extra of fields.extras) push(extra);
+    }
+    if (fields.fleetFallbacks !== false) {
+        for (const fallback of CWSP_FLEET_GATEWAY_HTTPS_FALLBACKS) push(fallback);
+    }
+    return out;
+};
+
 /** Build ordered HTTP(S) origin candidates for probing (deduped). */
 export const buildEndpointOriginCandidates = (
     raw: string,
@@ -144,7 +207,7 @@ export const buildEndpointOriginCandidates = (
             push(originFromParts("http", host, port));
             return out;
         }
-        // WHY: WAN/LAN hosts may serve plain HTTP on 8443 while config still says https://host:8443.
+        // WHY: WAN/LAN hosts may serve plain HTTP on 8434 while config still says https://host:8434.
         push(originFromParts("https", host, port));
         if (includeHttp) push(originFromParts("http", host, port));
         return out;
@@ -250,6 +313,74 @@ const defaultFetch = (): typeof fetch | undefined => {
 
 const DEFAULT_PROBE_TIMEOUT_MS = 2500;
 
+/** Detailed `/lna-probe` result for network diagnostics UI (status codes + transport errors). */
+export type EndpointProbeReport = {
+    origin: string;
+    ok: boolean;
+    status?: number;
+    statusText?: string;
+    error?: string;
+    latencyMs?: number;
+};
+
+const describeProbeFetchError = (error: unknown): string => {
+    const msg = error instanceof Error ? error.message : String(error ?? "fetch failed");
+    if (/abort/i.test(msg)) return "timeout";
+    if (/refused|ECONNREFUSED/i.test(msg)) return "connection refused";
+    if (/ENOTFOUND|NAME_NOT_RESOLVED/i.test(msg)) return "host not found";
+    if (/certificate|cert\.|ssl|tls|ERR_CERT/i.test(msg)) return `TLS: ${msg}`;
+    return msg;
+};
+
+/** Best-effort reachability probe (CWSP `/lna-probe`) with HTTP status / error text. */
+export const probeEndpointOriginReport = async (
+    origin: string,
+    opts: DiscoverEndpointOptions = {}
+): Promise<EndpointProbeReport> => {
+    const fetchFn = opts.fetchFn ?? defaultFetch();
+    const base = trim(origin).replace(/\/+$/, "");
+    const started = Date.now();
+    if (!fetchFn || !base) {
+        return { origin: base || origin, ok: false, error: "invalid origin", latencyMs: 0 };
+    }
+
+    const timeoutMs = opts.timeoutMs ?? DEFAULT_PROBE_TIMEOUT_MS;
+    const controller = typeof AbortController !== "undefined" ? new AbortController() : undefined;
+    const timer =
+        controller && timeoutMs > 0
+            ? globalThis.setTimeout(() => controller.abort(), timeoutMs)
+            : undefined;
+
+    try {
+        const res = await fetchFn(`${base}/lna-probe`, {
+            method: "GET",
+            mode: "cors",
+            cache: "no-store",
+            credentials: "omit",
+            signal: controller?.signal
+        } as RequestInit);
+        const latencyMs = Date.now() - started;
+        const ok = res.status === 204;
+        return {
+            origin: base,
+            ok,
+            status: res.status,
+            statusText: res.statusText,
+            latencyMs,
+            error: ok ? undefined : `HTTP ${res.status}${res.statusText ? ` ${res.statusText}` : ""}`.trim()
+        };
+    } catch (error: unknown) {
+        return {
+            origin: base,
+            ok: false,
+            error: describeProbeFetchError(error),
+            latencyMs: Date.now() - started
+        };
+    } finally {
+        if (timer) clearTimeout(timer);
+    }
+};
+
 /** Best-effort reachability probe (CWSP `/lna-probe`). */
 export const probeEndpointOrigin = async (
     origin: string,
@@ -326,7 +457,7 @@ export const discoverEndpointOrigin = async (
                 if (httpHit) return httpHit;
             }
         }
-        // WHY: stored `:8443` / `:443` may be stale when the endpoint bound a fallback port.
+        // WHY: stored `:8434` / `:443` may be stale when the endpoint bound a fallback port.
     }
 
     for (const origin of buildEndpointOriginCandidates(parsed.host, opts)) {

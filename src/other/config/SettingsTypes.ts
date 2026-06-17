@@ -271,7 +271,7 @@ export type AppSettings = {
             preferNativeIpc?: boolean;
             preferNativeWebsocket?: boolean;
         };
-        /** HTTPS :8443 and HTTP :8080 admin/control entry points for the CWS server. */
+        /** HTTPS :8434 and HTTP :8080 admin/control entry points for the CWS server. */
         admin?: {
             httpsOrigin?: string;
             httpOrigin?: string;
@@ -373,7 +373,7 @@ export const DEFAULT_SETTINGS: AppSettings = {
         useCoreIdentityForAirPad: true,
         allowInsecureTls: false,
         network: {
-            listenPortHttps: 8443,
+            listenPortHttps: 8434,
             listenPortHttp: 8080,
             bridgeEnabled: true,
             reconnectMs: 3000,
@@ -400,7 +400,7 @@ export const DEFAULT_SETTINGS: AppSettings = {
             preferNativeWebsocket: true
         },
         admin: {
-            httpsOrigin: "https://localhost:8443",
+            httpsOrigin: "https://localhost:8434",
             httpOrigin: "http://localhost:8080",
             path: "/"
         },

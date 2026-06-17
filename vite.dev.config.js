@@ -1,7 +1,7 @@
 /**
  * HTTPS dev server for views playground (`index.html`, `demo.html`).
  * Default port 443 (needs bind permission on Linux: `sudo setcap 'cap_net_bind_service=+ep' $(command -v node)` or run via sudo).
- * Fallback: `VIEW_DEV_PORT=8443 npm run dev` (localhost remains a secure context; OPFS works there too).
+ * Fallback: `VIEW_DEV_PORT=8434 npm run dev` (localhost remains a secure context; OPFS works there too).
  */
 import { resolve } from "node:path";
 import basicSsl from "@vitejs/plugin-basic-ssl";

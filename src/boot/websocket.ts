@@ -44,7 +44,19 @@ import {
     CWSP_DEFAULT_HTTP_PORTS,
 } from "cwsp-shared/cwsp-endpoint-resolve";
 import { CWSP_WIRE_ENVELOPE_V2 } from "cwsp-shared/cws-client-wire-defaults";
+import {
+    annotateCoordinatorPayload,
+    shouldAnnotateCoordinatorPayload
+} from "cwsp-shared/input-command-timing";
 import { setAirpadCredentialInvalidator } from "views/airpad/credential-cache-bridge";
+import {
+    isNativeCoordinatorConnected,
+    refreshNativeCoordinatorStatus,
+    sendNativeCoordinatorDispatch,
+    sendNativeCoordinatorEnvelope,
+    sendNativeCoordinatorBinary,
+    shouldUseNativeCoordinatorTransport
+} from "./native-coordinator-bridge";
 
 let socket: Socket | null = null;
 let wsConnected = false;
@@ -229,6 +241,10 @@ const flushQueuedCoordinatorActs = (): void => {
 };
 
 const ensureCoordinatorSocketConnected = async (timeoutMs = 7000): Promise<boolean> => {
+    if (shouldUseNativeCoordinatorTransport()) {
+        const connected = isNativeCoordinatorConnected() || (await refreshNativeCoordinatorStatus());
+        return connected;
+    }
     if (socket?.connected) return true;
     connectWS();
     return await new Promise<boolean>((resolve) => {
@@ -258,6 +274,9 @@ export function getWS(): Socket | null {
 
 /** Report whether the primary transport socket is currently connected. */
 export function isWSConnected(): boolean {
+    if (shouldUseNativeCoordinatorTransport()) {
+        return isNativeCoordinatorConnected();
+    }
     return wsConnected;
 }
 
@@ -270,11 +289,23 @@ export function isWSConnected(): boolean {
 export function onWSConnectionChange(handler: WSConnectionHandler): () => void {
     wsConnectionHandlers.add(handler);
     try {
-        handler(wsConnected);
+        handler(isWSConnected());
     } catch {
         // ignore subscriber errors
     }
     return () => wsConnectionHandlers.delete(handler);
+}
+
+/** Refresh UI + subscribers from live WebView socket or native {@code CwspRuntime} status. */
+export async function refreshTransportConnectionStatus(): Promise<boolean> {
+    if (shouldUseNativeCoordinatorTransport()) {
+        const connected = await refreshNativeCoordinatorStatus();
+        setWsStatus(connected);
+        return connected;
+    }
+    const connected = Boolean(wsConnected || socket?.connected);
+    setWsStatus(connected);
+    return connected;
 }
 
 export function getLastServerClipboard(): string {
@@ -657,6 +688,20 @@ const handleCoordinatorPacket = async (packet: CoordinatorPacket): Promise<void>
 
 /** Emit one already-built coordinator packet if the live socket is ready. */
 const emitCoordinatorPacket = (packet: CoordinatorPacket): boolean => {
+    if (shouldUseNativeCoordinatorTransport()) {
+        const what = String(packet.what || packet.type || "");
+        const payload = packet.payload ?? packet.data ?? {};
+        const nodes = Array.isArray(packet.nodes) ? packet.nodes.map(String) : undefined;
+        const op = packet.op === "ask" || packet.op === "request" ? "ask" : "act";
+        void sendNativeCoordinatorEnvelope({
+            op,
+            what,
+            payload,
+            nodes,
+            uuid: typeof packet.uuid === "string" ? packet.uuid : undefined
+        });
+        return isNativeCoordinatorConnected();
+    }
     if (!socket || !socket.connected) return false;
     socket.send(toCanonicalCoordinatorPacket(packet));
     return true;
@@ -989,6 +1034,12 @@ async function tryRequestLocalNetworkPermission(origin: string, host: string): P
     }
 }
 
+const coordinatorWirePayload = (what: string, payload: unknown): unknown => {
+    if (!shouldAnnotateCoordinatorPayload(what)) return payload;
+    if (!payload || typeof payload !== "object" || Array.isArray(payload)) return payload;
+    return annotateCoordinatorPayload(payload as Record<string, unknown>);
+};
+
 /** Fire-and-forget coordinator action. */
 export function sendCoordinatorAct(
     what: string,
@@ -996,7 +1047,8 @@ export function sendCoordinatorAct(
     nodes?: string[],
     opts?: { accessToken?: string }
 ): boolean {
-    const packet = buildCoordinatorPacket("act", what, payload, { nodes, accessToken: opts?.accessToken });
+    const wirePayload = coordinatorWirePayload(what, payload);
+    const packet = buildCoordinatorPacket("act", what, wirePayload, { nodes, accessToken: opts?.accessToken });
     if (emitCoordinatorPacket(packet)) {
         return true;
     }
@@ -1010,6 +1062,10 @@ export function sendCoordinatorAct(
 
 /** Send compact binary AirPad frame when JSON act would be heavier (Java/CWSP legacy path). */
 export function sendWsBinary(data: ArrayBuffer | Uint8Array): boolean {
+    if (shouldUseNativeCoordinatorTransport()) {
+        void sendNativeCoordinatorBinary(data);
+        return isNativeCoordinatorConnected();
+    }
     if (!socket?.connected) return false;
     const sock = socket as NativeSocket & { sendBinary?: (d: ArrayBuffer | Uint8Array) => void };
     if (typeof sock.sendBinary === "function") {
@@ -1023,6 +1079,20 @@ export function sendWsBinary(data: ArrayBuffer | Uint8Array): boolean {
 export function sendCoordinatorAsk(what: string, payload: any, nodes?: string[]): Promise<any> {
     return new Promise((resolve, reject) => {
         void (async () => {
+            if (shouldUseNativeCoordinatorTransport()) {
+                try {
+                    const connected = await ensureCoordinatorSocketConnected();
+                    if (!connected) {
+                        reject({ ok: false, error: "Native WS not connected" });
+                        return;
+                    }
+                    const result = await sendNativeCoordinatorDispatch({ op: "ask", what, payload: coordinatorWirePayload(what, payload), nodes });
+                    resolve(result);
+                } catch (error) {
+                    reject({ ok: false, error: String((error as Error)?.message || error) });
+                }
+                return;
+            }
             const connected = await ensureCoordinatorSocketConnected();
             if (!connected || !socket?.connected) {
                 reject({ ok: false, error: "WS not connected" });
@@ -1034,7 +1104,7 @@ export function sendCoordinatorAsk(what: string, payload: any, nodes?: string[])
                 reject({ ok: false, error: `Timeout waiting for ${what}` });
             }, AIRPAD_COORDINATOR_TIMEOUT_MS);
             coordinatorPending.set(uuid, { resolve, reject, timeoutId });
-            emitCoordinatorPacket(buildCoordinatorPacket("ask", what, payload, { nodes, uuid }));
+            emitCoordinatorPacket(buildCoordinatorPacket("ask", what, coordinatorWirePayload(what, payload), { nodes, uuid }));
         })();
     });
 }
@@ -1043,6 +1113,25 @@ export function sendCoordinatorAsk(what: string, payload: any, nodes?: string[])
 export function sendCoordinatorRequest(what: string, payload: any, nodes?: string[]): Promise<any> {
     return new Promise((resolve, reject) => {
         void (async () => {
+            if (shouldUseNativeCoordinatorTransport()) {
+                try {
+                    const connected = await ensureCoordinatorSocketConnected();
+                    if (!connected) {
+                        reject({ ok: false, error: "Native WS not connected" });
+                        return;
+                    }
+                    const result = await sendNativeCoordinatorDispatch({
+                        op: "act",
+                        what,
+                        payload: coordinatorWirePayload(what, payload),
+                        nodes
+                    });
+                    resolve(result);
+                } catch (error) {
+                    reject({ ok: false, error: String((error as Error)?.message || error) });
+                }
+                return;
+            }
             const connected = await ensureCoordinatorSocketConnected();
             if (!connected || !socket?.connected) {
                 reject({ ok: false, error: "WS not connected" });
@@ -1054,7 +1143,9 @@ export function sendCoordinatorRequest(what: string, payload: any, nodes?: strin
                 reject({ ok: false, error: `Timeout waiting for ${what}` });
             }, AIRPAD_COORDINATOR_TIMEOUT_MS);
             coordinatorPending.set(uuid, { resolve, reject, timeoutId });
-            emitCoordinatorPacket(buildCoordinatorPacket("act", what, payload, { nodes, uuid }));
+            emitCoordinatorPacket(
+                buildCoordinatorPacket("act", what, coordinatorWirePayload(what, payload), { nodes, uuid })
+            );
         })();
     });
 }
@@ -1320,7 +1411,7 @@ export function connectWS() {
 
     const inferProtocol = (): 'http' | 'https' => {
         if (remoteProtocol === 'http' || remoteProtocol === 'https') return remoteProtocol;
-        if (remotePort === '443' || remotePort === '8443' || remotePort === '8444') return 'https';
+        if (remotePort === '443' || remotePort === '8434' || remotePort === '8444') return 'https';
         if (remotePort === '80' || remotePort === '8080' || remotePort === '8081') return 'http';
         // Capacitor WebView on https://localhost blocks ws:// (mixed content) even when cleartext HTTP is allowed.
         if (
@@ -1347,7 +1438,7 @@ export function connectWS() {
     const primaryProtocol = inferProtocol();
     const rawProbeHost = rawProbeHostEarly;
     const probeHost = stripWireEndpointIdPrefix(rawProbeHost) || rawProbeHost;
-    const probePort = remotePort || (primaryProtocol === 'https' ? '8443' : '8080');
+    const probePort = remotePort || (primaryProtocol === 'https' ? '8434' : '8080');
     const probeOrigin = `${primaryProtocol}://${probeHost}:${probePort}`;
     void tryRequestLocalNetworkPermission(probeOrigin, probeHost);
     // WHY: Connect URL often defaults to localhost while the tab is https://192.168.x.x — probe the real page host for PNA/LNA too.
@@ -1481,7 +1572,7 @@ export function connectWS() {
         for (const hostEntry of hostList) {
             const { host, source, preferPort } = hostEntry;
             /* Same hostname as the tab: always try the tab’s effective port first (e.g. 443) even when
-             * stored connect URL still lists :8443 — unified TLS / reverse-proxy shells serve `/ws` on 443. */
+             * stored connect URL still lists :8434 — unified TLS / reverse-proxy shells serve `/ws` on 443. */
             const hostPortOverride =
                 pageHost && host === pageHost && pageEffectivePort
                     ? pageEffectivePort
@@ -1541,7 +1632,7 @@ export function connectWS() {
         routeTargetPortForQuery ||
         parsedRemotePort ||
         remotePort ||
-        (primaryProtocol === "https" ? "8443" : "8080");
+        (primaryProtocol === "https" ? "8434" : "8080");
     const routeTarget = routeTargetForQuery;
     const resolvedRouteTarget = routeTarget || targetHost || "";
 
@@ -2011,3 +2102,8 @@ function handleWsConnectButtonClick() {
         connectWS();
     }
 }
+
+export {
+    refreshNativeCoordinatorStatus,
+    shouldUseNativeCoordinatorTransport
+} from "./native-coordinator-bridge";

@@ -28,7 +28,8 @@ function capacitorNativeBridgeOwnsHubWebsocket(): boolean {
     }
 }
 
-function nativeShellOwnsExclusiveHubWebsocket(): boolean {
+/** True when Java/CwspRuntime owns background `/ws` and WebView must not open a duplicate hub socket. */
+export function nativeShellOwnsExclusiveHubWebsocket(): boolean {
     // WHY: NativeScript owns `/ws` via CwspClipboardSession.
     if ((globalThis as { __CWS_NATIVE__?: boolean }).__CWS_NATIVE__ === true && isPreferNativeWebsocketEnabled()) {
         return true;
