@@ -97,11 +97,16 @@ export const ensureCapacitorCwspSettingsSeeded = async (): Promise<AppSettings |
     const current = await loadSettings({ nativeOverlay: false });
     const currentUserId = trimSetting(current.core?.userId);
     const needsBootstrap = needsCapacitorCwspBootstrap(current);
+  const CAPACITOR_FACTORY_SELF_IDS = new Set([
+        "L-192.168.0.196",
+        "L-192.168.0.208",
+        "L-192.168.0.210"
+    ]);
     const identityDrift =
         Boolean(nativeUserId) &&
         Boolean(currentUserId) &&
         nativeUserId !== currentUserId &&
-        currentUserId === "L-192.168.0.196";
+        CAPACITOR_FACTORY_SELF_IDS.has(currentUserId);
 
     if (!needsBootstrap && !identityDrift) {
         capacitorCwspSeedDone = true;
