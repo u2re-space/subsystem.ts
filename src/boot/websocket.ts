@@ -42,6 +42,7 @@ import {
 import {
     CWSP_DEFAULT_HTTPS_PORTS,
     CWSP_DEFAULT_HTTP_PORTS,
+    splitConnectHostList,
 } from "cwsp-shared/cwsp-endpoint-resolve";
 import { CWSP_WIRE_ENVELOPE_V2 } from "cwsp-shared/cws-client-wire-defaults";
 import {
@@ -1395,13 +1396,7 @@ export function connectWS() {
         if (!host || !isLikelyPort(port)) return { host: hostSpec };
         return { host, port };
     };
-    const splitHostList = (value: string): string[] =>
-        value
-            .split(/[;,]/)
-            .map((item) => item.trim())
-            .filter(Boolean);
-
-    const remoteHostSpecs = splitHostList(remoteHost)
+    const remoteHostSpecs = splitConnectHostList(remoteHost)
         .map((entry) => parseHostAndPort(entry))
         .filter((entry): entry is { host: string; port?: string } => !!entry && !!entry.host);
     const firstExplicitPort = (remoteHostSpecs[0]?.port || '').trim();
@@ -1554,7 +1549,7 @@ export function connectWS() {
         if (spec.host) normalizedRemoteHosts.add(spec.host.toLowerCase());
     }
     if (remoteHostSpecs.length === 0 && remoteHost.trim()) {
-        for (const part of splitHostList(remoteHost.trim())) {
+        for (const part of splitConnectHostList(remoteHost.trim())) {
             const parsed = parseHostAndPort(part);
             if (parsed?.host) normalizedRemoteHosts.add(parsed.host.toLowerCase());
         }

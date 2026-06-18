@@ -7,6 +7,7 @@
 
 import { isCapacitorNative } from "./capacitor-permissions";
 import { isCapacitorCwsNativeShell } from "com/routing/native/cws-bridge";
+import { splitMultiValueList } from "cwsp-shared/multi-value-list";
 
 type ShareIntentDetail = { text?: string; action?: string } | string;
 
@@ -32,10 +33,7 @@ const readDestinationNodes = (settings: Record<string, unknown>): string[] => {
     const raw =
         String(cwsp.shareIntentDestinationIds || cwsp.destinationNodeIds || "*").trim() || "*";
     if (raw === "*" || raw.toLowerCase() === "any") return ["*"];
-    return raw
-        .split(/[;,]/)
-        .map((s) => s.trim())
-        .filter(Boolean);
+    return splitMultiValueList(raw);
 };
 
 let installed = false;

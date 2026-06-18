@@ -10,6 +10,8 @@ import {
     type SettingsPanelChild
 } from "../settings-contribution-ui";
 
+const MULTI_VALUE_HINT = "Separate with comma, semicolon, space, or newline.";
+
 const connectionFields = (): SettingsPanelChild[] => [
     settingsHint("Persist to IDB; on Capacitor syncs to Java prefs via CwsBridge."),
     "Connection",
@@ -21,6 +23,7 @@ const connectionFields = (): SettingsPanelChild[] => [
     settingsTextField("Identification token", "core.userKey", "token", "password"),
     settingsTextField("Control / access token", "core.socket.accessToken", "optional", "password"),
     settingsTextField("Destination node ids", "core.socket.routeTarget", "* or L-…;L-…"),
+    settingsHint(MULTI_VALUE_HINT),
     settingsCheckboxField("Allow insecure TLS", "core.allowInsecureTls")
 ];
 
@@ -29,7 +32,9 @@ const clipboardFields = (): SettingsPanelChild[] => [
     settingsCheckboxField("Accept inbound clipboard", "shell.acceptInboundClipboardData"),
     settingsCheckboxField("Apply remote clipboard to device", "shell.applyRemoteClipboardToDevice"),
     settingsTextField("Inbound clipboard allow ids", "shell.clipboardInboundAllowIds", "* or L-…"),
-    settingsTextField("Share-intent destination ids", "shell.clipboardShareDestinationIds", "L-192.168.0.110")
+    settingsHint(MULTI_VALUE_HINT),
+    settingsTextField("Share-intent destination ids", "shell.clipboardShareDestinationIds", "L-192.168.0.110"),
+    settingsHint(MULTI_VALUE_HINT)
 ];
 
 const nativeWireFields = (): SettingsPanelChild[] => [

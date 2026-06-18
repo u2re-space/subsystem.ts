@@ -371,8 +371,12 @@ export async function patchNativeUnifiedSettingsDetailed(
             channel: "settings:patch",
             echo: { error: String(error instanceof Error ? error.message : error) }
         }));
-        if (!result?.ok) {
-            const err = String((result?.echo as Record<string, unknown> | undefined)?.error ?? "settings:patch rejected");
+        const echo = result?.echo as Record<string, unknown> | undefined;
+        const ok =
+            result?.ok === true ||
+            (result?.ok !== false && !echo?.error && result?.channel === "settings:patch");
+        if (!ok) {
+            const err = String(echo?.error ?? "settings:patch rejected");
             return { ok: false, error: err };
         }
         return { ok: true };

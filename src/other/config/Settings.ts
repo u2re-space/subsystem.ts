@@ -107,29 +107,48 @@ export const ensureCapacitorCwspSettingsSeeded = async (): Promise<AppSettings |
         capacitorCwspSeedDone = true;
         return null;
     }
+
+    // WHY: identityDrift only realigns client id with native prefs — never re-spread bootstrap URLs.
+    if (identityDrift && !needsBootstrap) {
+        capacitorCwspSeedDone = true;
+        const aligned = {
+            ...current,
+            core: {
+                ...current.core,
+                userId: nativeUserId,
+                socket: {
+                    ...(current.core?.socket || {}),
+                    selfId: nativeUserId
+                }
+            }
+        } as AppSettings;
+        console.log("[Settings] aligning Capacitor client id with native prefs");
+        return saveSettings(aligned);
+    }
+
     const merged = {
         ...current,
         core: {
-            ...current.core,
             ...CAPACITOR_CWSP_BOOTSTRAP.core,
-            userId: nativeUserId || currentUserId || "",
+            ...current.core,
+            userId: nativeUserId || currentUserId || trimSetting(CAPACITOR_CWSP_BOOTSTRAP.core?.userId) || "",
             ops: {
-                ...(current.core?.ops || {}),
-                ...(CAPACITOR_CWSP_BOOTSTRAP.core?.ops || {})
+                ...(CAPACITOR_CWSP_BOOTSTRAP.core?.ops || {}),
+                ...(current.core?.ops || {})
             },
             socket: {
-                ...(current.core?.socket || {}),
                 ...(CAPACITOR_CWSP_BOOTSTRAP.core?.socket || {}),
+                ...(current.core?.socket || {}),
                 selfId: nativeUserId || trimSetting(current.core?.socket?.selfId) || ""
             },
             interop: {
-                ...(current.core?.interop || {}),
-                ...(CAPACITOR_CWSP_BOOTSTRAP.core?.interop || {})
+                ...(CAPACITOR_CWSP_BOOTSTRAP.core?.interop || {}),
+                ...(current.core?.interop || {})
             }
         },
         shell: {
-            ...(current.shell || {}),
-            ...(CAPACITOR_CWSP_BOOTSTRAP.shell || {})
+            ...(CAPACITOR_CWSP_BOOTSTRAP.shell || {}),
+            ...(current.shell || {})
         }
     } as AppSettings;
     console.log("[Settings] seeding Capacitor CWSP defaults");
@@ -389,11 +408,28 @@ async function idbOpen(): Promise<IDBDatabase> {
 //
 export const idbGetSettings = async (key: string = SETTINGS_KEY): Promise<any> => {
     try {
-        if (isCapacitorNativeShell()) {
-            const mirror = readLocalStorageSettingsMirror();
-            if (mirror != null) {
-                return mirror;
+        // WHY: On Capacitor prefer IDB (authoritative after Save); localStorage mirror is fallback only.
+        if (isCapacitorNativeShell() && typeof indexedDB !== "undefined") {
+            try {
+                const db = await idbOpen();
+                const idbValue = await new Promise<any>((res, rej) => {
+                    const tx = db.transaction(STORE, "readonly");
+                    const req = tx.objectStore(STORE).get(key);
+                    req.onsuccess = () => {
+                        res(req.result?.value);
+                        db.close();
+                    };
+                    req.onerror = () => {
+                        rej(req.error);
+                        db.close();
+                    };
+                });
+                if (idbValue != null) return idbValue;
+            } catch (e) {
+                console.warn("[Settings] Capacitor IndexedDB read failed, trying mirror:", e);
             }
+            const mirror = readLocalStorageSettingsMirror();
+            if (mirror != null) return mirror;
         }
 
         if (hasChromeStorage()) {
