@@ -28,6 +28,20 @@ export const getLastSettingsSaveReport = (): SettingsSaveReport => ({ ...lastSet
 
 const trimSetting = (v: unknown): string => (typeof v === "string" ? v.trim() : "");
 
+/** Factory defaults — not treated as user-configured Client-ID on Capacitor. */
+const CAPACITOR_FACTORY_SELF_IDS = new Set([
+    "L-192.168.0.196",
+    "L-192.168.0.208",
+    "L-192.168.0.210"
+]);
+
+const isCapacitorFactorySelfId = (id: string): boolean =>
+    !id || CAPACITOR_FACTORY_SELF_IDS.has(id);
+
+/** Home fleet LAN only — guest {@code 192.168.165.x} / corporate subnets are not Client-ID. */
+const isHomeFleetClientId = (id: string): boolean =>
+    Boolean(id) && id.startsWith("L-192.168.0.") && id.length > "L-192.168.0.".length;
+
 const isCapacitorNativeShell = (): boolean => {
     try {
         const c = (globalThis as { Capacitor?: { isNativePlatform?: () => boolean } }).Capacitor;
@@ -97,23 +111,35 @@ export const ensureCapacitorCwspSettingsSeeded = async (): Promise<AppSettings |
     const current = await loadSettings({ nativeOverlay: false });
     const currentUserId = trimSetting(current.core?.userId);
     const needsBootstrap = needsCapacitorCwspBootstrap(current);
-  const CAPACITOR_FACTORY_SELF_IDS = new Set([
-        "L-192.168.0.196",
-        "L-192.168.0.208",
-        "L-192.168.0.210"
-    ]);
     const identityDrift =
         Boolean(nativeUserId) &&
         Boolean(currentUserId) &&
         nativeUserId !== currentUserId &&
-        CAPACITOR_FACTORY_SELF_IDS.has(currentUserId);
+        isCapacitorFactorySelfId(currentUserId) &&
+        isHomeFleetClientId(nativeUserId);
+
+    const idbUserConfigured =
+        Boolean(currentUserId) && isHomeFleetClientId(currentUserId);
+    const nativeDriftsFromIdb =
+        Boolean(nativeUserId) &&
+        Boolean(currentUserId) &&
+        nativeUserId !== currentUserId;
+    const nativeIsGuestLanId =
+        Boolean(nativeUserId) && !isHomeFleetClientId(nativeUserId);
+
+  // WHY: WebView IDB is source of truth after user saves — push to native when runtime LAN-bind drifted.
+    if (!needsBootstrap && nativeDriftsFromIdb && (idbUserConfigured || nativeIsGuestLanId)) {
+        capacitorCwspSeedDone = true;
+        console.log("[Settings] pushing WebView client id to native prefs");
+        return saveSettings(current);
+    }
 
     if (!needsBootstrap && !identityDrift) {
         capacitorCwspSeedDone = true;
         return null;
     }
 
-    // WHY: identityDrift only realigns client id with native prefs — never re-spread bootstrap URLs.
+    // WHY: identityDrift only realigns client id with native prefs when IDB still has factory default.
     if (identityDrift && !needsBootstrap) {
         capacitorCwspSeedDone = true;
         const aligned = {
@@ -136,7 +162,11 @@ export const ensureCapacitorCwspSettingsSeeded = async (): Promise<AppSettings |
         core: {
             ...CAPACITOR_CWSP_BOOTSTRAP.core,
             ...current.core,
-            userId: nativeUserId || currentUserId || trimSetting(CAPACITOR_CWSP_BOOTSTRAP.core?.userId) || "",
+            userId:
+                (isHomeFleetClientId(nativeUserId) ? nativeUserId : "") ||
+                (isHomeFleetClientId(currentUserId) ? currentUserId : "") ||
+                trimSetting(CAPACITOR_CWSP_BOOTSTRAP.core?.userId) ||
+                "",
             ops: {
                 ...(CAPACITOR_CWSP_BOOTSTRAP.core?.ops || {}),
                 ...(current.core?.ops || {})
@@ -144,7 +174,10 @@ export const ensureCapacitorCwspSettingsSeeded = async (): Promise<AppSettings |
             socket: {
                 ...(CAPACITOR_CWSP_BOOTSTRAP.core?.socket || {}),
                 ...(current.core?.socket || {}),
-                selfId: nativeUserId || trimSetting(current.core?.socket?.selfId) || ""
+                selfId:
+                    (isHomeFleetClientId(nativeUserId) ? nativeUserId : "") ||
+                    (isHomeFleetClientId(trimSetting(current.core?.socket?.selfId)) ? trimSetting(current.core?.socket?.selfId) : "") ||
+                    ""
             },
             interop: {
                 ...(CAPACITOR_CWSP_BOOTSTRAP.core?.interop || {}),
@@ -196,9 +229,12 @@ const mergeNativeSettingsOverlay = (
         touched = true;
     }
     const userId = trimSetting(native.core?.userId);
-    if (userId) {
-        corePatch.userId = userId;
-        touched = true;
+    if (userId && isHomeFleetClientId(userId)) {
+        const baseUserId = trimSetting(base.core?.userId);
+        if (isCapacitorFactorySelfId(baseUserId) || !isHomeFleetClientId(baseUserId)) {
+            corePatch.userId = userId;
+            touched = true;
+        }
     }
     const userKey = trimSetting(native.core?.userKey);
     if (userKey) {
@@ -227,6 +263,14 @@ const mergeNativeSettingsOverlay = (
     if (clientAccessToken) {
         socketPatch.clientAccessToken = clientAccessToken;
         socketTouched = true;
+    }
+    const nativeSelfId = trimSetting(native.core?.socket?.selfId);
+    if (nativeSelfId && isHomeFleetClientId(nativeSelfId)) {
+        const baseSelfId = trimSetting(base.core?.socket?.selfId) || trimSetting(base.core?.userId);
+        if (isCapacitorFactorySelfId(baseSelfId) || !isHomeFleetClientId(baseSelfId)) {
+            socketPatch.selfId = nativeSelfId;
+            socketTouched = true;
+        }
     }
     if (socketTouched) {
         corePatch.socket = socketPatch;
