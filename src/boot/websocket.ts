@@ -16,6 +16,7 @@ import { log, getWsStatusEl } from "views/airpad/utils/utils";
 import {
     getRemoteHost,
     getAirPadEndpointUrl,
+    getAirPadDirectTargetUrl,
     getRemoteProtocol,
     getRemoteRouteTarget,
     getAccessToken,
@@ -58,6 +59,7 @@ import {
 import {
     DEFAULT_DESK_WIRE_NODE_ID,
     isAssociableFleetWireNodeId,
+    isFleetDeskWireNodeId,
     isGatewayHttpsOrigin,
     isGuestPrivateLanIpv4,
     isHomeFleetLanHost,
@@ -65,6 +67,9 @@ import {
     normalizeWireNodeIdForWire,
     sanitizeFleetRouteTarget,
     sanitizeFleetSelfWireNodeId,
+    isOnHomeFleetLanPageHost,
+    shouldConnectViaFleetGateway,
+    shouldFleetDeskGatewayProbeFallbacks,
     shouldPreferWanGatewayForAirpad,
 } from "cwsp-shared/airpad-cwsp-client-parity";
 import { annotatePacketWireTime64 } from "cwsp-shared/wire-time64";
@@ -1379,20 +1384,40 @@ export function connectWS() {
     const isHomeFleetPrivateIpv4 = (host: string): boolean =>
         isIpv4Literal(host) && host.startsWith("192.168.0.");
 
+    const isFleetLanGatewayHost = (host: string): boolean => {
+        const bare = stripWireEndpointIdPrefix(host).trim().toLowerCase();
+        return bare === "192.168.0.200";
+    };
     const isFleetWanGatewayHost = (host: string): boolean => {
         const bare = stripWireEndpointIdPrefix(host).trim().toLowerCase();
-        return bare.includes("45.147.") || bare === "192.168.0.200";
+        return bare.includes("45.147.");
     };
+    const isFleetIngressGatewayHost = (host: string): boolean =>
+        isFleetLanGatewayHost(host) || isFleetWanGatewayHost(host);
 
     const pageHostEarly = location.hostname || "";
     const pageBareEarly = stripWireEndpointIdPrefix(pageHostEarly) || pageHostEarly;
     const offHomeFleet = isOffHomeFleetNetwork(pageBareEarly);
+    const configuredRouteTargetRaw = getRemoteRouteTarget().trim();
+    const configuredRouteTarget =
+        sanitizeFleetRouteTarget(configuredRouteTargetRaw, endpointUrlForConnect || remoteHost) ||
+        configuredRouteTargetRaw;
+    const routedViaFleetGateway = shouldConnectViaFleetGateway(
+        endpointUrlForConnect || remoteHost,
+        configuredRouteTarget
+    );
+    const fleetDeskGatewayProbe = shouldFleetDeskGatewayProbeFallbacks(
+        configuredRouteTarget,
+        endpointUrlForConnect || remoteHost,
+        getAirPadDirectTargetUrl()
+    );
+    const onHomeFleetPage = isOnHomeFleetLanPageHost(pageBareEarly);
     const preferWanGatewayProbeFirst =
         offHomeFleet ||
         isGuestPrivateLanIpv4(pageBareEarly) ||
         shouldPreferWanGatewayForAirpad(endpointUrlForConnect, pageBareEarly) ||
-        isGatewayHttpsOrigin(endpointUrlForConnect) ||
-        isGatewayHttpsOrigin(remoteHost);
+        (routedViaFleetGateway && !onHomeFleetPage) ||
+        (isGatewayHttpsOrigin(endpointUrlForConnect) && offHomeFleet);
 
     const reorderHostEntriesForHttps = (
         entries: Array<{ host: string; source: WSConnectCandidate['source']; preferPort?: string }>
@@ -1400,6 +1425,7 @@ export function connectWS() {
         const dnsRemote: typeof entries = [];
         const dnsPage: typeof entries = [];
         const homeFleetIpv4: typeof entries = [];
+        const lanGatewayIpv4: typeof entries = [];
         const wanGatewayIpv4: typeof entries = [];
         const publicIpv4: typeof entries = [];
         const guestPrivateIpv4: typeof entries = [];
@@ -1407,6 +1433,8 @@ export function connectWS() {
             if (!isIpv4Literal(e.host)) {
                 if (e.source === 'page') dnsPage.push(e);
                 else dnsRemote.push(e);
+            } else if (isFleetLanGatewayHost(e.host)) {
+                lanGatewayIpv4.push(e);
             } else if (isFleetWanGatewayHost(e.host)) {
                 wanGatewayIpv4.push(e);
             } else if (isHomeFleetPrivateIpv4(e.host) || e.host === '127.0.0.1') {
@@ -1418,9 +1446,36 @@ export function connectWS() {
             }
         }
         if (preferWanGatewayProbeFirst) {
-            return [...wanGatewayIpv4, ...dnsRemote, ...publicIpv4, ...homeFleetIpv4, ...dnsPage, ...guestPrivateIpv4];
+            return [
+                ...wanGatewayIpv4,
+                ...lanGatewayIpv4,
+                ...dnsRemote,
+                ...publicIpv4,
+                ...homeFleetIpv4,
+                ...dnsPage,
+                ...guestPrivateIpv4
+            ];
         }
-        return [...wanGatewayIpv4, ...homeFleetIpv4, ...dnsRemote, ...dnsPage, ...publicIpv4, ...guestPrivateIpv4];
+        if (onHomeFleetPage) {
+            return [
+                ...homeFleetIpv4,
+                ...lanGatewayIpv4,
+                ...wanGatewayIpv4,
+                ...dnsRemote,
+                ...dnsPage,
+                ...publicIpv4,
+                ...guestPrivateIpv4
+            ];
+        }
+        return [
+            ...wanGatewayIpv4,
+            ...lanGatewayIpv4,
+            ...homeFleetIpv4,
+            ...dnsRemote,
+            ...dnsPage,
+            ...publicIpv4,
+            ...guestPrivateIpv4
+        ];
     };
 
     const isLikelyPort = (value: string): boolean => /^\d{1,5}$/.test(value);
@@ -1443,13 +1498,12 @@ export function connectWS() {
     let remoteHostSpecs = splitConnectHostList(remoteHost)
         .map((entry) => parseHostAndPort(entry))
         .filter((entry): entry is { host: string; port?: string } => !!entry && !!entry.host);
-    if (offHomeFleet && isGatewayHttpsOrigin(endpointUrlForConnect)) {
+    if (offHomeFleet && isGatewayHttpsOrigin(endpointUrlForConnect) && !routedViaFleetGateway) {
         const filtered = remoteHostSpecs.filter((spec) => {
             const bare = stripWireEndpointIdPrefix(spec.host).trim();
             if (!bare) return false;
-            if (isFleetWanGatewayHost(bare)) return true;
+            if (isFleetIngressGatewayHost(bare)) return true;
             if (isIpv4Literal(bare) && isHomeFleetPrivateIpv4(bare)) return false;
-            if (isIpv4Literal(bare) && bare === "192.168.0.200") return false;
             return true;
         });
         if (filtered.length) remoteHostSpecs = filtered;
@@ -1462,10 +1516,6 @@ export function connectWS() {
     }
     const firstExplicitPort = (remoteHostSpecs[0]?.port || '').trim();
     const remotePort = firstExplicitPort;
-    const configuredRouteTargetRaw = getRemoteRouteTarget().trim();
-    const configuredRouteTarget =
-        sanitizeFleetRouteTarget(configuredRouteTargetRaw, endpointUrlForConnect || remoteHost) ||
-        configuredRouteTargetRaw;
     const parsedConfiguredRouteTarget = configuredRouteTarget ? parseHostAndPort(configuredRouteTarget) : undefined;
     const pageHost = pageHostEarly;
     const isLocalPageHost = /^(localhost|127\.0\.0\.1)$/.test(pageHost) || (
@@ -1488,10 +1538,20 @@ export function connectWS() {
     const parsedRemoteHost = remoteHostSpec?.host || resolvedRemoteHost;
     const parsedRemotePort = remoteHostSpec?.port;
     const routeTargetForQuery = (() => {
+        if (isFleetDeskWireNodeId(configuredRouteTarget)) {
+            return normalizeWireNodeIdForWire(configuredRouteTarget);
+        }
         if (isAssociableFleetWireNodeId(configuredRouteTarget)) {
             return normalizeWireNodeIdForWire(configuredRouteTarget);
         }
-        if (isGatewayHttpsOrigin(endpointUrlForConnect) || isGatewayHttpsOrigin(remoteHost)) {
+        if (routedViaFleetGateway && isFleetDeskWireNodeId(configuredRouteTargetRaw)) {
+            return normalizeWireNodeIdForWire(configuredRouteTargetRaw);
+        }
+        if (
+            fleetDeskGatewayProbe ||
+            isGatewayHttpsOrigin(endpointUrlForConnect) ||
+            isGatewayHttpsOrigin(remoteHost)
+        ) {
             return DEFAULT_DESK_WIRE_NODE_ID;
         }
         const parsedHost = parsedConfiguredRouteTarget?.host || "";
@@ -1757,7 +1817,7 @@ export function connectWS() {
         if (!targetHost) return true;
         const normalizedRoute = normalizeWireNodeIdForWire(routeTarget);
         if (!normalizedRoute) {
-            return !isFleetWanGatewayHost(targetHost);
+            return !isFleetIngressGatewayHost(targetHost);
         }
         const normalizedTargetHost = targetHost.trim().toLowerCase();
         const routeBare = stripWireEndpointIdPrefix(normalizedRoute).toLowerCase();
@@ -1816,7 +1876,8 @@ export function connectWS() {
         queryParams[CWSP_ROUTE_QUERY.localEndpoint] = isSameAsTargetHost() ? "1" : "0";
         const inferredDeskRoute =
             routeTarget ||
-            ((isFleetWanGatewayHost(candidate.host) ||
+            ((isFleetIngressGatewayHost(candidate.host) ||
+                fleetDeskGatewayProbe ||
                 isGatewayHttpsOrigin(endpointUrlForConnect) ||
                 isGatewayHttpsOrigin(remoteHost))
                 ? DEFAULT_DESK_WIRE_NODE_ID
