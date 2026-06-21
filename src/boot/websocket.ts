@@ -59,8 +59,10 @@ import {
 } from "cwsp-shared/packet-wire-hash";
 import {
     DEFAULT_DESK_WIRE_NODE_ID,
+    FLEET_GATEWAY_WIRE_NODE_ID,
     isAssociableFleetWireNodeId,
     isFleetDeskWireNodeId,
+    isFleetGatewayWireNodeId,
     isGatewayHttpsOrigin,
     isGuestPrivateLanIpv4,
     isHomeFleetLanHost,
@@ -1613,6 +1615,12 @@ export function connectWS() {
     const parsedRemoteHost = remoteHostSpec?.host || resolvedRemoteHost;
     const parsedRemotePort = remoteHostSpec?.port;
     const routeTargetForQuery = (() => {
+        if (isFleetGatewayWireNodeId(configuredRouteTarget)) {
+            return normalizeWireNodeIdForWire(configuredRouteTarget);
+        }
+        if (isFleetGatewayWireNodeId(configuredRouteTargetRaw)) {
+            return normalizeWireNodeIdForWire(configuredRouteTargetRaw);
+        }
         if (isFleetDeskWireNodeId(configuredRouteTarget)) {
             return normalizeWireNodeIdForWire(configuredRouteTarget);
         }
@@ -1951,6 +1959,9 @@ export function connectWS() {
         queryParams[CWSP_ROUTE_QUERY.localEndpoint] = isSameAsTargetHost() ? "1" : "0";
         const inferredDeskRoute =
             routeTarget ||
+            (isFleetGatewayWireNodeId(configuredRouteTargetRaw)
+                ? FLEET_GATEWAY_WIRE_NODE_ID
+                : "") ||
             ((isFleetIngressGatewayHost(candidate.host) ||
                 fleetDeskGatewayProbe ||
                 isGatewayHttpsOrigin(endpointUrlForConnect) ||

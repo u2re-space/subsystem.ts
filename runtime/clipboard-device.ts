@@ -7,6 +7,7 @@ export {
     isCapacitorNativeShell,
     writeClipboardTextToDevice,
     readClipboardTextFromDevice,
+    writeClipboardImageToDevice,
     openNativeNotificationSettings,
     openAppClipboardRelatedSettings,
 } from "../src/routing/native/clipboard-device";
