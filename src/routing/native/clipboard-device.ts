@@ -43,6 +43,24 @@ async function readViaCwsBridge(): Promise<string> {
     }
 }
 
+async function writeViaCwsBridgeImage(
+    data: string,
+    mimeType: string,
+    hash?: string
+): Promise<boolean> {
+    if (!isCapacitorCwsNativeShell()) return false;
+    try {
+        const result = await invokeCwsNative("clipboard:write-local-image", {
+            mimeType,
+            hash: hash || "",
+            data
+        });
+        return Boolean((result as { ok?: boolean })?.ok);
+    } catch {
+        return false;
+    }
+}
+
 async function writeViaCwsBridge(text: string): Promise<boolean> {
     if (!isCapacitorCwsNativeShell()) return false;
     try {
@@ -52,6 +70,66 @@ async function writeViaCwsBridge(text: string): Promise<boolean> {
         return false;
     }
 }
+
+export async function writeClipboardImageToDevice(
+    data: string,
+    mimeType = "image/png",
+    hash?: string
+): Promise<void> {
+    const payload = String(data ?? "").trim();
+    if (!payload) throw new Error("Clipboard image payload empty");
+    const mime = String(mimeType || "image/png").trim() || "image/png";
+    if (await writeViaCwsBridgeImage(payload, mime, hash)) return;
+
+    if (isCapacitorNative() && globalThis.navigator?.clipboard?.write) {
+        try {
+            const bytes = decodeClipboardImageBase64(payload);
+            if (bytes?.length) {
+                const blob = new Blob([bytes], { type: mime });
+                const pngBlob = mime === "image/png" ? blob : await blobToPng(blob);
+                await globalThis.navigator.clipboard.write([
+                    new ClipboardItem({ [pngBlob.type]: pngBlob })
+                ]);
+                return;
+            }
+        } catch {
+            /* fall through */
+        }
+    }
+    throw new Error("Clipboard image write unavailable");
+}
+
+const decodeClipboardImageBase64 = (raw: string): Uint8Array | null => {
+    let data = raw.trim();
+    if (!data) return null;
+    if (data.startsWith("data:")) {
+        const comma = data.indexOf(",");
+        if (comma < 0) return null;
+        data = data.slice(comma + 1);
+    }
+    try {
+        const bin = globalThis.atob(data.replace(/\s+/g, ""));
+        const out = new Uint8Array(bin.length);
+        for (let i = 0; i < bin.length; i++) out[i] = bin.charCodeAt(i);
+        return out;
+    } catch {
+        return null;
+    }
+};
+
+const blobToPng = async (blob: Blob): Promise<Blob> => {
+    if (blob.type === "image/png") return blob;
+    if (typeof createImageBitmap === "function" && typeof OffscreenCanvas !== "undefined") {
+        const bitmap = await createImageBitmap(blob);
+        const canvas = new OffscreenCanvas(bitmap.width, bitmap.height);
+        const ctx = canvas.getContext("2d");
+        if (!ctx) return blob;
+        ctx.drawImage(bitmap, 0, 0);
+        bitmap.close();
+        return await canvas.convertToBlob({ type: "image/png" });
+    }
+    return blob;
+};
 
 export async function writeClipboardTextToDevice(text: string): Promise<void> {
     const value = String(text ?? "");

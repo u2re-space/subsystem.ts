@@ -40,6 +40,7 @@ import {
     isCapacitorNativeShell,
     readClipboardTextFromDevice,
     writeClipboardTextToDevice,
+    writeClipboardImageToDevice,
 } from "shared/native/clipboard-device";
 import {
     CWSP_DEFAULT_HTTPS_PORTS,
@@ -423,6 +424,10 @@ async function applyIncomingClipboardText(text: string, meta?: { source?: string
     if (!isShellRemoteClipboardBridgeEnabled()) return;
     const t = typeof text === "string" ? text : "";
     const normalized = t.trim();
+    if (normalized.toLowerCase().startsWith("data:image/")) {
+        await applyIncomingClipboardImage({ mimeType: "image/png", data: normalized }, meta);
+        return;
+    }
     const now = Date.now();
     if (
         normalized &&
@@ -446,6 +451,44 @@ async function applyIncomingClipboardText(text: string, meta?: { source?: string
     } catch (error) {
         console.warn("[cwsp:clipboard] device write failed", {
             length: t.length,
+            source: meta?.source,
+            error: describeError(error)
+        });
+    }
+}
+
+async function applyIncomingClipboardImage(
+    asset: ClipboardAssetWire,
+    meta?: { source?: string }
+): Promise<void> {
+    if (!isShellRemoteClipboardBridgeEnabled()) return;
+    const data = String(asset.data ?? "").trim();
+    if (!data) return;
+    const mimeType = String(asset.mimeType || "image/png").trim() || "image/png";
+    const dedupeKey = asset.hash?.trim() || data.slice(0, 96);
+    const now = Date.now();
+    if (
+        dedupeKey &&
+        dedupeKey === lastInboundClipboardNormalized &&
+        now - lastInboundClipboardAt < CLIPBOARD_ECHO_SUPPRESS_MS
+    ) {
+        return;
+    }
+    lastInboundClipboardNormalized = dedupeKey;
+    lastInboundClipboardAt = now;
+    notifyClipboardHandlers("", meta);
+    if (!isApplyRemoteClipboardToDeviceEnabled()) return;
+    if (dedupeKey === lastClipboardWrittenFromRemote && now < clipboardEchoSuppressUntil) return;
+    try {
+        await writeClipboardImageToDevice(data, mimeType, asset.hash);
+        lastClipboardWrittenFromRemote = dedupeKey;
+        lastClipboardPushSent = dedupeKey;
+        lastClipboardPushSentAt = now;
+        clipboardEchoSuppressUntil = now + CLIPBOARD_ECHO_SUPPRESS_MS;
+    } catch (error) {
+        console.warn("[cwsp:clipboard] device image write failed", {
+            mimeType,
+            hash: asset.hash,
             source: meta?.source,
             error: describeError(error)
         });
@@ -491,6 +534,29 @@ const extractClipboardTextFromPacket = (packet: CoordinatorPacket): string => {
     const fromPayload = extractClipboardText(payload);
     if (fromPayload) return fromPayload;
     return extractClipboardText(packet);
+};
+
+type ClipboardAssetWire = { hash?: string; mimeType: string; data: string };
+
+const extractClipboardAssetFromPacket = (packet: CoordinatorPacket): ClipboardAssetWire | null => {
+    const carriers = [packet.payload, packet.data, packet.result, packet.results, packet];
+    for (const carrier of carriers) {
+        if (!carrier || typeof carrier !== "object") continue;
+        const rec = carrier as Record<string, unknown>;
+        const asset = rec.asset ?? rec.dataAsset ?? rec.file ?? rec.image;
+        if (!asset || typeof asset !== "object") continue;
+        const row = asset as Record<string, unknown>;
+        const data = typeof row.data === "string" ? row.data.trim() : "";
+        if (!data) continue;
+        const mimeType =
+            (typeof row.mimeType === "string" && row.mimeType.trim()) ||
+            (typeof row.type === "string" && row.type.trim()) ||
+            "image/png";
+        if (!mimeType.toLowerCase().startsWith("image/")) continue;
+        const hash = typeof row.hash === "string" ? row.hash.trim() : "";
+        return { hash, mimeType, data };
+    }
+    return null;
 };
 
 const getCoordinatorPacketSenderId = (packet: unknown): string => {
@@ -725,6 +791,15 @@ const handleCoordinatorPacket = async (packet: CoordinatorPacket): Promise<void>
             return;
         }
         const clipboardPayload = packet.payload ?? packet.data ?? packet.result ?? packet.results;
+        const asset = extractClipboardAssetFromPacket(packet);
+        if (asset) {
+            void applyIncomingClipboardImage(asset, {
+                source: typeof clipboardPayload === "object" && clipboardPayload
+                    ? String((clipboardPayload as Record<string, unknown>).source || "")
+                    : undefined
+            });
+            return;
+        }
         const text = extractClipboardTextFromPacket(packet);
         void applyIncomingClipboardText(text, {
             source: typeof clipboardPayload === "object" && clipboardPayload
@@ -2009,6 +2084,11 @@ export function connectWS() {
             const decoded = await unwrapIncomingPayload(msg);
             const sender = getCoordinatorPacketSenderId(decoded);
             if (!isClipboardSenderAllowedForInbound(sender)) {
+                return;
+            }
+            const asset = extractClipboardAssetFromPacket(decoded as CoordinatorPacket);
+            if (asset) {
+                void applyIncomingClipboardImage(asset, { source: decoded?.source });
                 return;
             }
             const text = extractClipboardTextFromPacket(decoded as CoordinatorPacket);
