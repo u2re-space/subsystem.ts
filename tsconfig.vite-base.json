@@ -79,6 +79,7 @@
             "cwsp-shared/clipboard-wire-constants": [
                 "../../projects/cwsp-shared/src/clipboard-wire-constants.ts"
             ],
+            "cwsp-shared/cwsp-global": ["../../projects/cwsp-shared/src/cwsp-global.ts"],
             "fest/cwsp-shared": ["../../projects/cwsp-shared/src/index.ts"],
             "fest/cwsp-shared/*": ["../../projects/cwsp-shared/src/*"],
             "veela-lib": ["../../projects/veela.css/src/scss/index.scss"],
