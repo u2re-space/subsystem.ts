@@ -51,6 +51,129 @@ const isCapacitorNativeShell = (): boolean => {
     }
 };
 
+// --- WebNative desktop control-RPC overlay -----------------------------------------------
+//
+// WHY: the WebNative desktop shell runs a local Node backend (`runtime/cwsp/webnative/app/backend`)
+// that owns the REAL CWSP config (`portable.config.json` + `config/*.json`) and exposes it over a
+// loopback control RPC at `/service/config` (GET = raw portable + DEFAULT_SETTINGS + resolved
+// snapshot + user settings; POST = deep-merge patch into portable.config.json + reload + restart
+// the endpoint child). The minimal-shell webview's Settings/Network views read `loadSettings()`
+// which is otherwise IDB-only — so on desktop the UI would show IDB defaults (`http://localhost:6065`)
+// instead of the actual configured endpoint (`https://192.168.0.200:8434`), and Save would only hit
+// IDB, never `portable.config.json`, never trigger an endpoint reload.
+//
+// This overlay mirrors the Capacitor `cws-bridge` pattern: on the WebNative surface (detected via
+// the `__WEBNATIVE_AUTH__` global the backend's `__webnative_auth__.js` injects), `loadSettings`
+// merges config-snapshot-derived `core` fields over IDB (config wins for endpoint/identity/TLS so
+// the UI reflects the real CWSP config), and `saveSettings` POSTs a `bridge` patch to `/service/config`
+// so `portable.config.json`'s bridge section (read by `resolveBridgeConfig`) is updated and the
+// endpoint reloads. No new cross-level imports — uses `globalThis.__WEBNATIVE_AUTH__` + fetch, same
+// shape as the Capacitor overlay. On non-WebNative surfaces these helpers are no-ops (zero regression
+// for Capacitor/PWA/CRX).
+
+interface WebnativeAuth { port: number; key: string }
+
+const isWebnativeSurface = (): boolean => {
+    try {
+        const g = globalThis as unknown as { __WEBNATIVE_AUTH__?: WebnativeAuth; __CWS_WEBNATIVE_BOOT__?: boolean };
+        return Boolean(g.__CWS_WEBNATIVE_BOOT__ || (g.__WEBNATIVE_AUTH__ && typeof g.__WEBNATIVE_AUTH__.port === "number"));
+    } catch {
+        return false;
+    }
+};
+
+const webnativeControl = async <T = unknown>(path: string, init?: RequestInit): Promise<T | null> => {
+    try {
+        const g = globalThis as unknown as { __WEBNATIVE_AUTH__?: WebnativeAuth };
+        const auth = g.__WEBNATIVE_AUTH__;
+        if (!auth || typeof auth.port !== "number") return null;
+        const headers = new Headers(init?.headers);
+        headers.set("Content-Type", "application/json");
+        if (auth.key) headers.set("X-API-Key", auth.key);
+        const res = await fetch(`http://127.0.0.1:${auth.port}${path}`, { ...init, headers, cache: "no-store" });
+        if (!res.ok) return null;
+        return (await res.json()) as T;
+    } catch {
+        return null;
+    }
+};
+
+/**
+ * Map a resolved CWSP config snapshot (`readServerV2ConfigSnapshot` shape from the backend's
+ * GET /service/config) onto the AppSettings.core fields the Settings/Network views render. The
+ * snapshot's `bridge` section carries the canonical endpoint URL + identity + TLS decision.
+ */
+const mapWebnativeSnapshotToCore = (snap: any): Partial<AppSettings["core"]> | null => {
+    if (!snap || typeof snap !== "object") return null;
+    const bridge = snap.bridge || {};
+    const listenPort = Number(snap.listenPort) || Number(snap.publicHttpPort) || 8434;
+    // WHY: bridge.endpointUrl is often empty in real CWSP configs (the topology lives in bridge.endpoints).
+    // Prefer the explicit endpointUrl, then the first bridge.endpoints entry (typically the WAN entry
+    // like https://45.147.121.152:8434/), then loopback as a last resort so the UI never shows the stale
+    // IDB default (http://localhost:6065).
+    const endpointUrlRaw = String(bridge.endpointUrl || "").trim();
+    const endpointsList = Array.isArray(bridge.endpoints) ? bridge.endpoints.map((e: unknown) => String(e || "").trim()).filter(Boolean) : [];
+    const endpointUrl = endpointUrlRaw || endpointsList[0] || "";
+    const userId = String(bridge.userId || bridge.deviceId || "").trim();
+    const userKey = String(bridge.userKey || "").trim();
+    const allowInsecureTls = Boolean(bridge.allowInsecureTls);
+    if (!endpointUrl && !userId) return null;
+    return {
+        endpointUrl: endpointUrl || `https://127.0.0.1:${listenPort}`,
+        userId,
+        userKey,
+        allowInsecureTls
+    };
+};
+
+/**
+ * Overlay config-derived core fields onto the IDB-loaded settings so the WebNative desktop UI shows
+ * the REAL CWSP endpoint/identity/TLS instead of IDB defaults. Config wins for these fields because
+ * `portable.config.json` is the source of truth on desktop; IDB-only fields (ai, appearance, …) are
+ * untouched. Returns `base` unchanged on non-WebNative surfaces.
+ */
+let webnativeSnapshotCache: any = null;
+let webnativeSnapshotFetchedAt = 0;
+const loadWebnativeSnapshot = async (): Promise<any> => {
+    if (Date.now() - webnativeSnapshotFetchedAt < 2000 && webnativeSnapshotCache) return webnativeSnapshotCache;
+    const bundle = await webnativeControl<{ snapshot?: any } | null>("/service/config");
+    webnativeSnapshotCache = bundle?.snapshot || null;
+    webnativeSnapshotFetchedAt = Date.now();
+    return webnativeSnapshotCache;
+};
+
+/** Best-effort push of a settings save into `portable.config.json` via the backend control RPC. */
+const pushWebnativeSettingsPatch = async (settings: AppSettings): Promise<boolean> => {
+    if (!isWebnativeSurface()) return false;
+    const core = settings.core;
+    if (!core) return false;
+    // WHY: map AppSettings.core → portable.config.json `bridge` section (read by resolveBridgeConfig's
+    // endpointUrl/userId/userKey/allowInsecureTls resolution) + `launcherEnv` (CWS_ASSOCIATED_ID/TOKEN
+    // read as env fallbacks). Deep-merge by the backend keeps unrelated keys intact.
+    const patch: Record<string, unknown> = {
+        bridge: {
+            endpointUrl: String(core.endpointUrl || "").trim(),
+            userId: String(core.userId || "").trim(),
+            userKey: String(core.userKey || "").trim(),
+            allowInsecureTls: Boolean(core.allowInsecureTls)
+        },
+        launcherEnv: {
+            CWS_ASSOCIATED_ID: String(core.userId || "").trim(),
+            CWS_ASSOCIATED_TOKEN: String(core.userKey || "").trim()
+        }
+    };
+    if (core.ops?.directUrl) {
+        (patch.bridge as Record<string, unknown>).endpoints = [String(core.ops.directUrl).trim()];
+    }
+    const r = await webnativeControl<{ ok?: boolean } | null>("/service/config", {
+        method: "POST",
+        body: JSON.stringify(patch)
+    });
+    // WHY: bust the snapshot cache so the next load reflects the just-written config.
+    webnativeSnapshotFetchedAt = 0;
+    return Boolean(r?.ok);
+};
+
 /** First-boot CWSP defaults for CWSAndroid when IDB still has dev/empty endpoint fields. */
 const CAPACITOR_CWSP_BOOTSTRAP: Partial<AppSettings> = {
     core: {
@@ -775,6 +898,33 @@ export const loadSettings = async (opts?: LoadSettingsOptions): Promise<AppSetti
                 // bridge optional in web / extension contexts
             }
 
+            // WebNative desktop: overlay the REAL CWSP config snapshot (endpointUrl/userId/userKey/
+            // allowInsecureTls from portable.config.json) over IDB so the UI shows the configured
+            // endpoint instead of IDB defaults. Config wins for these fields on desktop. Best-effort:
+            // a fetch failure leaves the IDB values intact (no regression).
+            try {
+                if (isWebnativeSurface()) {
+                    const snap = await loadWebnativeSnapshot();
+                    const coreOverlay = mapWebnativeSnapshotToCore(snap);
+                    if (coreOverlay) {
+                        result = {
+                            ...result,
+                            core: {
+                                ...result.core,
+                                ...coreOverlay,
+                                socket: { ...(result.core?.socket || {}), ...(coreOverlay as any).socket },
+                                ops: { ...(result.core?.ops || {}) },
+                                admin: { ...(result.core?.admin || {}) },
+                                network: { ...(result.core?.network || {}) },
+                                interop: { ...(result.core?.interop || {}) }
+                            }
+                        } as AppSettings;
+                    }
+                }
+            } catch {
+                /* webnative control RPC optional — ignore */
+            }
+
             console.log("[Settings] loadSettings result:", {
                 hasApiKey: !!result.ai?.apiKey,
                 instructionCount: result.ai?.customInstructions?.length || 0,
@@ -937,6 +1087,17 @@ export const saveSettings = async (settings: AppSettings) => {
             nativeError: String(e instanceof Error ? e.message : e)
         };
         console.warn("[Settings] native settings patch failed:", e);
+    }
+    // WebNative desktop: push the core endpoint/identity/TLS patch into portable.config.json via
+    // the backend control RPC so the REAL CWSP config stays in sync + the endpoint reloads. Best-
+    // effort: a failure does NOT fail the save (IDB already persisted). Mirrors the Capacitor patch.
+    if (isWebnativeSurface()) {
+        try {
+            const ok = await pushWebnativeSettingsPatch(merged);
+            if (!ok) console.warn("[Settings] webnative config patch not confirmed (control RPC unavailable?)");
+        } catch (e) {
+            console.warn("[Settings] webnative config patch failed:", e);
+        }
     }
     try {
         const { applyAirpadRuntimeFromAppSettings, syncAirpadRemoteConfigFromAppSettings } = await import("views/airpad/config/config");
