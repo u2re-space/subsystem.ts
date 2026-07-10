@@ -63,7 +63,7 @@ const mobileDeviceFields = (): SettingsPanelChild[] => [
     settingsCheckboxField("Enable remote clipboard bridge", "shell.enableRemoteClipboardBridge"),
     settingsCheckboxField("Accept contacts bridge", "shell.acceptContactsBridgeData"),
     settingsCheckboxField("Accept SMS bridge", "shell.acceptSmsBridgeData"),
-    settingsHint("Save triggers Android permission dialogs / overlay settings when toggles are on.")
+    settingsHint("Save may request contacts / SMS / notifications when those toggles are on.")
 ];
 
 export const registerCwspSettingsContribution = (): (() => void) =>

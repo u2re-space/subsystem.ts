@@ -62,17 +62,11 @@ export const ensureCapacitorPermissions = async (): Promise<{ native: boolean; r
     if (platform) {
         await callSafe(platform.requestRuntimePermissions);
         done.push("CwsPlatform.requestRuntimePermissions");
-        const overlay = await callSafe(platform.canDrawOverlays);
-        const granted = overlay && typeof overlay === "object" && (overlay as AnyRecord).granted === true;
-        if (!granted) {
-            // Do not auto-open settings on every boot; expose via Settings → Device if needed.
-            done.push("overlay:prompt-deferred");
-        }
     } else {
         const legacy = plugin("DevicePermissions") || plugin("Permissions");
         if (legacy && typeof legacy.requestPermissions === "function") {
             await callSafe(legacy.requestPermissions, {
-                permissions: ["POST_NOTIFICATIONS", "SYSTEM_ALERT_WINDOW"]
+                permissions: ["POST_NOTIFICATIONS"]
             });
             done.push("legacy-permissions");
         }

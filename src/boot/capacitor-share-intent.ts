@@ -1,29 +1,52 @@
 /**
  * Capacitor share / process-text bridge (Android → WebView → CWSP clipboard fan-out).
  *
- * MainActivity triggers `cws:shareIntent` via {@code bridge.triggerWindowJSEvent}.
- * This module listens and broadcasts text through the coordinator when connected.
+ * Primary path: {@code ShareActivity} fans out via native /ws without opening MainActivity.
+ * This module is a secondary path when WebView is already alive and receives
+ * {@code cws:shareIntent} / asset handoff events.
  */
 
 import { isCapacitorNative } from "./capacitor-permissions";
 import { isCapacitorCwsNativeShell } from "com/routing/native/cws-bridge";
 import { splitMultiValueList } from "cwsp-shared/multi-value-list";
 
-type ShareIntentDetail = { text?: string; action?: string } | string;
+type ShareAsset = {
+    hash?: string;
+    name?: string;
+    mimeType?: string;
+    type?: string;
+    size?: number;
+    source?: string;
+    data?: string;
+};
 
-const parseShareText = (detail: ShareIntentDetail | null | undefined): string => {
-    if (detail == null) return "";
+type ShareIntentDetail = {
+    text?: string;
+    action?: string;
+    asset?: ShareAsset;
+} | string;
+
+const parseSharePayload = (
+    detail: ShareIntentDetail | null | undefined
+): { text: string; asset: ShareAsset | null } => {
+    if (detail == null) return { text: "", asset: null };
     if (typeof detail === "string") {
         const trimmed = detail.trim();
-        if (!trimmed) return "";
+        if (!trimmed) return { text: "", asset: null };
         try {
-            const parsed = JSON.parse(trimmed) as { text?: string };
-            return String(parsed?.text || trimmed).trim();
+            const parsed = JSON.parse(trimmed) as { text?: string; asset?: ShareAsset };
+            return {
+                text: String(parsed?.text || "").trim() || (parsed?.asset ? "" : trimmed),
+                asset: parsed?.asset && typeof parsed.asset === "object" ? parsed.asset : null
+            };
         } catch {
-            return trimmed;
+            return { text: trimmed, asset: null };
         }
     }
-    return String(detail.text || "").trim();
+    return {
+        text: String(detail.text || "").trim(),
+        asset: detail.asset && typeof detail.asset === "object" ? detail.asset : null
+    };
 };
 
 const readDestinationNodes = (settings: Record<string, unknown>): string[] => {
@@ -46,8 +69,10 @@ export const installCapacitorShareIntentBridge = (): void => {
 
     const handler = (ev: Event): void => {
         void (async () => {
-            const text = parseShareText((ev as CustomEvent<ShareIntentDetail>).detail);
-            if (!text) return;
+            const { text, asset } = parseSharePayload(
+                (ev as CustomEvent<ShareIntentDetail>).detail
+            );
+            if (!text && !asset) return;
 
             const [{ loadSettings }, ws] = await Promise.all([
                 import("com/config/Settings"),
@@ -57,7 +82,20 @@ export const installCapacitorShareIntentBridge = (): void => {
             const settings = loadSettings() as Record<string, unknown>;
             const nodes = readDestinationNodes(settings);
             ws.connectWS();
-            ws.sendCoordinatorAct("clipboard:update", { text, source: "android-share" }, nodes);
+            if (asset) {
+                ws.sendCoordinatorAct(
+                    "clipboard:update",
+                    { asset, source: "android-share" },
+                    nodes
+                );
+            }
+            if (text) {
+                ws.sendCoordinatorAct(
+                    "clipboard:update",
+                    { text, source: "android-share" },
+                    nodes
+                );
+            }
         })().catch(() => { /* best-effort */ });
     };
 

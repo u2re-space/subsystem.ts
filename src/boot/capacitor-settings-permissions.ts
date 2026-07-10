@@ -1,7 +1,10 @@
 /**
  * Capacitor Settings → Android runtime permission / system Intent flow.
  * Called after a successful Settings save on CWSAndroid so toggles trigger
- * the expected system dialogs (contacts, SMS, notifications, overlay).
+ * the expected system dialogs (contacts, SMS, notifications).
+ *
+ * WHY: SYSTEM_ALERT_WINDOW / permanent overlay bubble was removed — do not
+ * open "Display over other apps" on save.
  */
 import type { AppSettings } from "../other/config/SettingsTypes";
 import { isCapacitorNative } from "./capacitor-permissions";
@@ -61,17 +64,17 @@ export const requestCapacitorSettingsPermissionsAfterSave = async (
     const wantsDaemon = (shell.bridgeDaemonEnabled ?? true) !== false;
     const wantsClipboardBridge = (shell.enableRemoteClipboardBridge ?? true) !== false;
     const wantsNotifications = wantsDaemon || wantsClipboardBridge;
-    const wantsOverlay = wantsDaemon || wantsClipboardBridge;
 
     const platform = plugin("CwsPlatform");
 
-    if (wantsContacts || wantsSms || wantsNotifications || wantsOverlay) {
+    if (wantsContacts || wantsSms || wantsNotifications) {
         if (platform?.requestSettingsPermissions) {
             const raw = await callSafe(platform.requestSettingsPermissions, {
                 contacts: wantsContacts,
                 sms: wantsSms,
                 notifications: wantsNotifications,
-                overlay: wantsOverlay
+                // WHY: permanent overlay removed — never open draw-over-apps settings.
+                overlay: false
             });
             let permPrompted = false;
             if (raw && typeof raw === "object") {
@@ -81,8 +84,11 @@ export const requestCapacitorSettingsPermissionsAfterSave = async (
                 if (Array.isArray(arr)) {
                     for (const row of arr) {
                         if (row && typeof row === "object") {
+                            const permission = String((row as AnyRecord).permission ?? "");
+                            // Ignore stale overlay rows if an older APK still returns them.
+                            if (permission === "SYSTEM_ALERT_WINDOW") continue;
                             results.push({
-                                permission: String((row as AnyRecord).permission ?? ""),
+                                permission,
                                 granted: Boolean((row as AnyRecord).granted)
                             });
                         }
