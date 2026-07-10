@@ -2,9 +2,14 @@ import { JSOX } from "jsox";
 
 //
 import type { AppSettings } from "com/config/SettingsTypes";
-import { DEFAULT_SETTINGS } from "com/config/SettingsTypes";
+import { DEFAULT_SETTINGS, normalizeEcosystemToken } from "com/config/SettingsTypes";
 import { writeFileSmart } from "fest/lure";
 import { migrateLegacyCwspPublicPort } from "cwsp-shared/cwsp-endpoint-resolve";
+import {
+    isAssociableFleetWireNodeId,
+    normalizeWireNodeIdForWire,
+    sanitizeFleetSelfWireNodeId
+} from "cwsp-shared/airpad-cwsp-client-parity";
 
 //
 export const SETTINGS_KEY = "rs-settings";
@@ -29,18 +34,21 @@ export const getLastSettingsSaveReport = (): SettingsSaveReport => ({ ...lastSet
 const trimSetting = (v: unknown): string => (typeof v === "string" ? v.trim() : "");
 
 /** Factory defaults — not treated as user-configured Client-ID on Capacitor. */
-const CAPACITOR_FACTORY_SELF_IDS = new Set([
-    "L-192.168.0.196",
-    "L-192.168.0.208",
-    "L-192.168.0.210"
-]);
+const CAPACITOR_FACTORY_SELF_IDS = new Set(["L-196", "L-208", "L-210"]);
 
-const isCapacitorFactorySelfId = (id: string): boolean =>
-    !id || CAPACITOR_FACTORY_SELF_IDS.has(id);
+const isCapacitorFactorySelfId = (id: string): boolean => {
+    if (!id) return true;
+    const shortId = sanitizeFleetSelfWireNodeId(id) || id;
+    return CAPACITOR_FACTORY_SELF_IDS.has(shortId);
+};
 
-/** Home fleet LAN only — guest {@code 192.168.165.x} / corporate subnets are not Client-ID. */
+/** Home fleet Client-ID — accepts short {@code L-196} via normalize → {@code L-192.168.0.196}. */
 const isHomeFleetClientId = (id: string): boolean =>
-    Boolean(id) && id.startsWith("L-192.168.0.") && id.length > "L-192.168.0.".length;
+    Boolean(id) && isAssociableFleetWireNodeId(normalizeWireNodeIdForWire(id));
+
+/** Persist short home-fleet Client-ID ({@code L-196}); never expand to full LAN form. */
+const normalizePersistedClientId = (raw: unknown): string =>
+    sanitizeFleetSelfWireNodeId(raw) || String(raw ?? "").trim();
 
 const isCapacitorNativeShell = (): boolean => {
     try {
@@ -186,7 +194,7 @@ const CAPACITOR_CWSP_BOOTSTRAP: Partial<AppSettings> = {
             directUrl: "https://192.168.0.110:8434"
         },
         socket: {
-            routeTarget: "L-110;L-196;L-210",
+            routeTarget: "L-196;L-210;L-208",
             accessToken: "n3v3rm1nd",
             allowAccessTokenWithoutUserKey: true,
             protocol: "auto"
@@ -202,7 +210,7 @@ const CAPACITOR_CWSP_BOOTSTRAP: Partial<AppSettings> = {
         acceptInboundClipboardData: true,
         applyRemoteClipboardToDevice: true,
         maintainHubSocketConnection: false,
-        clipboardShareDestinationIds: "L-110;L-196;L-210;L-208"
+        clipboardShareDestinationIds: "L-196;L-210;L-208"
     }
 };
 
@@ -1067,6 +1075,25 @@ export const saveSettings = async (settings: AppSettings) => {
             ...(settings.shell || {})
         }
     };
+    // WHY: Settings UI uses short Client-IDs (L-196). Persist short form; do not expand to full LAN id.
+    if (merged.core) {
+        const canonicalUserId = normalizePersistedClientId(merged.core.userId);
+        if (canonicalUserId) merged.core.userId = canonicalUserId;
+        normalizeEcosystemToken(merged);
+        if (merged.core.socket) {
+            // Keep socket.selfId empty or aligned with userId — never a stale competing identity.
+            const selfRaw = String(merged.core.socket.selfId || "").trim();
+            if (selfRaw) {
+                const canonicalSelf = normalizePersistedClientId(selfRaw);
+                merged.core.socket.selfId =
+                    canonicalSelf && canonicalSelf === (merged.core.userId || "")
+                        ? canonicalSelf
+                        : "";
+            } else {
+                merged.core.socket.selfId = "";
+            }
+        }
+    }
     await idbPutSettings(merged);
     lastSettingsSaveReport = { nativeSynced: null };
     try {

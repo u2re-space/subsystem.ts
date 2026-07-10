@@ -1962,12 +1962,9 @@ export function connectWS() {
             (isFleetGatewayWireNodeId(configuredRouteTargetRaw)
                 ? FLEET_GATEWAY_WIRE_NODE_ID
                 : "") ||
-            ((isFleetIngressGatewayHost(candidate.host) ||
-                fleetDeskGatewayProbe ||
-                isGatewayHttpsOrigin(endpointUrlForConnect) ||
-                isGatewayHttpsOrigin(remoteHost))
-                ? DEFAULT_DESK_WIRE_NODE_ID
-                : "");
+            // WHY: do NOT invent desk L-110 when connecting to the gateway — desk may be offline;
+            // phone↔phone routes use configured destinations / routeTarget only.
+            "";
         let effectiveRoute = inferredDeskRoute || resolvedRouteTarget;
         let effectiveRouteTarget = inferredDeskRoute || routeTarget || targetHost || resolvedRouteTarget;
         const candBare = stripWireEndpointIdPrefix(candidate.host || "").trim();

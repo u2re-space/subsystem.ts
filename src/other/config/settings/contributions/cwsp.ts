@@ -26,14 +26,15 @@ const MULTI_VALUE_HINT = "Separate with comma, semicolon, space, or newline. Sho
 const connectionFields = (): SettingsPanelChild[] => [
     settingsHint("Persist to IDB; on Capacitor syncs to Java prefs via CwsBridge."),
     "Connection",
-    settingsTextField("Relay / gateway host", "core.endpointUrl", "45.147.121.152 or 192.168.0.200"),
-    settingsHint("Coordinator / gateway. Port auto-discovered (8434, 443, …) when omitted. Use public or LAN gateway for phone↔phone."),
-    settingsTextField("Direct host (optional)", "core.ops.directUrl", "192.168.0.110"),
+    settingsTextField("Relay / gateway host", "core.endpointUrl", "https://192.168.0.200:8434 or https://45.147.121.152:8434"),
+    settingsHint("Coordinator / gateway. Always include :8434 — bare host dials :443 where /ws is not served (404)."),
+    settingsTextField("Direct host (optional)", "core.ops.directUrl", "https://192.168.0.110:8434"),
     settingsHint("Optional direct peer (desk). Leave empty when phones only talk via gateway."),
     settingsTextField("Client id", "core.userId", "L-196"),
+    settingsHint("Short fleet id (L-196, L-210, …). Used as WS userId/clientId — not airpad-client."),
     settingsTextField("Ecosystem token", "core.ecosystemToken", "shared ecosystem key", "password"),
     settingsHint("One shared token for identification + control (replaces separate identifier / access tokens)."),
-    settingsTextField("Destination node ids", "core.socket.routeTarget", "L-196;L-210;L-110"),
+    settingsTextField("Destination node ids", "core.socket.routeTarget", "L-196;L-210;L-208"),
     settingsHint(MULTI_VALUE_HINT),
     settingsCheckboxField("Allow insecure TLS", "core.allowInsecureTls")
 ];
