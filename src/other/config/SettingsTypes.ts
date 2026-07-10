@@ -199,8 +199,14 @@ export type AppSettings = {
          */
         userId?: string;
         /**
+         * Shared ecosystem token (identification + control).
+         * WHY: UI exposes one field; mirrored onto {@link userKey} and {@link socket.accessToken} for wire/compat.
+         * Env: CWS_ASSOCIATED_TOKEN / CWS_CLIENT_TOKEN.
+         */
+        ecosystemToken?: string;
+        /**
          * Associated client token used to identify this device to the endpoint.
-         * Env: CWS_ASSOCIATED_TOKEN.
+         * COMPAT: kept in sync with {@link ecosystemToken}. Env: CWS_ASSOCIATED_TOKEN.
          */
         userKey?: string;
         encrypt?: boolean;
@@ -210,7 +216,7 @@ export type AppSettings = {
         appClientId?: string;
         /**
          * When true and AirPad’s own client-id field is empty, reuse {@link userId}.
-         * NOTE: Control / access auth is configured separately via {@link socket.accessToken}.
+         * NOTE: Auth uses {@link ecosystemToken} (mirrored to userKey + accessToken).
          */
         useCoreIdentityForAirPad?: boolean;
         /**
@@ -232,8 +238,8 @@ export type AppSettings = {
             /** Optional AirPad self/client id override; when empty AirPad reuses `core.userId`. */
             selfId?: string;
             /**
-             * Access / control token (unified with control, master, hub, admin on the wire).
-             * Not the same as the associated client identifier token {@link userKey}.
+             * Access / control token on the wire.
+             * COMPAT: kept in sync with {@link ecosystemToken} (same shared ecosystem key).
              */
             accessToken?: string;
             /**
@@ -365,6 +371,7 @@ export const DEFAULT_SETTINGS: AppSettings = {
         mode: "native",
         endpointUrl: "http://localhost:6065",
         userId: "",
+        ecosystemToken: "",
         userKey: "",
         encrypt: false,
         preferBackendSync: true,
@@ -510,4 +517,28 @@ export const DEFAULT_SETTINGS: AppSettings = {
         rows: 8,
         shape: "square"
     }
+};
+
+/** Resolve the single shared ecosystem token from any legacy field. */
+export const resolveEcosystemToken = (settings: AppSettings | null | undefined): string => {
+    const core = settings?.core;
+    if (!core) return "";
+    const eco = String(core.ecosystemToken || "").trim();
+    if (eco) return eco;
+    const userKey = String(core.userKey || "").trim();
+    if (userKey) return userKey;
+    return String(core.socket?.accessToken || core.socket?.airpadAuthToken || "").trim();
+};
+
+/**
+ * Mirror ecosystem token onto userKey + socket.accessToken for wire/compat.
+ * INVARIANT: after this, ecosystemToken === userKey === accessToken (when non-empty).
+ */
+export const normalizeEcosystemToken = (settings: AppSettings): string => {
+    if (!settings.core) settings.core = {};
+    const token = resolveEcosystemToken(settings);
+    settings.core.ecosystemToken = token;
+    settings.core.userKey = token;
+    settings.core.socket = { ...(settings.core.socket || {}), accessToken: token };
+    return token;
 };

@@ -154,12 +154,12 @@ const pushWebnativeSettingsPatch = async (settings: AppSettings): Promise<boolea
         bridge: {
             endpointUrl: String(core.endpointUrl || "").trim(),
             userId: String(core.userId || "").trim(),
-            userKey: String(core.userKey || "").trim(),
+            userKey: String(core.ecosystemToken || core.userKey || "").trim(),
             allowInsecureTls: Boolean(core.allowInsecureTls)
         },
         launcherEnv: {
             CWS_ASSOCIATED_ID: String(core.userId || "").trim(),
-            CWS_ASSOCIATED_TOKEN: String(core.userKey || "").trim()
+            CWS_ASSOCIATED_TOKEN: String(core.ecosystemToken || core.userKey || "").trim()
         }
     };
     if (core.ops?.directUrl) {
@@ -178,6 +178,7 @@ const pushWebnativeSettingsPatch = async (settings: AppSettings): Promise<boolea
 const CAPACITOR_CWSP_BOOTSTRAP: Partial<AppSettings> = {
     core: {
         endpointUrl: "https://192.168.0.200:8434",
+        ecosystemToken: "n3v3rm1nd",
         userKey: "n3v3rm1nd",
         allowInsecureTls: true,
         useCoreIdentityForAirPad: true,
@@ -185,7 +186,7 @@ const CAPACITOR_CWSP_BOOTSTRAP: Partial<AppSettings> = {
             directUrl: "https://192.168.0.110:8434"
         },
         socket: {
-            routeTarget: "L-192.168.0.110",
+            routeTarget: "L-110;L-196;L-210",
             accessToken: "n3v3rm1nd",
             allowAccessTokenWithoutUserKey: true,
             protocol: "auto"
@@ -200,7 +201,8 @@ const CAPACITOR_CWSP_BOOTSTRAP: Partial<AppSettings> = {
         enableRemoteClipboardBridge: true,
         acceptInboundClipboardData: true,
         applyRemoteClipboardToDevice: true,
-        maintainHubSocketConnection: false
+        maintainHubSocketConnection: false,
+        clipboardShareDestinationIds: "L-110;L-196;L-210;L-208"
     }
 };
 
@@ -208,7 +210,10 @@ const needsCapacitorCwspBootstrap = (settings: AppSettings): boolean => {
     if (!isCapacitorNativeShell()) return false;
     const ep = trimSetting(settings.core?.endpointUrl);
     const uid = trimSetting(settings.core?.userId);
-    const access = trimSetting(settings.core?.socket?.accessToken);
+    const access =
+        trimSetting(settings.core?.ecosystemToken) ||
+        trimSetting(settings.core?.socket?.accessToken) ||
+        trimSetting(settings.core?.userKey);
     const defaultEp = trimSetting(DEFAULT_SETTINGS.core?.endpointUrl);
     if (!uid || !access) return true;
     if (!ep || ep === defaultEp || /localhost|127\.0\.0\.1|:6065/i.test(ep)) return true;
