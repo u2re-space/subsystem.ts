@@ -25,6 +25,9 @@ export type SettingsSaveReport = {
     /** null when not a native shell (no bridge expected). */
     nativeSynced: boolean | null;
     nativeError?: string;
+    /** Neutralino/WebNative Node `/service/config` (+ clipboard-hub) sync. */
+    webnativeSynced?: boolean | null;
+    webnativeError?: string;
 };
 
 let lastSettingsSaveReport: SettingsSaveReport = { nativeSynced: null };
@@ -57,6 +60,65 @@ const isCapacitorNativeShell = (): boolean => {
     } catch {
         return false;
     }
+};
+
+/** Desk Neutralino / endpoint peer — must be in Android clipboard destinations for Win images. */
+const CAPACITOR_DESK_PEER_ID = "L-110";
+
+const isDeskPeerId = (id: string): boolean => {
+    const shortId = sanitizeFleetSelfWireNodeId(id) || id.trim();
+    return shortId === CAPACITOR_DESK_PEER_ID;
+};
+
+const splitClipboardDestIds = (raw: string): string[] => {
+    const seen = new Set<string>();
+    const out: string[] = [];
+    for (const part of raw.split(/[,;\s\n\r]+/)) {
+        const id = part.trim();
+        if (!id || seen.has(id)) continue;
+        seen.add(id);
+        out.push(id);
+    }
+    return out;
+};
+
+const joinClipboardDestIds = (ids: string[]): string => ids.filter(Boolean).join(";");
+
+/**
+ * Prepend L-110 when missing. Leaves `*` alone (wildcard already covers desk).
+ * WHY: legacy Capacitor prefs were phone-only (L-196;L-210;L-208) → Android↔Android only.
+ */
+const ensureDeskPeerInDestCsv = (raw: string): { value: string; changed: boolean } => {
+    const t = String(raw || "").trim();
+    if (!t || t === "*") return { value: t || "*", changed: false };
+    const ids = splitClipboardDestIds(t);
+    if (ids.some(isDeskPeerId)) return { value: joinClipboardDestIds(ids), changed: false };
+    return { value: joinClipboardDestIds([CAPACITOR_DESK_PEER_ID, ...ids]), changed: true };
+};
+
+/** Patch Capacitor settings so routeTarget + share destinations include desk L-110. */
+const ensureCapacitorDeskClipboardTargets = (settings: AppSettings): AppSettings | null => {
+    if (!isCapacitorNativeShell()) return null;
+    const route = trimSetting(settings.core?.socket?.routeTarget);
+    const share = trimSetting(settings.shell?.clipboardShareDestinationIds);
+    const fallback = "L-196;L-210";
+    const r = ensureDeskPeerInDestCsv(route || fallback);
+    const s = ensureDeskPeerInDestCsv(share || route || fallback);
+    if (!r.changed && !s.changed) return null;
+    return {
+        ...settings,
+        core: {
+            ...settings.core,
+            socket: {
+                ...(settings.core?.socket || {}),
+                routeTarget: r.value
+            }
+        },
+        shell: {
+            ...settings.shell,
+            clipboardShareDestinationIds: s.value
+        }
+    } as AppSettings;
 };
 
 // --- WebNative desktop control-RPC overlay -----------------------------------------------
@@ -98,7 +160,20 @@ const webnativeControl = async <T = unknown>(path: string, init?: RequestInit): 
         const headers = new Headers(init?.headers);
         headers.set("Content-Type", "application/json");
         if (auth.key) headers.set("X-API-Key", auth.key);
-        const res = await fetch(`http://127.0.0.1:${auth.port}${path}`, { ...init, headers, cache: "no-store" });
+        // WHY: Neutralino sets __WEBNATIVE_AUTH__ before Node :18765 is up; unbounded
+        // fetch hung BootLoader.loadSettings → blank white screen.
+        const timeoutMs = 1500;
+        const signal =
+            init?.signal ??
+            (typeof AbortSignal !== "undefined" && typeof AbortSignal.timeout === "function"
+                ? AbortSignal.timeout(timeoutMs)
+                : undefined);
+        const res = await fetch(`http://127.0.0.1:${auth.port}${path}`, {
+            ...init,
+            headers,
+            cache: "no-store",
+            signal
+        });
         if (!res.ok) return null;
         return (await res.json()) as T;
     } catch {
@@ -114,24 +189,33 @@ const webnativeControl = async <T = unknown>(path: string, init?: RequestInit): 
 const mapWebnativeSnapshotToCore = (snap: any): Partial<AppSettings["core"]> | null => {
     if (!snap || typeof snap !== "object") return null;
     const bridge = snap.bridge || {};
+    const shell = snap.shell || {};
     const listenPort = Number(snap.listenPort) || Number(snap.publicHttpPort) || 8434;
     // WHY: bridge.endpointUrl is often empty in real CWSP configs (the topology lives in bridge.endpoints).
     // Prefer the explicit endpointUrl, then the first bridge.endpoints entry (typically the WAN entry
     // like https://45.147.121.152:8434/), then loopback as a last resort so the UI never shows the stale
     // IDB default (http://localhost:6065).
-    const endpointUrlRaw = String(bridge.endpointUrl || "").trim();
+    const endpointUrlRaw = String(bridge.endpointUrl || shell.remoteHost || "").trim();
     const endpointsList = Array.isArray(bridge.endpoints) ? bridge.endpoints.map((e: unknown) => String(e || "").trim()).filter(Boolean) : [];
     const endpointUrl = endpointUrlRaw || endpointsList[0] || "";
     const userId = String(bridge.userId || bridge.deviceId || "").trim();
-    const userKey = String(bridge.userKey || "").trim();
+    const userKey = String(
+        bridge.userKey || shell.accessToken || shell.clientToken || ""
+    ).trim();
     const allowInsecureTls = Boolean(bridge.allowInsecureTls);
-    if (!endpointUrl && !userId) return null;
-    return {
-        endpointUrl: endpointUrl || `https://127.0.0.1:${listenPort}`,
-        userId,
-        userKey,
-        allowInsecureTls
-    };
+    if (!endpointUrl && !userId && !userKey) return null;
+    const overlay: Partial<AppSettings["core"]> = {};
+    if (endpointUrl) overlay.endpointUrl = endpointUrl;
+    else if (!endpointUrl && !userId) overlay.endpointUrl = `https://127.0.0.1:${listenPort}`;
+    if (userId) overlay.userId = userId;
+    // INVARIANT: never overlay empty token over a good IDB ecosystemToken.
+    if (userKey) {
+        overlay.userKey = userKey;
+        overlay.ecosystemToken = userKey;
+        overlay.socket = { accessToken: userKey };
+    }
+    if (bridge.allowInsecureTls !== undefined) overlay.allowInsecureTls = allowInsecureTls;
+    return overlay;
 };
 
 /**
@@ -155,19 +239,29 @@ const pushWebnativeSettingsPatch = async (settings: AppSettings): Promise<boolea
     if (!isWebnativeSurface()) return false;
     const core = settings.core;
     if (!core) return false;
-    // WHY: map AppSettings.core → portable.config.json `bridge` section (read by resolveBridgeConfig's
-    // endpointUrl/userId/userKey/allowInsecureTls resolution) + `launcherEnv` (CWS_ASSOCIATED_ID/TOKEN
-    // read as env fallbacks). Deep-merge by the backend keeps unrelated keys intact.
+    const token = String(core.ecosystemToken || core.userKey || core.socket?.accessToken || "").trim();
+    const remoteHost = String(core.endpointUrl || "").trim();
+    const clientId = String(core.userId || "").trim();
+    // WHY: map AppSettings.core → portable.config.json `bridge` + `shell` (clipboard-hub reads these).
     const patch: Record<string, unknown> = {
         bridge: {
-            endpointUrl: String(core.endpointUrl || "").trim(),
-            userId: String(core.userId || "").trim(),
-            userKey: String(core.ecosystemToken || core.userKey || "").trim(),
+            endpointUrl: remoteHost,
+            userId: clientId,
+            userKey: token,
             allowInsecureTls: Boolean(core.allowInsecureTls)
         },
+        shell: {
+            remoteHost,
+            accessToken: token,
+            clientToken: token,
+            // WHY: Node clipboard-hub reads this for Win→Android destinations (not `*`).
+            clipboardBroadcastTargets: String(
+                core.socket?.routeTarget || "L-196;L-210"
+            ).trim()
+        },
         launcherEnv: {
-            CWS_ASSOCIATED_ID: String(core.userId || "").trim(),
-            CWS_ASSOCIATED_TOKEN: String(core.ecosystemToken || core.userKey || "").trim()
+            CWS_ASSOCIATED_ID: clientId,
+            CWS_ASSOCIATED_TOKEN: token
         }
     };
     if (core.ops?.directUrl) {
@@ -177,6 +271,24 @@ const pushWebnativeSettingsPatch = async (settings: AppSettings): Promise<boolea
         method: "POST",
         body: JSON.stringify(patch)
     });
+    // WHY: Node clipboard-hub needs the same token on /ws (gateway closes with 4001 otherwise).
+    try {
+        const hubBody: Record<string, string> = {};
+        if (remoteHost) hubBody.remoteHost = remoteHost;
+        if (token) {
+            hubBody.accessToken = token;
+            hubBody.clientToken = token;
+        }
+        if (clientId) hubBody.clientId = clientId;
+        if (Object.keys(hubBody).length) {
+            await webnativeControl("/service/clipboard-hub", {
+                method: "POST",
+                body: JSON.stringify(hubBody)
+            });
+        }
+    } catch {
+        /* clipboard-hub optional on older backends */
+    }
     // WHY: bust the snapshot cache so the next load reflects the just-written config.
     webnativeSnapshotFetchedAt = 0;
     return Boolean(r?.ok);
@@ -194,7 +306,7 @@ const CAPACITOR_CWSP_BOOTSTRAP: Partial<AppSettings> = {
             directUrl: "https://192.168.0.110:8434"
         },
         socket: {
-            routeTarget: "L-196;L-210;L-208",
+            routeTarget: "L-110;L-196;L-210",
             accessToken: "n3v3rm1nd",
             allowAccessTokenWithoutUserKey: true,
             protocol: "auto"
@@ -210,7 +322,8 @@ const CAPACITOR_CWSP_BOOTSTRAP: Partial<AppSettings> = {
         acceptInboundClipboardData: true,
         applyRemoteClipboardToDevice: true,
         maintainHubSocketConnection: false,
-        clipboardShareDestinationIds: "L-196;L-210;L-208"
+        // WHY: must include desk L-110 — phone-only lists made Android↔Android work but blocked Win images.
+        clipboardShareDestinationIds: "L-110;L-196;L-210"
     }
 };
 
@@ -267,11 +380,17 @@ export const ensureCapacitorCwspSettingsSeeded = async (): Promise<AppSettings |
     if (!needsBootstrap && nativeDriftsFromIdb && (idbUserConfigured || nativeIsGuestLanId)) {
         capacitorCwspSeedDone = true;
         console.log("[Settings] pushing WebView client id to native prefs");
-        return saveSettings(current);
+        const migrated = ensureCapacitorDeskClipboardTargets(current) || current;
+        return saveSettings(migrated);
     }
 
     if (!needsBootstrap && !identityDrift) {
         capacitorCwspSeedDone = true;
+        const migrated = ensureCapacitorDeskClipboardTargets(current);
+        if (migrated) {
+            console.log("[Settings] injecting L-110 into clipboard destinations");
+            return saveSettings(migrated);
+        }
         return null;
     }
 
@@ -290,7 +409,7 @@ export const ensureCapacitorCwspSettingsSeeded = async (): Promise<AppSettings |
             }
         } as AppSettings;
         console.log("[Settings] aligning Capacitor client id with native prefs");
-        return saveSettings(aligned);
+        return saveSettings(ensureCapacitorDeskClipboardTargets(aligned) || aligned);
     }
 
     const merged = {
@@ -327,7 +446,7 @@ export const ensureCapacitorCwspSettingsSeeded = async (): Promise<AppSettings |
     } as AppSettings;
     console.log("[Settings] seeding Capacitor CWSP defaults");
     capacitorCwspSeedDone = true;
-    return saveSettings(merged);
+    return saveSettings(ensureCapacitorDeskClipboardTargets(merged) || merged);
 };
 
 const readLocalStorageSettingsMirror = (): unknown | null => {
@@ -1126,8 +1245,18 @@ export const saveSettings = async (settings: AppSettings) => {
     if (isWebnativeSurface()) {
         try {
             const ok = await pushWebnativeSettingsPatch(merged);
+            lastSettingsSaveReport = {
+                ...lastSettingsSaveReport,
+                webnativeSynced: ok,
+                webnativeError: ok ? undefined : "control RPC unavailable"
+            };
             if (!ok) console.warn("[Settings] webnative config patch not confirmed (control RPC unavailable?)");
         } catch (e) {
+            lastSettingsSaveReport = {
+                ...lastSettingsSaveReport,
+                webnativeSynced: false,
+                webnativeError: String(e instanceof Error ? e.message : e)
+            };
             console.warn("[Settings] webnative config patch failed:", e);
         }
     }

@@ -262,11 +262,32 @@ export class BootLoader {
 
             // PWA: register SW, clipboard/share receivers, consume ?shared=1 / pending share payloads.
             // Dynamic import avoids wiring the whole stack into unrelated boot paths (extensions, demos).
-            try {
-                const { initIngressPWA } = await import("shared/routing/pwa/sw-handling");
-                await initIngressPWA();
-            } catch (e) {
-                console.warn("[BootLoader] Share-target / service worker ingress failed (non-fatal):", e);
+            // WHY: Neutralino/desktop must not await SW ingress — can stall first paint on file:// / neu.
+            const skipPwaIngress = (() => {
+                try {
+                    const g = globalThis as unknown as {
+                        __CWS_NEUTRALINO_BOOT__?: boolean;
+                        __CWS_WEBNATIVE_BOOT__?: boolean;
+                        Neutralino?: unknown;
+                        NL_OS?: string;
+                    };
+                    return Boolean(
+                        g.__CWS_NEUTRALINO_BOOT__ ||
+                            g.__CWS_WEBNATIVE_BOOT__ ||
+                            g.Neutralino ||
+                            typeof g.NL_OS === "string"
+                    );
+                } catch {
+                    return false;
+                }
+            })();
+            if (!skipPwaIngress) {
+                try {
+                    const { initIngressPWA } = await import("shared/routing/pwa/sw-handling");
+                    await initIngressPWA();
+                } catch (e) {
+                    console.warn("[BootLoader] Share-target / service worker ingress failed (non-fatal):", e);
+                }
             }
 
             // Phase 1: Style system (Veela, etc.) after document theme attrs are stable.

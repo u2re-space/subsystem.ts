@@ -184,6 +184,16 @@ export async function writeClipboardImageToDevice(
     const mime = String(mimeType || "image/png").trim() || "image/png";
 
     // Desktop Neutralino/WebNative: PowerShell/ClipboardService via control host.
+    if (isDesktopControlClipboardShell()) {
+        for (let i = 0; i < 4; i++) {
+            if (await writeImageViaDesktopControl(payload, mime, hash)) return;
+            if (i + 1 < 4) {
+                await new Promise((r) => globalThis.setTimeout(r, 120 * (i + 1)));
+            }
+        }
+        throw new Error("Desktop control clipboard image write failed");
+    }
+
     if (await writeImageViaDesktopControl(payload, mime, hash)) return;
 
     if (await writeViaCwsBridgeImage(payload, mime, hash)) return;
@@ -238,8 +248,47 @@ const blobToPng = async (blob: Blob): Promise<Blob> => {
     return blob;
 };
 
+/** True when WebView must use Node control host for real OS clipboard (not navigator). */
+const isDesktopControlClipboardShell = (): boolean => {
+    try {
+        const g = globalThis as unknown as {
+            __CWS_NEUTRALINO_BOOT__?: boolean;
+            __CWS_WEBNATIVE_BOOT__?: boolean;
+            __WEBNATIVE_AUTH__?: { port?: number; key?: string };
+            __NEUTRALINO_AUTH__?: { port?: number; key?: string };
+            NL_OS?: string;
+        };
+        if (g.__CWS_NEUTRALINO_BOOT__ || g.__CWS_WEBNATIVE_BOOT__) return true;
+        if (typeof g.NL_OS === "string") return true;
+        const auth = g.__WEBNATIVE_AUTH__ || g.__NEUTRALINO_AUTH__;
+        return Boolean(auth && typeof auth.port === "number" && auth.key);
+    } catch {
+        return false;
+    }
+};
+
+/**
+ * WHY: Neutralino WebView `navigator.clipboard` often reports success without
+ * touching the Windows OS clipboard — never treat it as the desktop path.
+ */
+async function writeViaDesktopControlWithRetry(text: string, attempts = 4): Promise<boolean> {
+    for (let i = 0; i < attempts; i++) {
+        if (await writeViaDesktopControl(text)) return true;
+        if (i + 1 < attempts) {
+            await new Promise((r) => globalThis.setTimeout(r, 120 * (i + 1)));
+        }
+    }
+    return false;
+}
+
 export async function writeClipboardTextToDevice(text: string): Promise<void> {
     const value = String(text ?? "");
+    const desktop = isDesktopControlClipboardShell();
+
+    if (desktop) {
+        if (await writeViaDesktopControlWithRetry(value)) return;
+        throw new Error("Desktop control clipboard write failed");
+    }
 
     if (await writeViaDesktopControl(value)) return;
 
@@ -255,6 +304,18 @@ export async function writeClipboardTextToDevice(text: string): Promise<void> {
 }
 
 export async function readClipboardTextFromDevice(): Promise<string> {
+    const desktop = isDesktopControlClipboardShell();
+    if (desktop) {
+        for (let i = 0; i < 4; i++) {
+            const fromDesktop = await readViaDesktopControl();
+            if (fromDesktop !== null) return fromDesktop;
+            if (i + 1 < 4) {
+                await new Promise((r) => globalThis.setTimeout(r, 120 * (i + 1)));
+            }
+        }
+        throw new Error("Desktop control clipboard read failed");
+    }
+
     const fromDesktop = await readViaDesktopControl();
     if (fromDesktop !== null) return fromDesktop;
 

@@ -81,6 +81,10 @@ const readFieldValue = (el: Element): unknown => {
             return undefined;
         }
     }
+    // WHY: browsers often clear type=password on blur/background; empty must not wipe stored secrets.
+    if (input.type === "password" && !raw.trim()) {
+        return undefined;
+    }
     return raw;
 };
 
@@ -115,6 +119,8 @@ export const collectContributionFields = (panel: HTMLElement, settings: AppSetti
         const path = el.getAttribute("data-field");
         if (!path) return;
         const value = readFieldValue(el);
-        if (value !== undefined) setByPath(target, path, value);
+        // Skip undefined so empty password fields keep the previously loaded secret.
+        if (value === undefined) return;
+        setByPath(target, path, value);
     });
 };
