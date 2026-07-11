@@ -43,6 +43,7 @@ export const BROADCAST_CHANNELS = {
     SERVICE_VIEWER: 'rs-service-viewer',
     SERVICE_EXPLORER: 'rs-service-explorer',
     SERVICE_AIRPAD: 'rs-service-airpad',
+    SERVICE_NETWORK: 'rs-service-network',
     SERVICE_PRINT: 'rs-service-print',
     SERVICE_HISTORY: 'rs-service-history',
     SERVICE_EDITOR: 'rs-service-editor',
@@ -107,6 +108,7 @@ export const COMPONENTS = {
 
     // New architecture views
     AIRPAD: 'airpad',
+    NETWORK: 'network',
     HOME: 'home',
     EDITOR: 'editor',
     VIEWER: 'viewer',
@@ -187,6 +189,7 @@ export const ROUTE_HASHES = {
     FILE_EXPLORER: '#file-explorer',
     PRINT: '#print',
     AIRPAD: '#airpad',
+    NETWORK: '#network',
 
     // Work center specific hashes
     WORKCENTER_FILES: '#workcenter-files',
@@ -504,6 +507,7 @@ export const SERVICE_CHANNEL_MAP: Record<string, string> = {
     viewer: BROADCAST_CHANNELS.SERVICE_VIEWER,
     explorer: BROADCAST_CHANNELS.SERVICE_EXPLORER,
     airpad: BROADCAST_CHANNELS.SERVICE_AIRPAD,
+    network: BROADCAST_CHANNELS.SERVICE_NETWORK,
     print: BROADCAST_CHANNELS.SERVICE_PRINT,
     history: BROADCAST_CHANNELS.SERVICE_HISTORY,
     editor: BROADCAST_CHANNELS.SERVICE_EDITOR,
@@ -519,6 +523,7 @@ export const VIEW_ROUTE_MAP: Record<string, string> = {
     viewer: ROUTE_HASHES.MARKDOWN_VIEWER,
     explorer: ROUTE_HASHES.FILE_EXPLORER,
     airpad: '#airpad',
+    network: ROUTE_HASHES.NETWORK,
     print: ROUTE_HASHES.PRINT,
     history: ROUTE_HASHES.HISTORY,
     editor: ROUTE_HASHES.MARKDOWN_EDITOR,

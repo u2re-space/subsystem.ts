@@ -32,7 +32,8 @@ export type ServiceChannelId =
     | "history"
     | "editor"
     | "home"
-    | "airpad";
+    | "airpad"
+    | "network";
 
 // ============================================================================
 // APP-SPECIFIC CHANNEL CONFIGURATION
@@ -56,6 +57,12 @@ export const SERVICE_CHANNEL_CONFIG: Record<ServiceChannelId, ServiceChannelConf
         routeHash: ROUTE_HASHES.AIRPAD,
         component: COMPONENTS.AIRPAD,
         description: "AirPad remote trackpad/keyboard + clipboard"
+    },
+    network: {
+        broadcastName: BROADCAST_CHANNELS.SERVICE_NETWORK,
+        routeHash: ROUTE_HASHES.NETWORK,
+        component: COMPONENTS.NETWORK,
+        description: "CWSP network status, probes, and endpoint routing"
     },
     viewer: {
         broadcastName: BROADCAST_CHANNELS.MARKDOWN_VIEWER,
