@@ -1,9 +1,18 @@
 /**
- * Device clipboard I/O: CwsBridge Java path on CWSP Android, then Capacitor plugins, then Web API.
+ * Device clipboard I/O: desktop control host → CwsBridge Java → Capacitor → Web API.
+ *
+ * WHY desktop-first: Neutralino/WebNative WebView `navigator.clipboard` is unreliable
+ * for system clipboard (esp. images / background). The Node control host exposes
+ * ClipboardService at `/service/clipboard` with the same `__WEBNATIVE_AUTH__` as settings.
  */
 
 import { readCapacitorClipboardText, writeCapacitorClipboardText } from "./capacitor-clipboard";
 import { invokeCwsNative, isCapacitorCwsNativeShell } from "com/routing/native/cws-bridge";
+
+interface DesktopControlAuth {
+    port: number;
+    key: string;
+}
 
 const isCapacitorNative = (): boolean => {
     try {
@@ -19,6 +28,50 @@ export const isNativeClipboardShell = (): boolean => isCapacitorNative();
 /** Same check — use when "clipboard" naming is misleading (e.g. AirPad WebSocket transport). */
 export const isCapacitorNativeShell = (): boolean => isCapacitorNative();
 
+/** Loopback Neutralino/WebNative control auth (settings + clipboard share this). */
+const readDesktopControlAuth = (): DesktopControlAuth | null => {
+    try {
+        const g = globalThis as unknown as {
+            __WEBNATIVE_AUTH__?: { port?: number; key?: string };
+            __NEUTRALINO_AUTH__?: { port?: number; key?: string };
+            __CWS_WEBNATIVE_BOOT__?: boolean;
+            __CWS_NEUTRALINO_BOOT__?: boolean;
+        };
+        const auth = g.__WEBNATIVE_AUTH__ || g.__NEUTRALINO_AUTH__;
+        if (!auth || typeof auth.port !== "number") return null;
+        // Prefer surfaces that already marked desktop boot, but accept auth alone.
+        if (!(g.__CWS_WEBNATIVE_BOOT__ || g.__CWS_NEUTRALINO_BOOT__ || auth.key)) {
+            /* still allow when key present */
+        }
+        if (!auth.key) return null;
+        return { port: auth.port, key: String(auth.key) };
+    } catch {
+        return null;
+    }
+};
+
+const desktopControlFetch = async <T = unknown>(
+    path: string,
+    init?: RequestInit
+): Promise<T | null> => {
+    const auth = readDesktopControlAuth();
+    if (!auth) return null;
+    try {
+        const headers = new Headers(init?.headers);
+        headers.set("Content-Type", "application/json");
+        headers.set("X-API-Key", auth.key);
+        const res = await fetch(`http://127.0.0.1:${auth.port}${path}`, {
+            ...init,
+            headers,
+            cache: "no-store"
+        });
+        if (!res.ok) return null;
+        return (await res.json()) as T;
+    } catch {
+        return null;
+    }
+};
+
 const extractBridgeClipboardText = (result: unknown): string => {
     if (!result || typeof result !== "object") return "";
     const record = result as Record<string, unknown>;
@@ -30,8 +83,58 @@ const extractBridgeClipboardText = (result: unknown): string => {
     }
     if (typeof record.text === "string") return record.text;
     if (typeof record.value === "string") return record.value;
+    if (typeof record.data === "string") return record.data;
     return "";
 };
+
+async function readViaDesktopControl(): Promise<string | null> {
+    const result = await desktopControlFetch<{
+        ok?: boolean;
+        text?: string;
+        data?: string;
+        content?: string;
+    }>("/service/clipboard?kind=text");
+    if (!result || result.ok === false) return null;
+    const text =
+        (typeof result.text === "string" && result.text) ||
+        (typeof result.content === "string" && result.content) ||
+        (typeof result.data === "string" && result.data) ||
+        "";
+    // Empty string is a valid clipboard — distinguish from null (unavailable).
+    if (result.ok === true || "text" in result || "data" in result) return text;
+    return null;
+}
+
+async function writeViaDesktopControl(text: string): Promise<boolean> {
+    const result = await desktopControlFetch<{ ok?: boolean }>("/service/clipboard", {
+        method: "POST",
+        body: JSON.stringify({ kind: "text", text, content: text, data: text })
+    });
+    return Boolean(result && result.ok !== false);
+}
+
+async function writeImageViaDesktopControl(
+    data: string,
+    mimeType: string,
+    hash?: string
+): Promise<boolean> {
+    const result = await desktopControlFetch<{ ok?: boolean }>("/service/clipboard", {
+        method: "POST",
+        body: JSON.stringify({
+            kind: "image",
+            mimeType,
+            hash: hash || undefined,
+            imageBase64: data,
+            asset: {
+                mimeType,
+                hash: hash || undefined,
+                data,
+                source: "base64"
+            }
+        })
+    });
+    return Boolean(result && result.ok !== false);
+}
 
 async function readViaCwsBridge(): Promise<string> {
     if (!isCapacitorCwsNativeShell()) return "";
@@ -79,6 +182,10 @@ export async function writeClipboardImageToDevice(
     const payload = String(data ?? "").trim();
     if (!payload) throw new Error("Clipboard image payload empty");
     const mime = String(mimeType || "image/png").trim() || "image/png";
+
+    // Desktop Neutralino/WebNative: PowerShell/ClipboardService via control host.
+    if (await writeImageViaDesktopControl(payload, mime, hash)) return;
+
     if (await writeViaCwsBridgeImage(payload, mime, hash)) return;
 
     if (isCapacitorNative() && globalThis.navigator?.clipboard?.write) {
@@ -133,9 +240,12 @@ const blobToPng = async (blob: Blob): Promise<Blob> => {
 
 export async function writeClipboardTextToDevice(text: string): Promise<void> {
     const value = String(text ?? "");
+
+    if (await writeViaDesktopControl(value)) return;
+
     if (await writeViaCwsBridge(value)) return;
 
-    if (isCapacitorNative() && await writeCapacitorClipboardText(value)) return;
+    if (isCapacitorNative() && (await writeCapacitorClipboardText(value))) return;
 
     if (globalThis.navigator?.clipboard?.writeText) {
         await globalThis.navigator.clipboard.writeText(value);
@@ -145,6 +255,9 @@ export async function writeClipboardTextToDevice(text: string): Promise<void> {
 }
 
 export async function readClipboardTextFromDevice(): Promise<string> {
+    const fromDesktop = await readViaDesktopControl();
+    if (fromDesktop !== null) return fromDesktop;
+
     const fromBridge = await readViaCwsBridge();
     if (fromBridge) return fromBridge;
 
