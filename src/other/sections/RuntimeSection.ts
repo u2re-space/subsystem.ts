@@ -171,16 +171,8 @@ export const RuntimeSection: SectionConfig = {
                         { value: "false", label: "No" },
                         { value: "true", label: "Yes" }
                     ]
-                },
-                {
-                    path: "shell.acceptSmsBridgeData",
-                    label: "Accept SMS bridge data",
-                    type: "select",
-                    options: [
-                        { value: "false", label: "No" },
-                        { value: "true", label: "Yes" }
-                    ]
                 }
+                // WHY: SMS bridge removed from settings — Capacitor never requests device SMS.
             ]
         },
         {

@@ -1,10 +1,17 @@
+/*
+ * Filename: capacitor-settings-permissions.ts
+ * FullPath: apps/CWSP-reborn/src/frontend/submodules/shells/boot/capacitor-settings-permissions.ts
+ * Change date and time: 07.25.00_12.07.2026
+ * Reason for changes: Never request SMS — banking apps flag READ_SMS as malware-like.
+ */
 /**
  * Capacitor Settings → Android runtime permission / system Intent flow.
  * Called after a successful Settings save on CWSAndroid so toggles trigger
- * the expected system dialogs (contacts, SMS, notifications).
+ * the expected system dialogs (contacts, notifications).
  *
  * WHY: SYSTEM_ALERT_WINDOW / permanent overlay bubble was removed — do not
  * open "Display over other apps" on save.
+ * INVARIANT: never request READ_SMS / RECEIVE_SMS / SEND_SMS (manifest + plugin too).
  */
 import type { AppSettings } from "../other/config/SettingsTypes";
 import { isCapacitorNative } from "./capacitor-permissions";
@@ -58,20 +65,26 @@ export const requestCapacitorSettingsPermissionsAfterSave = async (
         return { lines, results, prompted };
     }
 
+    // SECURITY: force SMS toggles off on Capacitor — settings remain valid without SMS.
+    if (settings.shell) {
+        settings.shell.acceptSmsBridgeData = false;
+        settings.shell.enableNativeSms = false;
+    }
+
     const shell = settings.shell || {};
     const wantsContacts = shell.acceptContactsBridgeData === true;
-    const wantsSms = shell.acceptSmsBridgeData === true;
     const wantsDaemon = (shell.bridgeDaemonEnabled ?? true) !== false;
     const wantsClipboardBridge = (shell.enableRemoteClipboardBridge ?? true) !== false;
     const wantsNotifications = wantsDaemon || wantsClipboardBridge;
 
     const platform = plugin("CwsPlatform");
 
-    if (wantsContacts || wantsSms || wantsNotifications) {
+    if (wantsContacts || wantsNotifications) {
         if (platform?.requestSettingsPermissions) {
             const raw = await callSafe(platform.requestSettingsPermissions, {
                 contacts: wantsContacts,
-                sms: wantsSms,
+                // INVARIANT: never request SMS runtime permissions.
+                sms: false,
                 notifications: wantsNotifications,
                 // WHY: permanent overlay removed — never open draw-over-apps settings.
                 overlay: false
@@ -85,8 +98,11 @@ export const requestCapacitorSettingsPermissionsAfterSave = async (
                     for (const row of arr) {
                         if (row && typeof row === "object") {
                             const permission = String((row as AnyRecord).permission ?? "");
-                            // Ignore stale overlay rows if an older APK still returns them.
+                            // Ignore stale overlay / SMS rows from older APKs.
                             if (permission === "SYSTEM_ALERT_WINDOW") continue;
+                            if (permission === "READ_SMS" || permission === "RECEIVE_SMS" || permission === "SEND_SMS") {
+                                continue;
+                            }
                             results.push({
                                 permission,
                                 granted: Boolean((row as AnyRecord).granted)
@@ -108,7 +124,6 @@ export const requestCapacitorSettingsPermissionsAfterSave = async (
             const legacy = plugin("DevicePermissions") || plugin("Permissions");
             const perms: string[] = [];
             if (wantsContacts) perms.push("READ_CONTACTS");
-            if (wantsSms) perms.push("READ_SMS");
             if (wantsNotifications) perms.push("POST_NOTIFICATIONS");
             if (legacy?.requestPermissions && perms.length) {
                 await callSafe(legacy.requestPermissions, { permissions: perms });

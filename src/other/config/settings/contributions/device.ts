@@ -18,7 +18,7 @@ export const registerDeviceSettingsContribution = (): (() => void) =>
                 settingsCheckboxField("Foreground CWSP service", "shell.bridgeDaemonEnabled"),
                 settingsCheckboxField("Enable remote clipboard bridge", "shell.enableRemoteClipboardBridge"),
                 settingsCheckboxField("Accept contacts bridge", "shell.acceptContactsBridgeData"),
-                settingsCheckboxField("Accept SMS bridge", "shell.acceptSmsBridgeData"),
+                // WHY: SMS not requested on Android Capacitor; CRX keeps contacts-only device prefs.
                 settingsHint("Save may open system permission UI when bridge toggles are enabled.")
             ])
     });

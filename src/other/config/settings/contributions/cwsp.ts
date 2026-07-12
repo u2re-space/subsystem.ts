@@ -1,8 +1,8 @@
 /*
  * Filename: cwsp.ts
  * FullPath: modules/projects/subsystem/src/other/config/settings/contributions/cwsp.ts
- * Change date and time: 19.25.00_10.07.2026
- * Reason for changes: Ecosystem token + load/save mirror; short destination IDs.
+ * Change date and time: 07.25.00_12.07.2026
+ * Reason for changes: Drop Accept SMS bridge from Capacitor UI (no Android SMS perms).
  */
 import {
     registerSettingsContribution,
@@ -62,8 +62,8 @@ const mobileDeviceFields = (): SettingsPanelChild[] => [
     settingsCheckboxField("Foreground CWSP service", "shell.bridgeDaemonEnabled"),
     settingsCheckboxField("Enable remote clipboard bridge", "shell.enableRemoteClipboardBridge"),
     settingsCheckboxField("Accept contacts bridge", "shell.acceptContactsBridgeData"),
-    settingsCheckboxField("Accept SMS bridge", "shell.acceptSmsBridgeData"),
-    settingsHint("Save may request contacts / SMS / notifications when those toggles are on.")
+    // WHY: SMS bridge UI removed — Android never declares/requests READ_SMS (bank malware heuristics).
+    settingsHint("Save may request contacts / notifications when those toggles are on. SMS is not used.")
 ];
 
 export const registerCwspSettingsContribution = (): (() => void) =>

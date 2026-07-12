@@ -158,7 +158,10 @@ export type ShellSettings = {
      * When empty, routing falls back to the AirPad route target and other defaults from runtime config.
      */
     clipboardBroadcastTargets?: string;
-    /** Reserved for native SMS bridge (Kotlin shell); persisted for parity with CWSAndroid. */
+    /**
+     * Reserved / legacy SMS bridge flag. Always false on Capacitor Android —
+     * SMS permissions are not declared (bank malware heuristics).
+     */
     enableNativeSms?: boolean;
     /** Reserved for native contacts bridge; persisted for parity with CWSAndroid. */
     enableNativeContacts?: boolean;
@@ -182,7 +185,10 @@ export type ShellSettings = {
     accessTokenBypassesClipboardAllowlist?: boolean;
     /** When true, allow contacts-related payloads from native/coordinator bridges (future). */
     acceptContactsBridgeData?: boolean;
-    /** When true, allow SMS-related payloads from native/coordinator bridges (future). */
+    /**
+     * When true, allow SMS-related payloads from coordinator bridges (desktop/protocol).
+     * Forced false on Capacitor Android — no device SMS access.
+     */
     acceptSmsBridgeData?: boolean;
     /** Start Java CWSP runtime after device boot (maps to `cwsp.autoStartOnBoot`). */
     autoStartOnBoot?: boolean;
@@ -427,7 +433,7 @@ export const DEFAULT_SETTINGS: AppSettings = {
         pushLocalClipboardToLan: false,
         clipboardPushIntervalMs: 2000,
         clipboardBroadcastTargets: "",
-        enableNativeSms: true,
+        enableNativeSms: false,
         enableNativeContacts: true,
         acceptInboundClipboardData: true,
         clipboardInboundAllowIds: "",
