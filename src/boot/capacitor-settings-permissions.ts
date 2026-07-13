@@ -1,8 +1,8 @@
 /*
  * Filename: capacitor-settings-permissions.ts
  * FullPath: apps/CWSP-reborn/src/frontend/submodules/shells/boot/capacitor-settings-permissions.ts
- * Change date and time: 07.25.00_12.07.2026
- * Reason for changes: Never request SMS — banking apps flag READ_SMS as malware-like.
+ * Change date and time: 15.10.00_13.07.2026
+ * Reason for changes: Export ensureCapacitorBridgeDaemonStarted for BootLoader cold start.
  */
 /**
  * Capacitor Settings → Android runtime permission / system Intent flow.
@@ -141,4 +141,26 @@ export const requestCapacitorSettingsPermissionsAfterSave = async (
     }
 
     return { lines, results, prompted };
+};
+
+/**
+ * Cold-start (or keep) the Android foreground bridge on app boot.
+ * WHY: previously only Settings Save / Share / CONFIGURE started CwspBridgeService.
+ */
+export const ensureCapacitorBridgeDaemonStarted = async (
+    settings?: AppSettings | null
+): Promise<boolean> => {
+    if (!isCapacitorNative()) return false;
+    const shell = settings?.shell || {};
+    const wantsDaemon = (shell.bridgeDaemonEnabled ?? true) !== false;
+    if (!wantsDaemon) return false;
+    // SECURITY: SMS stays off; daemon start is independent of SMS toggles.
+    if (settings?.shell) {
+        settings.shell.acceptSmsBridgeData = false;
+        settings.shell.enableNativeSms = false;
+    }
+    const platform = plugin("CwsPlatform");
+    if (!platform?.startCwspBridge) return false;
+    await callSafe(platform.startCwspBridge);
+    return true;
 };

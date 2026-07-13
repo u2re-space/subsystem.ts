@@ -30,6 +30,7 @@ import { startImplicitViewMessagingBridge } from "com/routing/core/implicit-view
 import { loadStyleSystem } from "com/styles";
 import { isEnabledView, pickEnabledView } from "com/routing/core/views";
 import { applyHubSocketFromSettings } from "../boot/hub-socket-boot";
+import { ensureCapacitorBridgeDaemonStarted } from "../boot/capacitor-settings-permissions";
 
 
 // ============================================================================
@@ -257,6 +258,12 @@ export class BootLoader {
             }
             if (effectiveSettings) {
                 void applyHubSocketFromSettings(effectiveSettings).catch(() => undefined);
+            }
+            // WHY: Capacitor clipboard/WS lives in CwspBridgeService — start on boot, not only Settings Save.
+            if (isCapacitorCwsNativeShell()) {
+                void ensureCapacitorBridgeDaemonStarted(effectiveSettings).catch((error) => {
+                    console.warn("[BootLoader] CWSP bridge daemon auto-start skipped:", error);
+                });
             }
             applyTheme(effectiveSettings ?? DEFAULT_SETTINGS);
 

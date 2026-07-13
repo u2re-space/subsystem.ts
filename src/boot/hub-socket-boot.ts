@@ -1,6 +1,11 @@
 /**
  * Unified hub transport: WebSocket to cwsp / endpoint (same stack as AirPad), optional background connection.
  * Used from main PWA boot, Settings save, and CRX shells so clipboard coordinator works outside the AirPad view.
+ *
+ * Filename: hub-socket-boot.ts
+ * FullPath: apps/CWSP-reborn/src/frontend/submodules/shells/boot/hub-socket-boot.ts
+ * Change date and time: 15.20.00_13.07.2026
+ * Reason for changes: Never open WebView /ws when Neutralino Node clipboard-hub owns LAN sync.
  */
 
 import { loadSettings, shouldDeferCrxHubSocketBootstrap } from "com/other/config/Settings";
@@ -10,6 +15,7 @@ import {
     getRemoteHost,
     isClipboardHubBootstrapEnabled,
     isMaintainHubSocketConnectionEnabled,
+    isNeutralinoNodeClipboardHubOwned,
     isPreferNativeWebsocketEnabled
 } from "views/airpad/config/config";
 
@@ -26,8 +32,17 @@ export function nativeShellOwnsExclusiveHubWebsocket(): boolean {
     return (globalThis as { __CWS_NATIVE__?: boolean }).__CWS_NATIVE__ === true && isPreferNativeWebsocketEnabled();
 }
 
+/**
+ * Neutralino/WebNative: Node clipboard-hub owns the fleet `/ws` clipboard session.
+ * INVARIANT: WebView must not open a second `/ws` with the same clientId (kicks the hub).
+ */
+export function nodeClipboardHubOwnsExclusiveWebsocket(): boolean {
+    return isNeutralinoNodeClipboardHubOwned();
+}
+
 function shouldRunHubRecovery(): boolean {
     if (nativeShellOwnsExclusiveHubWebsocket()) return false;
+    if (nodeClipboardHubOwnsExclusiveWebsocket()) return false;
     if (!isMaintainHubSocketConnectionEnabled() && !isClipboardHubBootstrapEnabled()) return false;
     if (!getRemoteHost().trim()) return false;
     return true;
@@ -118,6 +133,11 @@ export async function applyHubSocketFromSettings(settings: AppSettings): Promise
 
     // WHY: only NativeScript (`__CWS_NATIVE__`) owns an exclusive native `/ws` session.
     if (nativeShellOwnsExclusiveHubWebsocket()) {
+        return;
+    }
+    // WHY: Neutralino/WebNative Node clipboard-hub owns LAN clipboard `/ws` — do not
+    // open a WebView browser WebSocket (same clientId → gateway kicks the hub).
+    if (nodeClipboardHubOwnsExclusiveWebsocket()) {
         return;
     }
 

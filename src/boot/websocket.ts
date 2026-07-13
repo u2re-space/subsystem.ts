@@ -33,6 +33,7 @@ import {
     getClipboardPushIntervalMs,
     getClipboardBroadcastWireTargets,
     isClipboardSenderAllowedForInbound,
+    isNeutralinoNodeClipboardHubOwned,
     getAirPadHandshakeArchetype,
     getAirPadHandshakeConnectionType,
 } from "views/airpad/config/config";
@@ -1426,6 +1427,12 @@ export function reconnectTransportAfterLifecycleResume(reason: string): void {
  * behavior for browser tabs, extensions, and native shells.
  */
 export function connectWS() {
+    // WHY: Neutralino/WebNative Node clipboard-hub already holds `/ws` as L-110.
+    // A second browser WebSocket with the same clientId kicks the hub → clipboard dies.
+    if (isNeutralinoNodeClipboardHubOwned()) {
+        log("WS skip: Node clipboard-hub owns fleet /ws (WebView must not connect)");
+        return;
+    }
     if (isConnecting) return;
     if (socket && (socket.connected || (socket as any).connecting)) return;
     if (activeProbeSockets.size > 0) return;
