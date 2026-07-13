@@ -37,6 +37,7 @@ import {
     getAirPadHandshakeArchetype,
     getAirPadHandshakeConnectionType,
 } from "views/airpad/config/config";
+import { nativeShellOwnsExclusiveHubWebsocket } from "./hub-socket-boot";
 import {
     isCapacitorNativeShell,
     readClipboardTextFromDevice,
@@ -1431,6 +1432,11 @@ export function connectWS() {
     // A second browser WebSocket with the same clientId kicks the hub → clipboard dies.
     if (isNeutralinoNodeClipboardHubOwned()) {
         log("WS skip: Node clipboard-hub owns fleet /ws (WebView must not connect)");
+        return;
+    }
+    // WHY: Capacitor Java CwspBridgeService owns `/ws` — AirPad uses CwsBridge coordinator:*.
+    if (nativeShellOwnsExclusiveHubWebsocket()) {
+        log("WS skip: Java CwspBridgeService owns fleet /ws (WebView must not connect)");
         return;
     }
     if (isConnecting) return;

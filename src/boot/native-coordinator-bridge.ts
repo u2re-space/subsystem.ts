@@ -1,11 +1,12 @@
 /**
- * Capacitor/CWSAndroid: route coordinator acts through Java {@code CwspRuntime} when it owns `/ws`.
- * WHY: WebView hub connect is skipped to avoid duplicate clientId sessions; AirPad must not queue on a dead socket.
+ * Capacitor/CWSAndroid: route coordinator acts through Java {@code CwspWsClient} when it owns `/ws`.
+ * WHY: WebView hub connect is skipped to avoid duplicate clientId sessions; AirPad must use CwsBridge.
  *
  * CWSAndroid {@code CwsBridgePlugin} channels:
- * - coordinator:act / coordinator:ask — JSON envelope with ts+perfTs on input/clipboard payload
+ * - coordinator:act / coordinator:ask — JSON envelope → Java /ws fan-out
  * - coordinator:binary — base64 legacy 8-byte frame (bytes 6–7 = perfTsLo)
- * - coordinator:status — { connected: boolean }
+ * - coordinator:status — { connected, wsOpen, daemon }
+ * - runtime:reload-settings — soft-reconnect Java /ws
  */
 import { invokeCwsNative, isCapacitorCwsNativeShell } from "com/routing/native/cws-bridge";
 import { withTimeout } from "fest/core";

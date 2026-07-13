@@ -4,8 +4,8 @@
  *
  * Filename: hub-socket-boot.ts
  * FullPath: apps/CWSP-reborn/src/frontend/submodules/shells/boot/hub-socket-boot.ts
- * Change date and time: 15.20.00_13.07.2026
- * Reason for changes: Never open WebView /ws when Neutralino Node clipboard-hub owns LAN sync.
+ * Change date and time: 18.45.00_13.07.2026
+ * Reason for changes: Capacitor Java CwspBridgeService owns /ws exclusively (like Neutralino Node hub).
  */
 
 import { loadSettings, shouldDeferCrxHubSocketBootstrap } from "com/other/config/Settings";
@@ -25,11 +25,29 @@ const PWA_STALE_BACKGROUND_MS = 12_000;
 let hubLifecycleRecoveryInstalled = false;
 let lastDocumentHiddenAt = 0;
 
-/** True when Java/CwspRuntime owns background `/ws` and WebView must not open a duplicate hub socket. */
+const isCapacitorNativePlatform = (): boolean => {
+    try {
+        const c = (globalThis as { Capacitor?: { isNativePlatform?: () => boolean } }).Capacitor;
+        return typeof c?.isNativePlatform === "function" && Boolean(c.isNativePlatform());
+    } catch {
+        return false;
+    }
+};
+
+/**
+ * True when native Android (Capacitor/NativeScript) owns fleet `/ws`.
+ * INVARIANT: WebView must not open a second `/ws` with the same clientId.
+ * AirPad input goes through CwsBridge → CwspWsClient instead.
+ */
 export function nativeShellOwnsExclusiveHubWebsocket(): boolean {
-    // WHY: only NativeScript owns `/ws` exclusively. CWSAndroid AirPad movement
-    // needs a WebView socket; per-frame Capacitor bridge calls queue under touch.
-    return (globalThis as { __CWS_NATIVE__?: boolean }).__CWS_NATIVE__ === true && isPreferNativeWebsocketEnabled();
+    if (!isPreferNativeWebsocketEnabled()) return false;
+    try {
+        if ((globalThis as { __CWS_NATIVE__?: boolean }).__CWS_NATIVE__ === true) return true;
+    } catch {
+        /* ignore */
+    }
+    // WHY: Capacitor CwspBridgeService + CwspWsClient is the canonical Android /ws.
+    return isCapacitorNativePlatform();
 }
 
 /**
@@ -40,9 +58,13 @@ export function nodeClipboardHubOwnsExclusiveWebsocket(): boolean {
     return isNeutralinoNodeClipboardHubOwned();
 }
 
+/** Any shell where WebView browser WebSocket must stay dark for fleet hub. */
+export function backendOwnsExclusiveHubWebsocket(): boolean {
+    return nativeShellOwnsExclusiveHubWebsocket() || nodeClipboardHubOwnsExclusiveWebsocket();
+}
+
 function shouldRunHubRecovery(): boolean {
-    if (nativeShellOwnsExclusiveHubWebsocket()) return false;
-    if (nodeClipboardHubOwnsExclusiveWebsocket()) return false;
+    if (backendOwnsExclusiveHubWebsocket()) return false;
     if (!isMaintainHubSocketConnectionEnabled() && !isClipboardHubBootstrapEnabled()) return false;
     if (!getRemoteHost().trim()) return false;
     return true;
@@ -131,7 +153,7 @@ export async function applyHubSocketFromSettings(settings: AppSettings): Promise
     }
     applyAirpadRuntimeFromAppSettings(settings);
 
-    // WHY: only NativeScript (`__CWS_NATIVE__`) owns an exclusive native `/ws` session.
+    // WHY: Capacitor Java / NativeScript owns exclusive `/ws` — do not open WebView socket.
     if (nativeShellOwnsExclusiveHubWebsocket()) {
         return;
     }
