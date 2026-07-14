@@ -1,8 +1,8 @@
 /*
  * Filename: cwsp.ts
  * FullPath: modules/projects/subsystem/src/other/config/settings/contributions/cwsp.ts
- * Change date and time: 07.25.00_12.07.2026
- * Reason for changes: Drop Accept SMS bridge from Capacitor UI (no Android SMS perms).
+ * Change date and time: 17.25.00_14.07.2026
+ * Reason for changes: Add clipboard prompt popup settings (auto/ask + showErase/showUndo + dismissMs).
  */
 import {
     registerSettingsContribution,
@@ -16,7 +16,9 @@ import {
 import {
     settingsCheckboxField,
     settingsHint,
+    settingsNumberField,
     settingsPanel,
+    settingsSelectField,
     settingsTextField,
     type SettingsPanelChild
 } from "../settings-contribution-ui";
@@ -46,7 +48,27 @@ const clipboardFields = (): SettingsPanelChild[] => [
     settingsTextField("Inbound clipboard allow ids", "shell.clipboardInboundAllowIds", "* or L-196;L-210"),
     settingsHint(MULTI_VALUE_HINT),
     settingsTextField("Share-intent destination ids", "shell.clipboardShareDestinationIds", "L-196;L-210;L-110"),
-    settingsHint(MULTI_VALUE_HINT)
+    settingsHint(MULTI_VALUE_HINT),
+    // WHY: prompt popup surface lives in Neutralino popup window (Windows/Linux)
+    // and Android notification actions; hub enforces auto/ask gating. See
+    // docs/superpowers/specs/2026-07-14-clipboard-prompt-popup-design.md.
+    "Clipboard prompt",
+    settingsSelectField("Outbound mode", "shell.clipboardOutboundMode", [
+        ["auto", "Auto — share + show popup (Erase optional)"],
+        ["ask", "Ask — hold share until confirmed"]
+    ]),
+    settingsSelectField("Inbound mode", "shell.clipboardInboundMode", [
+        ["auto", "Auto — apply + show popup (Undo optional)"],
+        ["ask", "Ask — hold apply until confirmed"]
+    ]),
+    settingsCheckboxField("Show Erase on outbound auto popup", "shell.clipboardOutboundShowErase"),
+    settingsCheckboxField("Show Undo on inbound auto popup", "shell.clipboardInboundShowUndo"),
+    settingsNumberField(
+        "Popup auto-dismiss (ms)",
+        "shell.clipboardPromptDismissMs",
+        { min: "1000", step: "500", placeholder: "10000" }
+    ),
+    settingsHint("On Ask mode, dismiss / timeout means no share and no apply. Defaults to 10000ms.")
 ];
 
 const nativeWireFields = (): SettingsPanelChild[] => [

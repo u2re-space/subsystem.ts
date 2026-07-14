@@ -194,6 +194,34 @@ export type ShellSettings = {
     autoStartOnBoot?: boolean;
     /** Keep foreground service / daemon for clipboard + share (maps to `cwsp.bridgeDaemonEnabled`). */
     bridgeDaemonEnabled?: boolean;
+    /**
+     * Outbound clipboard prompt mode (on local user copy).
+     * - `auto`: share immediately; popup shows spoiler + optional Erase + Dismiss.
+     * - `ask`:  hold share until Share; Dismiss / timeout → no share.
+     * See `docs/superpowers/specs/2026-07-14-clipboard-prompt-popup-design.md`.
+     */
+    clipboardOutboundMode?: "auto" | "ask";
+    /**
+     * Inbound clipboard prompt mode (on remote/app clipboard change).
+     * - `auto`: apply immediately; popup shows spoiler + optional Undo + Dismiss.
+     * - `ask`:  hold apply until Accept; Dismiss / timeout → no apply.
+     */
+    clipboardInboundMode?: "auto" | "ask";
+    /**
+     * When true and outbound mode is `auto`, the share popup exposes an Erase
+     * button that clears the local OS clipboard after share.
+     */
+    clipboardOutboundShowErase?: boolean;
+    /**
+     * When true and inbound mode is `auto`, the apply popup exposes an Undo
+     * button that restores the previous local clipboard snapshot.
+     */
+    clipboardInboundShowUndo?: boolean;
+    /**
+     * Auto-dismiss delay for the clipboard prompt popup (ms).
+     * WHY: on `ask` mode, timeout counts as Dismiss (no share / no apply).
+     */
+    clipboardPromptDismissMs?: number;
 };
 
 export type AppSettings = {
@@ -442,7 +470,13 @@ export const DEFAULT_SETTINGS: AppSettings = {
         acceptContactsBridgeData: false,
         acceptSmsBridgeData: false,
         autoStartOnBoot: true,
-        bridgeDaemonEnabled: true
+        bridgeDaemonEnabled: true,
+        // WHY: prompt popup defaults per docs/superpowers/specs/2026-07-14-clipboard-prompt-popup-design.md
+        clipboardOutboundMode: "auto",
+        clipboardInboundMode: "auto",
+        clipboardOutboundShowErase: true,
+        clipboardInboundShowUndo: true,
+        clipboardPromptDismissMs: 10000
     },
     ai: {
         apiKey: "",
