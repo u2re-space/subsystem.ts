@@ -242,7 +242,11 @@ const pushWebnativeSettingsPatch = async (settings: AppSettings): Promise<boolea
     const token = String(core.ecosystemToken || core.userKey || core.socket?.accessToken || "").trim();
     const remoteHost = String(core.endpointUrl || "").trim();
     const clientId = String(core.userId || "").trim();
+    const shell = settings.shell || {};
     // WHY: map AppSettings.core → portable.config.json `bridge` + `shell` (clipboard-hub reads these).
+    // INVARIANT: clipboard prompt modes MUST reach Node — hub gates Accept vs Undo on
+    // `shell.clipboardInboundMode` / `shell.clipboardOutboundMode`. Omitting them left the
+    // hub stuck on "auto" while the Settings UI (IDB) showed "ask" → Undo toast on inbound.
     const patch: Record<string, unknown> = {
         bridge: {
             endpointUrl: remoteHost,
@@ -256,8 +260,30 @@ const pushWebnativeSettingsPatch = async (settings: AppSettings): Promise<boolea
             clientToken: token,
             // WHY: Node clipboard-hub reads this for Win→Android destinations (not `*`).
             clipboardBroadcastTargets: String(
-                core.socket?.routeTarget || "L-196;L-210"
-            ).trim()
+                (shell as { clipboardBroadcastTargets?: string }).clipboardBroadcastTargets ||
+                    core.socket?.routeTarget ||
+                    "L-196;L-210"
+            ).trim(),
+            clipboardOutboundMode:
+                String((shell as { clipboardOutboundMode?: string }).clipboardOutboundMode || "auto")
+                    .trim()
+                    .toLowerCase() === "ask"
+                    ? "ask"
+                    : "auto",
+            clipboardInboundMode:
+                String((shell as { clipboardInboundMode?: string }).clipboardInboundMode || "auto")
+                    .trim()
+                    .toLowerCase() === "ask"
+                    ? "ask"
+                    : "auto",
+            clipboardOutboundShowErase:
+                (shell as { clipboardOutboundShowErase?: boolean }).clipboardOutboundShowErase !== false,
+            clipboardInboundShowUndo:
+                (shell as { clipboardInboundShowUndo?: boolean }).clipboardInboundShowUndo !== false,
+            clipboardPromptDismissMs: (() => {
+                const n = Number((shell as { clipboardPromptDismissMs?: number }).clipboardPromptDismissMs);
+                return Number.isFinite(n) && n >= 1000 ? Math.floor(n) : 10000;
+            })()
         },
         launcherEnv: {
             CWS_ASSOCIATED_ID: clientId,
