@@ -58,7 +58,7 @@ const isCapacitorNativeShell = (): boolean => {
 // loopback control RPC at `/service/config` (GET = raw portable + DEFAULT_SETTINGS + resolved
 // snapshot + user settings; POST = deep-merge patch into portable.config.json + reload + restart
 // the endpoint child). The minimal-shell webview's Settings/Network views read `loadSettings()`
-// which is otherwise IDB-only — so on desktop the UI would show IDB defaults (`http://localhost:6065`)
+// which is otherwise IDB-only — so on desktop the UI would show IDB defaults (`https://localhost:8434`)
 // instead of the actual configured endpoint (`https://192.168.0.200:8434`), and Save would only hit
 // IDB, never `portable.config.json`, never trigger an endpoint reload.
 //
@@ -110,7 +110,7 @@ const mapWebnativeSnapshotToCore = (snap: any): Partial<AppSettings["core"]> | n
     // WHY: bridge.endpointUrl is often empty in real CWSP configs (the topology lives in bridge.endpoints).
     // Prefer the explicit endpointUrl, then the first bridge.endpoints entry (typically the WAN entry
     // like https://45.147.121.152:8434/), then loopback as a last resort so the UI never shows the stale
-    // IDB default (http://localhost:6065).
+    // IDB default (https://localhost:8434).
     const endpointUrlRaw = String(bridge.endpointUrl || "").trim();
     const endpointsList = Array.isArray(bridge.endpoints) ? bridge.endpoints.map((e: unknown) => String(e || "").trim()).filter(Boolean) : [];
     const endpointUrl = endpointUrlRaw || endpointsList[0] || "";
@@ -211,7 +211,7 @@ const needsCapacitorCwspBootstrap = (settings: AppSettings): boolean => {
     const access = trimSetting(settings.core?.socket?.accessToken);
     const defaultEp = trimSetting(DEFAULT_SETTINGS.core?.endpointUrl);
     if (!uid || !access) return true;
-    if (!ep || ep === defaultEp || /localhost|127\.0\.0\.1|:6065/i.test(ep)) return true;
+    if (!ep || ep === defaultEp || /localhost|127\.0\.0\.1|:8434/i.test(ep)) return true;
     return false;
 };
 

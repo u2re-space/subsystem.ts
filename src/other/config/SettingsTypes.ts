@@ -403,7 +403,7 @@ export type AppSettings = {
 export const DEFAULT_SETTINGS: AppSettings = {
     core: {
         mode: "native",
-        endpointUrl: "http://localhost:6065",
+        endpointUrl: "https://localhost:8434",
         userId: "",
         ecosystemToken: "",
         userKey: "",
@@ -442,7 +442,7 @@ export const DEFAULT_SETTINGS: AppSettings = {
         },
         admin: {
             httpsOrigin: "https://localhost:8434",
-            httpOrigin: "http://localhost:8080",
+            httpOrigin: "https://localhost:8080",
             path: "/"
         },
         ops: {
@@ -506,7 +506,7 @@ export const DEFAULT_SETTINGS: AppSettings = {
         maxRetries: 2
     },
     webdav: {
-        url: "http://localhost:6065",
+        url: "https://localhost:8434",
         username: "",
         password: "",
         token: ""

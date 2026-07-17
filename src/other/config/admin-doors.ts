@@ -30,7 +30,7 @@ const resolveControlDoorUrls = (
         if (!httpOrigin) httpOrigin = `http://${host}:8080`;
     }
     if (!httpsOrigin) httpsOrigin = "https://localhost:8434";
-    if (!httpOrigin) httpOrigin = "http://localhost:8080";
+    if (!httpOrigin) httpOrigin = "https://localhost:8080";
 
     const join = (origin: string): string => {
         const base = trimTrailingSlashes(origin);

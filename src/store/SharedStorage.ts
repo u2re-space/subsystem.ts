@@ -15,7 +15,7 @@
 import { JSOX } from "jsox";
 
 //
-const BASE_URL = process.env.NEXT_PUBLIC_STORAGE_URL || "http://localhost:3000";
+const BASE_URL = process.env.NEXT_PUBLIC_STORAGE_URL || "https://localhost:3000";
 
 //
 export class SharedStorage {
