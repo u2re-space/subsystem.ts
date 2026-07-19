@@ -1,8 +1,8 @@
 /*
  * Filename: Settings.ts
  * FullPath: modules/projects/subsystem/src/other/config/Settings.ts
- * Change date and time: 14.55.00_19.07.2026
- * Reason for changes: Static cws-bridge/airpad imports — MV3 SW forbids import().
+ * Change date and time: 23.50.00_19.07.2026
+ * Reason for changes: Allow /cwsp→Capacitor loopback:8434 when via=android; skip HTTP RPC in native shell.
  */
 import { JSOX } from "jsox";
 
@@ -250,6 +250,14 @@ const readDesktopControlAuth = (): WebnativeAuth | null => {
     }
 };
 
+const readControlBridgeVia = (): string => {
+    try {
+        return String((globalThis as { __CWSP_CONTROL_VIA__?: string }).__CWSP_CONTROL_VIA__ || "");
+    } catch {
+        return "";
+    }
+};
+
 const webnativeControl = async <T = unknown>(path: string, init?: RequestInit): Promise<T | null> => {
     try {
         const auth = readDesktopControlAuth();
@@ -257,14 +265,18 @@ const webnativeControl = async <T = unknown>(path: string, init?: RequestInit): 
         const host = String(auth.host || "127.0.0.1").trim() || "127.0.0.1";
         const scheme = auth.scheme === "https" ? "https" : "http";
         // WHY: public https://VDS/cwsp must not call desk hub http://127.0.0.1:8434 (redirect breaks CORS).
+        // INVARIANT: same-device Android Chrome → Capacitor Control at loopback:8434 is allowed when
+        // discovery set via=android (Allow Control API). Blocking that caused "control RPC unavailable".
         const pageHost = String(location.hostname || "").toLowerCase();
         const pageIsPublicHttps =
             location.protocol === "https:" &&
             pageHost !== "127.0.0.1" &&
             pageHost !== "localhost" &&
             pageHost !== "::1";
+        const viaAndroid = readControlBridgeVia() === "android";
         if (
             pageIsPublicHttps &&
+            !viaAndroid &&
             (host === "127.0.0.1" || host === "localhost" || host === "::1") &&
             auth.port === 8434
         ) {
@@ -452,11 +464,11 @@ const pushWebnativeSettingsPatch = async (settings: AppSettings): Promise<boolea
         (patch.bridge as Record<string, unknown>).endpoints = [String(core.ops.directUrl).trim()];
     }
     // WHY: Neutralino L-110 expects bridge/shell portable patch; Capacitor also accepts full AppSettings.
+    // INVARIANT: via=android includes on-device loopback:8434 (phone Chrome → local Capacitor).
     const authForPatch = readDesktopControlAuth();
     const isCapacitorControl =
-        Number(authForPatch?.port) === 8434 &&
-        String(authForPatch?.host || "") !== "127.0.0.1" &&
-        String(authForPatch?.host || "") !== "localhost";
+        readControlBridgeVia() === "android" ||
+        Number(authForPatch?.port) === 8434;
     const body = isCapacitorControl
         ? {
               ...patch,
@@ -1610,16 +1622,20 @@ export const saveSettings = async (settings: AppSettings) => {
         };
         console.warn("[Settings] native settings patch failed:", e);
     }
-    // WebNative desktop: push the core endpoint/identity/TLS patch into portable.config.json via
-    // the backend control RPC so the REAL CWSP config stays in sync + the endpoint reloads. Best-
-    // effort: a failure does NOT fail the save (IDB already persisted). Mirrors the Capacitor patch.
-    if (isWebnativeSurface()) {
+    // WebNative / public /cwsp: push via HTTP Control RPC (Neutralino :29110 or Capacitor :8434).
+    // WHY: Capacitor *native shell* SoT is CwsBridge settings:patch — not HTTP Control API.
+    // Allow Control API is for external PNA clients (/cwsp, CRX), not in-app Settings toast.
+    if (isWebnativeSurface() && !isCapacitorNativeShell()) {
         try {
             const ok = await pushWebnativeSettingsPatch(merged);
             lastSettingsSaveReport = {
                 ...lastSettingsSaveReport,
                 webnativeSynced: ok,
-                webnativeError: ok ? undefined : "control RPC unavailable"
+                webnativeError: ok
+                    ? undefined
+                    : readControlBridgeVia() === "android"
+                      ? "Control API unreachable (enable Allow Control API + matching token)"
+                      : "control RPC unavailable"
             };
             if (!ok) console.warn("[Settings] webnative config patch not confirmed (control RPC unavailable?)");
         } catch (e) {
