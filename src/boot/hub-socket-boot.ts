@@ -3,9 +3,9 @@
  * Used from main PWA boot, Settings save, and CRX shells so clipboard coordinator works outside the AirPad view.
  *
  * Filename: hub-socket-boot.ts
- * FullPath: apps/CWSP-reborn/src/frontend/submodules/shells/boot/hub-socket-boot.ts
- * Change date and time: 18.45.00_13.07.2026
- * Reason for changes: Capacitor Java CwspBridgeService owns /ws exclusively (like Neutralino Node hub).
+ * FullPath: modules/projects/subsystem/src/boot/hub-socket-boot.ts
+ * Change date and time: 14.05.00_19.07.2026
+ * Reason for changes: SW-safe DOM checks (no bare `window`) for CRX service worker.
  */
 
 import { loadSettings, shouldDeferCrxHubSocketBootstrap } from "com/other/config/Settings";
@@ -18,12 +18,30 @@ import {
     isNeutralinoNodeClipboardHubOwned,
     isPreferNativeWebsocketEnabled
 } from "views/airpad/config/config";
+// WHY: static — CRX SW calls applyHubSocketFromSettings; dynamic import() is illegal there.
+import {
+    connectWS,
+    getWS,
+    initWebSocket,
+    isWSConnected,
+    reconnectTransportAfterLifecycleResume
+} from "./websocket";
 
 /** After this long in the background, force a full reconnect (zombie TCP / suspended workers). */
 const PWA_STALE_BACKGROUND_MS = 12_000;
 
 let hubLifecycleRecoveryInstalled = false;
 let lastDocumentHiddenAt = 0;
+
+/** True only in real DOM pages — never use bare `window` (throws in MV3 SW). */
+const canUseDomWindow = (): boolean => {
+    try {
+        const g = globalThis as typeof globalThis & { window?: unknown; document?: unknown };
+        return Boolean(g.window && g.document);
+    } catch {
+        return false;
+    }
+};
 
 const isCapacitorNativePlatform = (): boolean => {
     try {
@@ -75,13 +93,16 @@ function shouldRunHubRecovery(): boolean {
  * Requires Settings → maintain hub socket + a remote host (same rules as {@link applyHubSocketFromSettings}).
  */
 export function installAirpadHubLifecycleRecovery(): void {
-    if (hubLifecycleRecoveryInstalled || typeof window === "undefined" || typeof document === "undefined") {
+    if (hubLifecycleRecoveryInstalled || !canUseDomWindow()) {
         return;
     }
     hubLifecycleRecoveryInstalled = true;
 
-    document.addEventListener("visibilitychange", () => {
-        if (document.visibilityState !== "hidden") return;
+    const doc = (globalThis as typeof globalThis & { document: Document }).document;
+    const win = (globalThis as typeof globalThis & { window: Window }).window;
+
+    doc.addEventListener("visibilitychange", () => {
+        if (doc.visibilityState !== "hidden") return;
         lastDocumentHiddenAt = Date.now();
     });
 
@@ -92,13 +113,6 @@ export function installAirpadHubLifecycleRecovery(): void {
     const recoverAfterVisibility = () => {
         if (!shouldRunHubRecovery()) return;
         void (async () => {
-            const {
-                connectWS,
-                getWS,
-                initWebSocket,
-                isWSConnected,
-                reconnectTransportAfterLifecycleResume
-            } = await import("./websocket");
             initWebSocket(null);
             const live = Boolean(getWS()?.connected);
             const stale =
@@ -115,21 +129,20 @@ export function installAirpadHubLifecycleRecovery(): void {
 
     const recoverAfterNetworkOrRestore = (reason: string) => {
         if (!shouldRunHubRecovery()) return;
-        void (async () => {
-            const { initWebSocket, reconnectTransportAfterLifecycleResume } = await import("./websocket");
+        void (() => {
             initWebSocket(null);
             reconnectTransportAfterLifecycleResume(reason);
         })();
     };
 
-    document.addEventListener("visibilitychange", () => {
-        if (document.visibilityState !== "visible") return;
+    doc.addEventListener("visibilitychange", () => {
+        if (doc.visibilityState !== "visible") return;
         schedule(recoverAfterVisibility);
     });
 
-    window.addEventListener("online", () => schedule(() => recoverAfterNetworkOrRestore("online")));
+    win.addEventListener("online", () => schedule(() => recoverAfterNetworkOrRestore("online")));
 
-    window.addEventListener("pageshow", (ev) => {
+    win.addEventListener("pageshow", (ev) => {
         if (!(ev as PageTransitionEvent).persisted) return;
         schedule(() => recoverAfterNetworkOrRestore("bfcache"));
     });
@@ -173,7 +186,6 @@ export async function applyHubSocketFromSettings(settings: AppSettings): Promise
         return;
     }
 
-    const { initWebSocket, connectWS } = await import("./websocket");
     initWebSocket(null);
     connectWS();
 }

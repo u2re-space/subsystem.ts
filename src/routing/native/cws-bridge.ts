@@ -1,3 +1,9 @@
+/*
+ * Filename: cws-bridge.ts
+ * FullPath: modules/projects/subsystem/src/routing/native/cws-bridge.ts
+ * Change date and time: 14.45.00_19.07.2026
+ * Reason for changes: Idempotent CwsBridge registerPlugin (CRX SW loads capacitor chunk + dynamic import).
+ */
 /**
  * Unified CWSP bridge: Capacitor WebView / CWSAndroid (Kotlin) ↔ TypeScript.
  * Native implementation: `runtime/CWSAndroid/plugins/capacitor-cws-bridge/android` (@CapacitorPlugin name CwsBridge).
@@ -51,6 +57,11 @@ export interface CwsBridgePluginContract {
     removeAllListeners(): Promise<void>;
 }
 
+type CwsBridgeGlobal = typeof globalThis & {
+    __CWS_BRIDGE_PLUGIN__?: CwsBridgePluginContract;
+    Capacitor?: { Plugins?: Record<string, unknown> };
+};
+
 class CwsBridgeWeb extends WebPlugin implements CwsBridgePluginContract {
     async getShellInfo(): Promise<CwsShellInfo> {
         return {
@@ -76,9 +87,27 @@ class CwsBridgeWeb extends WebPlugin implements CwsBridgePluginContract {
     }
 }
 
-export const CwsBridge = registerPlugin<CwsBridgePluginContract>("CwsBridge", {
-    web: () => new CwsBridgeWeb()
-});
+/**
+ * WHY: CRX bundles `@capacitor/core` with a first `registerPlugin("CwsBridge")`, then
+ * Settings dynamic-imports this module and would register again → console warn.
+ * INVARIANT: one Capacitor plugin proxy per JS realm.
+ */
+const registerCwsBridgeOnce = (): CwsBridgePluginContract => {
+    const g = globalThis as CwsBridgeGlobal;
+    if (g.__CWS_BRIDGE_PLUGIN__) return g.__CWS_BRIDGE_PLUGIN__;
+    const existing = g.Capacitor?.Plugins?.CwsBridge as CwsBridgePluginContract | undefined;
+    if (existing) {
+        g.__CWS_BRIDGE_PLUGIN__ = existing;
+        return existing;
+    }
+    const plugin = registerPlugin<CwsBridgePluginContract>("CwsBridge", {
+        web: () => new CwsBridgeWeb()
+    });
+    g.__CWS_BRIDGE_PLUGIN__ = plugin;
+    return plugin;
+};
+
+export const CwsBridge = registerCwsBridgeOnce();
 
 declare global {
     interface Window {

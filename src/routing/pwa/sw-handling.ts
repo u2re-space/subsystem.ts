@@ -37,8 +37,10 @@ import { BROADCAST_CHANNELS } from "com/config/Names";
  */
 const shouldRunPwaIngress = (): boolean => {
     try {
-        if (typeof window === "undefined") return false;
-        const href = String(window.location?.href ?? "");
+        // WHY: never bare `window` — MV3 SW throws ReferenceError: window is not defined.
+        const loc = (globalThis as { location?: Location }).location;
+        if (!loc) return false;
+        const href = String(loc.href ?? "");
         if (
             href.startsWith("chrome-extension://") ||
             href.startsWith("moz-extension://") ||
@@ -46,7 +48,7 @@ const shouldRunPwaIngress = (): boolean => {
         ) {
             return false;
         }
-        const p = window.location?.protocol ?? "";
+        const p = String(loc.protocol ?? "");
         if (p === "chrome-extension:" || p === "moz-extension:" || p === "edge-extension:") return false;
         return p === "http:" || p === "https:";
     } catch {
@@ -64,7 +66,7 @@ export const ensureAppCss = () => {
     // Skip extension pages: they have their own HTML entrypoints and CSS injection.
     const viteEnv = (import.meta as any)?.env;
     if (viteEnv?.DEV) return;
-    if (typeof window === "undefined") return;
+    if (!(globalThis as { window?: unknown }).window) return;
     if (globalThis?.location?.protocol === "chrome-extension:") return;
 
     const id = "rs-crossword-css";
@@ -1465,7 +1467,7 @@ export const initIngressPWA = async (): Promise<void> => {
     if (_ingressPwaPromise) return _ingressPwaPromise;
 
     _ingressPwaPromise = (async () => {
-        if (typeof globalThis === "undefined" || typeof window === "undefined") return;
+        if (typeof globalThis === "undefined" || !(globalThis as { window?: unknown }).window) return;
         if (!shouldRunPwaIngress()) return;
         try {
             /**

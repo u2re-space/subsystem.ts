@@ -136,8 +136,10 @@ const extractRecognizedContent = (data: unknown): unknown => {
 /** Only browsers with a fetchable `/clipboard/pending` (PWA/site SW) — never extension or opaque origins */
 const clipboardPendingSupported = (): boolean => {
     try {
-        if (typeof window === "undefined") return false;
-        const href = String(window.location?.href ?? "");
+        // WHY: never bare `window` — MV3 extension SW throws ReferenceError.
+        const loc = (globalThis as { location?: Location }).location;
+        if (!loc) return false;
+        const href = String(loc.href ?? "");
         if (
             href.startsWith("chrome-extension://") ||
             href.startsWith("moz-extension://") ||
@@ -145,7 +147,7 @@ const clipboardPendingSupported = (): boolean => {
         ) {
             return false;
         }
-        const p = window.location?.protocol ?? "";
+        const p = String(loc.protocol ?? "");
         return p === "http:" || p === "https:";
     } catch {
         return false;

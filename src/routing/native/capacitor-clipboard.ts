@@ -14,6 +14,14 @@ type ClipboardModule = {
 };
 
 const loadClipboardModule = async (): Promise<ClipboardModule | null> => {
+    // WHY: MV3 ServiceWorkerGlobalScope forbids import(); Capacitor clipboard is WebView-only.
+    try {
+        if (typeof (globalThis as { document?: unknown }).document === "undefined") {
+            return null;
+        }
+    } catch {
+        return null;
+    }
     for (const pkg of CLIPBOARD_PKGS) {
         try {
             return (await import(/* @vite-ignore */ pkg)) as ClipboardModule;

@@ -3,7 +3,7 @@ import type { MCPConfig } from "com/config/SettingsTypes";
 import { GPTResponses, createGPTInstance } from "../model/GPT-Responses";
 import type { AIConfig, OutputFormat } from "./types";
 
-const DEFAULT_MODEL = "gpt-5.4";
+const DEFAULT_MODEL = "gpt-5.6-luna";
 const DEFAULT_API_URL = "https://api.proxyapi.ru/openai/v1";
 
 export { DEFAULT_MODEL, DEFAULT_API_URL };

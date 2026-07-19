@@ -104,14 +104,7 @@ export type MarkdownStylePlugins = {
 };
 
 export const BUILTIN_AI_MODELS = [
-    "gpt-5.1",
-    "gpt-5.2",
-    "gpt-5.3",
-    "gpt-5.4",
-    "gpt-5.2-chat-latest",
-    "gpt-5.3-chat-latest",
-    "gpt-5.4-chat-latest",
-    "gpt-5.3-instant"
+    "gpt-5.6-luna"
 ] as const;
 
 const defaultSpeechLanguage = (): SpeechRecognitionLanguage => {

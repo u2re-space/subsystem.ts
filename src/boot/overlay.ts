@@ -136,6 +136,7 @@ body > .${prefix}-overlay::backdrop,
     visibility: hidden !important;
 }
 
+/* COMPAT: legacy single-node toast; prefer boot/toast Shadow DOM layer when available. */
 html > .${prefix}-toast,
 body > .${prefix}-toast,
 .${prefix}-toast {
@@ -145,23 +146,25 @@ body > .${prefix}-toast,
     inset-block-start: auto !important;
     inset-inline-end: auto !important;
     transform: translateX(-50%) !important;
-    background: rgba(0, 0, 0, 0.9) !important;
-    color: #fff !important;
-    font: 13px/1.4 system-ui, -apple-system, "Segoe UI", Roboto, Arial, sans-serif !important;
-    padding: 10px 16px !important;
-    border-radius: 8px !important;
+    background: #0f172a !important;
+    color: #f8fafc !important;
+    font: 500 13px/1.4 system-ui, -apple-system, "Segoe UI", Roboto, Arial, sans-serif !important;
+    padding: 10px 14px !important;
+    border-radius: 10px !important;
     pointer-events: none !important;
     -webkit-user-drag: none !important;
     inline-size: max-content !important;
+    max-inline-size: min(90vw, 28rem) !important;
     block-size: max-content !important;
     z-index: ${zIndex} !important;
-    white-space: nowrap !important;
-    box-shadow: 0 4px 16px rgba(0, 0, 0, 0.4) !important;
+    white-space: pre-wrap !important;
+    overflow-wrap: anywhere !important;
+    box-shadow: 0 10px 28px rgba(2, 6, 23, 0.45) !important;
     opacity: 0;
     visibility: hidden;
-    transition: opacity 200ms ease-out, visibility 200ms ease-out !important;
+    transition: opacity 180ms ease-out, visibility 180ms ease-out !important;
     margin: 0 !important;
-    border: none !important;
+    border: 1px solid rgba(148, 163, 184, 0.35) !important;
     box-sizing: border-box !important;
 }
 

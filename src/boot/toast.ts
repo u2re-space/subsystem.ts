@@ -1,8 +1,18 @@
+/*
+ * Filename: toast.ts
+ * FullPath: modules/projects/subsystem/src/boot/toast.ts
+ * Change date and time: 13.35.00_19.07.2026
+ * Reason for changes: Fix CRX/content-script toast design — Shadow DOM isolation, no light-dark/@layer.
+ */
 /**
  * Standalone toast layer (forked from `fl.ui` `misc/Toast.ts`, zero framework deps).
  * Kept in subsystem so CrossWord / PWA / CRX need not import `fest/fl-ui` for toasts.
  *
  * Works in PWA, Chrome extension (content script / popup), and main-thread pages.
+ *
+ * WHY (CRX): host-page CSS often wins over `@layer` + `light-dark()` styles injected into
+ * the light DOM, producing unreadable / “broken” toasts. The layer lives in open Shadow DOM
+ * with explicit colors so page styles cannot restyle the pills.
  */
 
 export type ToastKind = "info" | "success" | "warning" | "error";
@@ -57,198 +67,252 @@ const hasVisibleDuplicate = (layer: HTMLElement, message: string, kind: ToastKin
     return false;
 };
 
-// Toast CSS styles (inlined for isolation)
+/**
+ * Self-contained toast CSS (Shadow DOM).
+ * INVARIANT: no `light-dark()`, no `@layer`, no host CSS variables for color —
+ * content scripts must look identical on every page.
+ */
 const TOAST_STYLES = `
-@layer viewer-toast {
-    .rs-toast-layer {
-        position: fixed;
-        z-index: var(--shell-toast-z, 2147483647);
-        pointer-events: none;
-        display: flex;
-        flex-direction: column;
-        align-items: center;
-        padding: 1rem;
-        gap: 0.5rem;
-        max-block-size: 80dvb;
-        overflow: hidden;
-        box-sizing: border-box;
-    }
+:host {
+    all: initial !important;
+    position: fixed !important;
+    inset: 0 !important;
+    display: block !important;
+    pointer-events: none !important;
+    z-index: var(--shell-toast-z, 2147483647) !important;
+    overflow: visible !important;
+}
 
-    .rs-toast-layer[data-position="bottom"],
-    .rs-toast-layer:not([data-position]) {
-        inset-block-end: 10dvb;
-        inset-inline: 0;
-        justify-content: flex-end;
-    }
+.rs-toast-layer {
+    position: fixed;
+    z-index: 1;
+    pointer-events: none;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    padding: 16px 20px;
+    gap: 8px;
+    max-block-size: 80dvh;
+    max-block-size: 80dvb;
+    overflow: hidden;
+    box-sizing: border-box;
+    margin: 0;
+    border: none;
+    background: transparent;
+}
 
-    .rs-toast-layer[data-position="top"] {
-        inset-block-start: 10dvb;
-        inset-inline: 0;
-        justify-content: flex-start;
-    }
+.rs-toast-layer[data-position="bottom"],
+.rs-toast-layer:not([data-position]) {
+    inset-block-end: 24px;
+    inset-block-start: auto;
+    inset-inline: 0;
+    justify-content: flex-end;
+}
 
-    .rs-toast-layer[data-position="top-left"] {
-        inset-block-start: 10dvb;
-        inset-inline-start: 0;
-        align-items: flex-start;
-    }
+.rs-toast-layer[data-position="top"] {
+    inset-block-start: 24px;
+    inset-block-end: auto;
+    inset-inline: 0;
+    justify-content: flex-start;
+}
 
-    .rs-toast-layer[data-position="top-right"] {
-        inset-block-start: 10dvb;
-        inset-inline-end: 0;
-        align-items: flex-end;
-    }
+.rs-toast-layer[data-position="top-left"] {
+    inset-block-start: 24px;
+    inset-inline-start: 16px;
+    inset-inline-end: auto;
+    align-items: flex-start;
+}
 
-    .rs-toast-layer[data-position="bottom-left"] {
-        inset-block-end: 10dvb;
-        inset-inline-start: 0;
-        align-items: flex-start;
-    }
+.rs-toast-layer[data-position="top-right"] {
+    inset-block-start: 24px;
+    inset-inline-end: 16px;
+    inset-inline-start: auto;
+    align-items: flex-end;
+}
 
-    .rs-toast-layer[data-position="bottom-right"] {
-        inset-block-end: 10dvb;
-        inset-inline-end: 0;
-        align-items: flex-end;
-    }
+.rs-toast-layer[data-position="bottom-left"] {
+    inset-block-end: 24px;
+    inset-inline-start: 16px;
+    inset-inline-end: auto;
+    align-items: flex-start;
+}
 
-    .rs-toast {
-        display: inline-flex;
-        align-items: center;
-        justify-content: center;
-        gap: 0.5rem;
-        padding: 0.5rem 1rem;
-        max-inline-size: min(90vw, 32rem);
-        inline-size: fit-content;
+.rs-toast-layer[data-position="bottom-right"] {
+    inset-block-end: 24px;
+    inset-inline-end: 16px;
+    inset-inline-start: auto;
+    align-items: flex-end;
+}
 
-        border-radius: var(--toast-radius, 0.5rem);
-        background-color: var(--toast-bg, light-dark(#fafbfc, #1e293b));
-        box-shadow: var(--toast-shadow, 0 6px 14px rgba(0, 0, 0, 0.45));
-        backdrop-filter: blur(12px) saturate(140%);
-        color: var(--toast-text, light-dark(#000000, #ffffff));
+.rs-toast {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    gap: 8px;
+    padding: 10px 14px;
+    max-inline-size: min(90vw, 28rem);
+    inline-size: fit-content;
+    min-block-size: 2.25rem;
+    box-sizing: border-box;
 
-        font-family: var(--toast-font-family, system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif);
-        font-size: var(--toast-font-size, 0.875rem);
-        font-weight: var(--toast-font-weight, 500);
-        letter-spacing: 0.01em;
-        line-height: 1.4;
-        white-space: pre-wrap;
-        overflow-wrap: anywhere;
-        word-break: break-word;
+    border-radius: 10px;
+    border: 1px solid rgba(248, 250, 252, 0.14);
+    background-color: #0f172a;
+    color: #f8fafc;
+    box-shadow: 0 10px 28px rgba(2, 6, 23, 0.45);
 
-        pointer-events: auto;
-        user-select: none;
-        cursor: default;
+    font-family: system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+    font-size: 13px;
+    font-weight: 500;
+    letter-spacing: 0.01em;
+    line-height: 1.4;
+    white-space: pre-wrap;
+    overflow-wrap: anywhere;
+    word-break: break-word;
+    text-align: center;
 
-        opacity: 0;
-        transform: translateY(100%) scale(0.9);
-        transition:
-            opacity 160ms ease-out,
-            transform 160ms cubic-bezier(0.16, 1, 0.3, 1),
-            background-color 100ms ease;
-    }
+    pointer-events: auto;
+    user-select: none;
+    -webkit-user-select: none;
+    cursor: default;
 
+    opacity: 0;
+    transform: translateY(12px) scale(0.96);
+    transition:
+        opacity 180ms ease-out,
+        transform 180ms cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+.rs-toast[data-visible] {
+    opacity: 1;
+    transform: translateY(0) scale(1);
+}
+
+.rs-toast:active {
+    transform: scale(0.98);
+}
+
+.rs-toast[data-kind="info"] {
+    background-color: #0f172a;
+    color: #f8fafc;
+    border-color: rgba(148, 163, 184, 0.35);
+}
+
+.rs-toast[data-kind="success"] {
+    background-color: #166534;
+    color: #f0fdf4;
+    border-color: rgba(187, 247, 208, 0.35);
+}
+
+.rs-toast[data-kind="warning"] {
+    background-color: #b45309;
+    color: #fffbeb;
+    border-color: rgba(253, 230, 138, 0.4);
+}
+
+.rs-toast[data-kind="error"] {
+    background-color: #b91c1c;
+    color: #fef2f2;
+    border-color: rgba(254, 202, 202, 0.4);
+}
+
+@media (prefers-reduced-motion: reduce) {
+    .rs-toast,
     .rs-toast[data-visible] {
-        opacity: 1;
-        transform: translateY(0) scale(1);
+        transition-duration: 0ms;
+        transform: none;
     }
+}
 
-    .rs-toast:active {
-        transform: scale(0.98);
-    }
-
-    .rs-toast[data-kind="success"] {
-        --toast-bg: var(--color-success, var(--color-success, #22c55e));
-    }
-
-    .rs-toast[data-kind="warning"] {
-        --toast-bg: var(--color-warning, var(--color-warning, #f59e0b));
-    }
-
-    .rs-toast[data-kind="error"] {
-        --toast-bg: var(--color-error, var(--color-error, #ef4444));
-    }
-
-    @media (prefers-reduced-motion: reduce) {
-        .rs-toast,
-        .rs-toast[data-visible] {
-            transition-duration: 0ms;
-            transform: none;
-        }
-    }
-
-    @media print {
-        .rs-toast-layer, .rs-toast {
-            display: none !important;
-            visibility: hidden !important;
-            opacity: 0 !important;
-            pointer-events: none !important;
-            position: absolute !important;
-            inset: 0 !important;
-            z-index: -1 !important;
-            inline-size: 0 !important;
-            block-size: 0 !important;
-            max-inline-size: 0 !important;
-            max-block-size: 0 !important;
-            min-inline-size: 0 !important;
-            min-block-size: 0 !important;
-            margin: 0 !important;
-            padding: 0 !important;
-            border: none !important;
-            overflow: hidden !important;
-        }
+@media print {
+    :host,
+    .rs-toast-layer,
+    .rs-toast {
+        display: none !important;
     }
 }
 `;
 
-// Track style injection per document
-const injectedDocs = new WeakSet<Document>();
-
-// Toast layer instances per config
+// Toast layer instances per config (points at the flex container inside the shadow root)
 const toastLayers = new Map<string, HTMLElement>();
+const toastHosts = new Map<string, HTMLElement>();
 
-/**
- * Ensure styles are injected into the document
- */
-const ensureStyles = (doc: Document = document): void => {
-    if (injectedDocs.has(doc)) return;
-
-    const style = doc.createElement("style");
-    style.id = "__rs-toast-styles__";
-    style.textContent = TOAST_STYLES;
-    (doc.head || doc.documentElement).appendChild(style);
-    injectedDocs.add(doc);
+type ToastMount = {
+    host: HTMLElement;
+    layer: HTMLElement;
 };
 
 /**
- * Get or create a toast layer container
+ * Get or create an isolated toast mount (host + Shadow DOM layer).
  */
-const getToastLayer = (config: Required<ToastLayerConfig>, doc: Document = document): HTMLElement => {
+const getToastMount = (config: Required<ToastLayerConfig>, doc: Document = document): ToastMount => {
     const key = `${config.containerId}-${config.position}`;
 
-    if (toastLayers.has(key)) {
-        const existing = toastLayers.get(key)!;
-        if (existing.isConnected) return existing;
-        toastLayers.delete(key);
+    const cachedLayer = toastLayers.get(key);
+    const cachedHost = toastHosts.get(key);
+    if (cachedLayer?.isConnected && cachedHost?.isConnected) {
+        cachedLayer.setAttribute("data-position", config.position);
+        cachedHost.style.setProperty("--shell-toast-z", String(config.zIndex));
+        return { host: cachedHost, layer: cachedLayer };
     }
 
-    ensureStyles(doc);
+    toastLayers.delete(key);
+    toastHosts.delete(key);
 
-    let layer = doc.getElementById(config.containerId);
+    let host = doc.getElementById(config.containerId);
+    if (!host) {
+        host = doc.createElement("div");
+        host.id = config.containerId;
+        // WHY: light-DOM host still needs a hardened box — some pages style bare divs aggressively.
+        host.setAttribute("data-cwsp-toast-host", "");
+        host.style.cssText = [
+            "all: initial",
+            "position: fixed",
+            "inset: 0",
+            "display: block",
+            "pointer-events: none",
+            `z-index: ${config.zIndex}`,
+            "overflow: visible",
+            "margin: 0",
+            "padding: 0",
+            "border: none",
+            "background: transparent",
+        ].join(";");
+        (doc.body || doc.documentElement).appendChild(host);
+    }
+
+    host.style.setProperty("--shell-toast-z", String(config.zIndex));
+
+    let shadow = host.shadowRoot;
+    if (!shadow) {
+        shadow = host.attachShadow({ mode: "open" });
+    }
+
+    let styleEl = shadow.querySelector("style[data-rs-toast]") as HTMLStyleElement | null;
+    if (!styleEl) {
+        styleEl = doc.createElement("style");
+        styleEl.setAttribute("data-rs-toast", "");
+        styleEl.textContent = TOAST_STYLES;
+        shadow.insertBefore(styleEl, shadow.firstChild);
+    } else {
+        // Refresh styles when toast module is updated / SW reloads content script.
+        styleEl.textContent = TOAST_STYLES;
+    }
+
+    let layer = shadow.querySelector(".rs-toast-layer") as HTMLElement | null;
     if (!layer) {
         layer = doc.createElement("div");
-        layer.id = config.containerId;
         layer.className = "rs-toast-layer";
         layer.setAttribute("aria-live", "polite");
         layer.setAttribute("aria-atomic", "true");
-        // Content scripts may run at document_start before <body> exists.
-        (doc.body || doc.documentElement).appendChild(layer);
+        shadow.appendChild(layer);
     }
 
     layer.setAttribute("data-position", config.position);
-    layer.style.setProperty("--shell-toast-z", String(config.zIndex));
 
     toastLayers.set(key, layer);
-    return layer;
+    toastHosts.set(key, host);
+    return { host, layer };
 };
 
 /**
@@ -305,7 +369,7 @@ export const showToast = (options: ToastOptions | string): HTMLElement | null =>
         position
     };
 
-    const layer = getToastLayer(config);
+    const { layer } = getToastMount(config);
 
     if (hasVisibleDuplicate(layer, message, kind)) {
         lastToastFingerprint = fp;
@@ -346,7 +410,7 @@ export const showToast = (options: ToastOptions | string): HTMLElement | null =>
         toast.removeAttribute("data-visible");
         globalThis?.setTimeout?.(() => {
             toast.remove();
-            // Clean up layer if empty
+            // Clean up mount maps if empty (keep host for reuse)
             if (!layer.childElementCount) {
                 const key = `${config.containerId}-${config.position}`;
                 toastLayers.delete(key);
@@ -443,10 +507,15 @@ export const initToastReceiver = (): (() => void) => {
  */
 export const closeToastLayer = (position: ToastPosition = DEFAULT_CONFIG.position): void => {
     const key = `${DEFAULT_CONFIG.containerId}-${position}`;
+    const host = toastHosts.get(key);
     const layer = toastLayers.get(key);
     if (layer) {
         layer.remove();
         toastLayers.delete(key);
+    }
+    if (host) {
+        host.remove();
+        toastHosts.delete(key);
     }
 };
 

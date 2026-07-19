@@ -1,3 +1,9 @@
+/*
+ * Filename: Settings.ts
+ * FullPath: modules/projects/subsystem/src/other/config/Settings.ts
+ * Change date and time: 14.55.00_19.07.2026
+ * Reason for changes: Static cws-bridge/airpad imports — MV3 SW forbids import().
+ */
 import { JSOX } from "jsox";
 
 //
@@ -10,6 +16,16 @@ import {
     normalizeWireNodeIdForWire,
     sanitizeFleetSelfWireNodeId
 } from "cwsp-shared/airpad-cwsp-client-parity";
+import {
+    getNativeUnifiedSettings,
+    initCwsNativeBridge,
+    isCwsNativeIpcAvailable,
+    patchNativeUnifiedSettingsDetailed
+} from "../../routing/native/cws-bridge";
+import {
+    applyAirpadRuntimeFromAppSettings,
+    syncAirpadRemoteConfigFromAppSettings
+} from "views/airpad/config/config";
 
 //
 export const SETTINGS_KEY = "rs-settings";
@@ -143,19 +159,43 @@ const ensureCapacitorDeskClipboardTargets = (settings: AppSettings): AppSettings
 
 interface WebnativeAuth { port: number; key: string }
 
+/** Neutralino shares the same loopback control RPC as WebNative (`/service/config`). */
 const isWebnativeSurface = (): boolean => {
     try {
-        const g = globalThis as unknown as { __WEBNATIVE_AUTH__?: WebnativeAuth; __CWS_WEBNATIVE_BOOT__?: boolean };
-        return Boolean(g.__CWS_WEBNATIVE_BOOT__ || (g.__WEBNATIVE_AUTH__ && typeof g.__WEBNATIVE_AUTH__.port === "number"));
+        const g = globalThis as unknown as {
+            __WEBNATIVE_AUTH__?: WebnativeAuth;
+            __NEUTRALINO_AUTH__?: WebnativeAuth;
+            __CWS_WEBNATIVE_BOOT__?: boolean;
+            __CWS_NEUTRALINO_BOOT__?: boolean;
+        };
+        const auth = g.__WEBNATIVE_AUTH__ || g.__NEUTRALINO_AUTH__;
+        return Boolean(
+            g.__CWS_WEBNATIVE_BOOT__ ||
+                g.__CWS_NEUTRALINO_BOOT__ ||
+                (auth && typeof auth.port === "number")
+        );
     } catch {
         return false;
     }
 };
 
+const readDesktopControlAuth = (): WebnativeAuth | null => {
+    try {
+        const g = globalThis as unknown as {
+            __WEBNATIVE_AUTH__?: WebnativeAuth;
+            __NEUTRALINO_AUTH__?: WebnativeAuth;
+        };
+        const auth = g.__WEBNATIVE_AUTH__ || g.__NEUTRALINO_AUTH__;
+        if (!auth || typeof auth.port !== "number") return null;
+        return { port: auth.port, key: String(auth.key || "") };
+    } catch {
+        return null;
+    }
+};
+
 const webnativeControl = async <T = unknown>(path: string, init?: RequestInit): Promise<T | null> => {
     try {
-        const g = globalThis as unknown as { __WEBNATIVE_AUTH__?: WebnativeAuth };
-        const auth = g.__WEBNATIVE_AUTH__;
+        const auth = readDesktopControlAuth();
         if (!auth || typeof auth.port !== "number") return null;
         const headers = new Headers(init?.headers);
         headers.set("Content-Type", "application/json");
@@ -190,19 +230,32 @@ const mapWebnativeSnapshotToCore = (snap: any): Partial<AppSettings["core"]> | n
     if (!snap || typeof snap !== "object") return null;
     const bridge = snap.bridge || {};
     const shell = snap.shell || {};
+    const coreIn = snap.core && typeof snap.core === "object" ? snap.core : {};
     const listenPort = Number(snap.listenPort) || Number(snap.publicHttpPort) || 8434;
     // WHY: bridge.endpointUrl is often empty in real CWSP configs (the topology lives in bridge.endpoints).
     // Prefer the explicit endpointUrl, then the first bridge.endpoints entry (typically the WAN entry
     // like https://45.147.121.152:8434/), then loopback as a last resort so the UI never shows the stale
     // IDB default (https://localhost:8434).
-    const endpointUrlRaw = String(bridge.endpointUrl || shell.remoteHost || "").trim();
+    const endpointUrlRaw = String(
+        coreIn.endpointUrl || bridge.endpointUrl || shell.remoteHost || ""
+    ).trim();
     const endpointsList = Array.isArray(bridge.endpoints) ? bridge.endpoints.map((e: unknown) => String(e || "").trim()).filter(Boolean) : [];
     const endpointUrl = endpointUrlRaw || endpointsList[0] || "";
-    const userId = String(bridge.userId || bridge.deviceId || "").trim();
+    const userId = String(coreIn.userId || bridge.userId || bridge.deviceId || "").trim();
     const userKey = String(
-        bridge.userKey || shell.accessToken || shell.clientToken || ""
+        coreIn.ecosystemToken ||
+            coreIn.userKey ||
+            bridge.userKey ||
+            shell.accessToken ||
+            shell.clientToken ||
+            ""
     ).trim();
-    const allowInsecureTls = Boolean(bridge.allowInsecureTls);
+    const allowInsecureTls =
+        bridge.allowInsecureTls !== undefined
+            ? Boolean(bridge.allowInsecureTls)
+            : coreIn.allowInsecureTls !== undefined
+              ? Boolean(coreIn.allowInsecureTls)
+              : undefined;
     if (!endpointUrl && !userId && !userKey) return null;
     const overlay: Partial<AppSettings["core"]> = {};
     if (endpointUrl) overlay.endpointUrl = endpointUrl;
@@ -214,8 +267,16 @@ const mapWebnativeSnapshotToCore = (snap: any): Partial<AppSettings["core"]> | n
         overlay.ecosystemToken = userKey;
         overlay.socket = { accessToken: userKey };
     }
-    if (bridge.allowInsecureTls !== undefined) overlay.allowInsecureTls = allowInsecureTls;
+    if (allowInsecureTls !== undefined) overlay.allowInsecureTls = allowInsecureTls;
+    overlay.preferBackendSync = (coreIn.preferBackendSync ?? true) !== false;
     return overlay;
+};
+
+/** Shell keys owned by Node portable.config — backend wins when present. */
+const mapWebnativeBundleToShell = (bundle: any): Partial<AppSettings["shell"]> | null => {
+    const shell = bundle?.settings?.shell || bundle?.portable?.shell || bundle?.snapshot?.shell;
+    if (!shell || typeof shell !== "object") return null;
+    return { ...shell } as Partial<AppSettings["shell"]>;
 };
 
 /**
@@ -225,13 +286,27 @@ const mapWebnativeSnapshotToCore = (snap: any): Partial<AppSettings["core"]> | n
  * untouched. Returns `base` unchanged on non-WebNative surfaces.
  */
 let webnativeSnapshotCache: any = null;
+let webnativeBundleCache: any = null;
 let webnativeSnapshotFetchedAt = 0;
-const loadWebnativeSnapshot = async (): Promise<any> => {
-    if (Date.now() - webnativeSnapshotFetchedAt < 2000 && webnativeSnapshotCache) return webnativeSnapshotCache;
-    const bundle = await webnativeControl<{ snapshot?: any } | null>("/service/config");
-    webnativeSnapshotCache = bundle?.snapshot || null;
+const loadWebnativeControlBundle = async (): Promise<any> => {
+    if (Date.now() - webnativeSnapshotFetchedAt < 2000 && webnativeBundleCache) {
+        return webnativeBundleCache;
+    }
+    const bundle = await webnativeControl<{
+        snapshot?: any;
+        settings?: any;
+        portable?: any;
+    } | null>("/service/config");
+    webnativeBundleCache = bundle || null;
+    webnativeSnapshotCache =
+        bundle?.snapshot || bundle?.settings || bundle?.portable || null;
     webnativeSnapshotFetchedAt = Date.now();
-    return webnativeSnapshotCache;
+    return webnativeBundleCache;
+};
+
+const loadWebnativeSnapshot = async (): Promise<any> => {
+    const bundle = await loadWebnativeControlBundle();
+    return bundle?.snapshot || bundle?.settings || bundle?.portable || webnativeSnapshotCache;
 };
 
 /** Best-effort push of a settings save into `portable.config.json` via the backend control RPC. */
@@ -317,6 +392,8 @@ const pushWebnativeSettingsPatch = async (settings: AppSettings): Promise<boolea
     }
     // WHY: bust the snapshot cache so the next load reflects the just-written config.
     webnativeSnapshotFetchedAt = 0;
+    webnativeSnapshotCache = null;
+    webnativeBundleCache = null;
     return Boolean(r?.ok);
 };
 
@@ -375,7 +452,6 @@ export const ensureCapacitorCwspSettingsSeeded = async (): Promise<AppSettings |
 
     let nativeUserId = "";
     try {
-        const { getNativeUnifiedSettings, isCwsNativeIpcAvailable } = await import("../../routing/native/cws-bridge");
         if (isCwsNativeIpcAvailable()) {
             nativeUserId = trimSetting((await getNativeUnifiedSettings())?.core?.userId);
         }
@@ -473,6 +549,59 @@ export const ensureCapacitorCwspSettingsSeeded = async (): Promise<AppSettings |
     console.log("[Settings] seeding Capacitor CWSP defaults");
     capacitorCwspSeedDone = true;
     return saveSettings(ensureCapacitorDeskClipboardTargets(merged) || merged);
+};
+
+/**
+ * Chrome extension CWSP defaults: same local hub as Neutralino (`127.0.0.1:8434`),
+ * wire identity {@code L-110-crx} (distinct from desk Neutralino {@code L-110}).
+ *
+ * WHY: sharing L-110 with Neutralino steals the desk socket — inbound ask-holds
+ * never reach the extension. Neutralino mirrors paste-hold → L-110-crx; CRX
+ * holds for "Paste by CWSP" and control-take dismisses Accept.
+ */
+const CRX_CWSP_CLIENT_ID = "L-110-crx";
+/** WHY: hub `verify()` requires a non-empty userKey; L-110-crx policy accepts associated tokens. */
+const CRX_CWSP_BOOTSTRAP_TOKEN = "n3v3rm1nd";
+const CRX_CWSP_BOOTSTRAP: Partial<AppSettings> = {
+    core: {
+        endpointUrl: "https://127.0.0.1:8434",
+        allowInsecureTls: true,
+        useCoreIdentityForAirPad: true,
+        userId: CRX_CWSP_CLIENT_ID,
+        ecosystemToken: CRX_CWSP_BOOTSTRAP_TOKEN,
+        userKey: CRX_CWSP_BOOTSTRAP_TOKEN,
+        ops: {
+            directUrl: "https://127.0.0.1:8434"
+        },
+        socket: {
+            selfId: CRX_CWSP_CLIENT_ID,
+            // WHY: share to phones/gateway — never self (L-110-crx) or desk L-110 as paste ask target.
+            routeTarget: "L-196;L-210;L-200",
+            // WHY: chrome-extension:// SW has location.protocol !== https — force wss candidates.
+            protocol: "https",
+            accessToken: CRX_CWSP_BOOTSTRAP_TOKEN,
+            allowAccessTokenWithoutUserKey: true
+        }
+    },
+    shell: {
+        maintainHubSocketConnection: true,
+        enableRemoteClipboardBridge: true,
+        acceptInboundClipboardData: true,
+        applyRemoteClipboardToDevice: false,
+        pushLocalClipboardToLan: false,
+        clipboardShareDestinationIds: "L-196;L-210;L-200",
+        clipboardInboundMode: "ask",
+        clipboardOutboundMode: "auto"
+    }
+};
+
+const isCrxExtensionRuntime = (): boolean => {
+    try {
+        const id = (globalThis as unknown as { chrome?: { runtime?: { id?: string } } }).chrome?.runtime?.id;
+        return typeof id === "string" && id.length > 0;
+    } catch {
+        return false;
+    }
 };
 
 const readLocalStorageSettingsMirror = (): unknown | null => {
@@ -941,22 +1070,110 @@ export const didPersistShellMaintainHubSocket = async (): Promise<boolean> => {
     }
 };
 
-const isChromeExtensionRuntime = (): boolean => {
-    try {
-        const id = (globalThis as unknown as { chrome?: { runtime?: { id?: string } } }).chrome?.runtime?.id;
-        return typeof id === "string" && id.length > 0;
-    } catch {
-        return false;
+/** Seed CRX hub + {@code L-110-crx} identity (migrates colliding {@code L-110}). */
+let crxCwspSeedDone = false;
+export const ensureCrxCwspSettingsSeeded = async (): Promise<AppSettings | null> => {
+    if (!isCrxExtensionRuntime()) return null;
+    if (crxCwspSeedDone) return null;
+
+    const current = await loadSettings({ nativeOverlay: false });
+    const currentUserId = trimSetting(current.core?.userId);
+    const hubPersisted = await didPersistShellMaintainHubSocket();
+    const existingToken =
+        trimSetting((current.core as { ecosystemToken?: string })?.ecosystemToken) ||
+        trimSetting(current.core?.userKey) ||
+        trimSetting(current.core?.socket?.accessToken);
+    const needsHttpsProtocol = current.core?.socket?.protocol !== "https";
+    // WHY: L-110 collides with Neutralino desk hub socket — force L-110-crx.
+    const needsCrxIdNormalize = /^L-110$/i.test(currentUserId);
+    // WHY: merged defaults always include maintain=false — seed when IDB never set hub,
+    // client id empty, auth token missing (WS closes 4001), protocol still "auto",
+    // or colliding L-110 must become L-110-crx.
+    const needsBootstrap =
+        !currentUserId ||
+        !hubPersisted ||
+        !existingToken ||
+        needsHttpsProtocol ||
+        needsCrxIdNormalize ||
+        !/^L-110-crx$/i.test(currentUserId);
+    if (!needsBootstrap) {
+        crxCwspSeedDone = true;
+        return null;
     }
+
+    const keepUserId = CRX_CWSP_CLIENT_ID;
+    const savedEp = trimSetting(current.core?.endpointUrl);
+    const defaultEp = trimSetting(DEFAULT_SETTINGS.core?.endpointUrl);
+    const useSavedEp = Boolean(savedEp) && savedEp !== defaultEp;
+    const seedToken = existingToken || CRX_CWSP_BOOTSTRAP_TOKEN;
+    const merged = {
+        ...current,
+        core: {
+            ...current.core,
+            allowInsecureTls: current.core?.allowInsecureTls ?? true,
+            useCoreIdentityForAirPad: current.core?.useCoreIdentityForAirPad ?? true,
+            userId: keepUserId,
+            ecosystemToken: seedToken,
+            userKey: seedToken,
+            endpointUrl: useSavedEp ? savedEp : (CRX_CWSP_BOOTSTRAP.core?.endpointUrl || savedEp),
+            ops: {
+                ...(current.core?.ops || {}),
+                directUrl:
+                    trimSetting(current.core?.ops?.directUrl) ||
+                    CRX_CWSP_BOOTSTRAP.core?.ops?.directUrl ||
+                    ""
+            },
+            socket: {
+                ...(current.core?.socket || {}),
+                // INVARIANT: CRX wire id is always L-110-crx (never desk L-110).
+                selfId: keepUserId,
+                routeTarget:
+                    trimSetting(current.core?.socket?.routeTarget) ||
+                    CRX_CWSP_BOOTSTRAP.core?.socket?.routeTarget ||
+                    "",
+                protocol: "https",
+                accessToken: trimSetting(current.core?.socket?.accessToken) || seedToken,
+                allowAccessTokenWithoutUserKey: true
+            }
+        },
+        shell: {
+            ...current.shell,
+            maintainHubSocketConnection: hubPersisted
+                ? Boolean(current.shell?.maintainHubSocketConnection)
+                : true,
+            enableRemoteClipboardBridge: current.shell?.enableRemoteClipboardBridge !== false,
+            acceptInboundClipboardData: current.shell?.acceptInboundClipboardData !== false,
+            // Prefer hold-for-paste on first seed; keep explicit user choice after.
+            applyRemoteClipboardToDevice: hubPersisted
+                ? Boolean(current.shell?.applyRemoteClipboardToDevice)
+                : false,
+            clipboardShareDestinationIds:
+                trimSetting(current.shell?.clipboardShareDestinationIds) ||
+                CRX_CWSP_BOOTSTRAP.shell?.clipboardShareDestinationIds ||
+                "",
+            clipboardInboundMode:
+                current.shell?.clipboardInboundMode ||
+                CRX_CWSP_BOOTSTRAP.shell?.clipboardInboundMode ||
+                "ask"
+        }
+    } as AppSettings;
+
+    console.log("[Settings] seeding CRX CWSP defaults", {
+        clientId: keepUserId,
+        endpoint: merged.core?.endpointUrl
+    });
+    crxCwspSeedDone = true;
+    return saveSettings(merged);
 };
 
 /**
- * MV3 Chrome extension: skip hub WebSocket bootstrap until the user saves Settings or points
- * {@link AppSettings.core.endpointUrl} away from the bundled dev default. Avoids console spam and
- * useless probes when cwsp is not running on localhost.
+ * MV3 Chrome extension: skip hub WebSocket bootstrap only when hub-maintain is off and
+ * the endpoint is still the unused bundled default. When CRX seeds {@code maintainHubSocketConnection}
+ * (localhost Neutralino hub or WAN), connect immediately.
  */
 export const shouldDeferCrxHubSocketBootstrap = async (settings: AppSettings): Promise<boolean> => {
-    if (!isChromeExtensionRuntime()) return false;
+    if (!isCrxExtensionRuntime()) return false;
+    if (settings.shell?.maintainHubSocketConnection === true) return false;
     if (await didPersistShellMaintainHubSocket()) return false;
     const defaultEp = normalizeCoreEndpointOrigin(DEFAULT_SETTINGS.core?.endpointUrl || "");
     const currentEp = normalizeCoreEndpointOrigin(settings.core?.endpointUrl || "");
@@ -1041,7 +1258,6 @@ export const loadSettings = async (opts?: LoadSettingsOptions): Promise<AppSetti
             // native prefs are a downstream sink — overlaying stale native values wipes saved fields.
             try {
                 if (opts?.nativeOverlay !== false && !isCapacitorNativeShell()) {
-                    const { getNativeUnifiedSettings, isCwsNativeIpcAvailable } = await import("../../routing/native/cws-bridge");
                     if (isCwsNativeIpcAvailable()) {
                         const nativeSettings = await getNativeUnifiedSettings();
                         if (nativeSettings && typeof nativeSettings === "object") {
@@ -1056,31 +1272,54 @@ export const loadSettings = async (opts?: LoadSettingsOptions): Promise<AppSetti
                 // bridge optional in web / extension contexts
             }
 
-            // WebNative desktop: overlay the REAL CWSP config snapshot (endpointUrl/userId/userKey/
-            // allowInsecureTls from portable.config.json) over IDB so the UI shows the configured
-            // endpoint instead of IDB defaults. Config wins for these fields on desktop. Best-effort:
-            // a fetch failure leaves the IDB values intact (no regression).
+            // Neutralino/WebNative desktop: overlay REAL portable.config (backend SoT) over IDB
+            // so Settings fields show Node values when the control host is up. Best-effort:
+            // a fetch failure leaves IDB intact. Respect preferBackendSync=false to keep IDB-only.
             try {
                 if (isWebnativeSurface()) {
-                    const snap = await loadWebnativeSnapshot();
-                    const coreOverlay = mapWebnativeSnapshotToCore(snap);
-                    if (coreOverlay) {
-                        result = {
-                            ...result,
-                            core: {
-                                ...result.core,
-                                ...coreOverlay,
-                                socket: { ...(result.core?.socket || {}), ...(coreOverlay as any).socket },
-                                ops: { ...(result.core?.ops || {}) },
-                                admin: { ...(result.core?.admin || {}) },
-                                network: { ...(result.core?.network || {}) },
-                                interop: { ...(result.core?.interop || {}) }
-                            }
-                        } as AppSettings;
+                    const preferBackend = (result.core?.preferBackendSync ?? true) !== false;
+                    if (preferBackend) {
+                        const bundle = await loadWebnativeControlBundle();
+                        const snap =
+                            bundle?.snapshot ||
+                            bundle?.settings ||
+                            bundle?.portable ||
+                            null;
+                        const coreOverlay = mapWebnativeSnapshotToCore({
+                            ...(snap || {}),
+                            ...(bundle?.settings || {}),
+                            ...(bundle?.portable || {})
+                        });
+                        const shellOverlay = mapWebnativeBundleToShell(bundle);
+                        if (coreOverlay || shellOverlay) {
+                            result = {
+                                ...result,
+                                core: coreOverlay
+                                    ? {
+                                          ...result.core,
+                                          ...coreOverlay,
+                                          socket: {
+                                              ...(result.core?.socket || {}),
+                                              ...((coreOverlay as any).socket || {})
+                                          },
+                                          ops: { ...(result.core?.ops || {}) },
+                                          admin: { ...(result.core?.admin || {}) },
+                                          network: { ...(result.core?.network || {}) },
+                                          interop: { ...(result.core?.interop || {}) }
+                                      }
+                                    : result.core,
+                                shell: shellOverlay
+                                    ? {
+                                          ...(result.shell || {}),
+                                          ...shellOverlay
+                                      }
+                                    : result.shell
+                            } as AppSettings;
+                        }
                     }
                 }
             } catch {
-                /* webnative control RPC optional — ignore */
+                /* webnative/neutralino control RPC optional — ignore */
             }
 
             console.log("[Settings] loadSettings result:", {
@@ -1242,11 +1481,7 @@ export const saveSettings = async (settings: AppSettings) => {
     await idbPutSettings(merged);
     lastSettingsSaveReport = { nativeSynced: null };
     try {
-        const {
-            initCwsNativeBridge,
-            patchNativeUnifiedSettingsDetailed,
-            isCwsNativeIpcAvailable
-        } = await import("../../routing/native/cws-bridge");
+        // WHY: static cws-bridge — CRX SW seed/save cannot use import().
         if (isCwsNativeIpcAvailable()) {
             await initCwsNativeBridge().catch(() => null);
             const patch = await patchNativeUnifiedSettingsDetailed(merged as unknown as Record<string, unknown>);
@@ -1287,7 +1522,6 @@ export const saveSettings = async (settings: AppSettings) => {
         }
     }
     try {
-        const { applyAirpadRuntimeFromAppSettings, syncAirpadRemoteConfigFromAppSettings } = await import("views/airpad/config/config");
         applyAirpadRuntimeFromAppSettings(merged);
         syncAirpadRemoteConfigFromAppSettings(merged, { persist: true });
     } catch (e) {
@@ -1321,7 +1555,20 @@ type SyncOptions = {
 
 /** Lazy `fest/lure` — keeps content scripts / lightweight callers from pulling lure + UI CSS. */
 let lureFsPromise: Promise<{ getDirectoryHandle: typeof import("fest/lure").getDirectoryHandle; readFile: typeof import("fest/lure").readFile }> | null = null;
+const isServiceWorkerScope = (): boolean => {
+    try {
+        // MV3 extension / classic SW: dynamic import() is disallowed.
+        return typeof (globalThis as { ServiceWorkerGlobalScope?: unknown }).ServiceWorkerGlobalScope !== "undefined"
+            && typeof (globalThis as { clients?: unknown }).clients !== "undefined"
+            && typeof (globalThis as { document?: unknown }).document === "undefined";
+    } catch {
+        return false;
+    }
+};
 const loadLureFs = () => {
+    if (isServiceWorkerScope()) {
+        return Promise.reject(new Error("fest/lure FS unavailable in ServiceWorkerGlobalScope"));
+    }
     if (!lureFsPromise) {
         lureFsPromise = import("fest/lure").then((m) => ({
             getDirectoryHandle: m.getDirectoryHandle,

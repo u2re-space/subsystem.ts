@@ -91,6 +91,25 @@ import {
 let socket: Socket | null = null;
 let wsConnected = false;
 let isConnecting = false;
+
+/**
+ * Mirror live socket for page debuggers.
+ * WHY: never touch bare `window` — in MV3 service workers that identifier throws
+ * `ReferenceError: window is not defined` (even inside `typeof` guards after some bundlers).
+ */
+const mirrorSocketOnGlobal = (value: Socket | null): void => {
+    try {
+        const g = globalThis as typeof globalThis & {
+            __socket?: Socket | null;
+            window?: { __socket?: Socket | null };
+        };
+        g.__socket = value;
+        const w = g.window;
+        if (w) w.__socket = value;
+    } catch {
+        /* ignore */
+    }
+};
 let btnEl: HTMLElement | null = null;
 let wsConnectButton: HTMLElement | null = null;
 let connectAttemptId = 0;
@@ -1386,7 +1405,9 @@ function handleServerMessage(msg: any) {
  * a soft resume reconnect restores endpoint clipboard/coordinator without requiring a manual WS tap.
  */
 export function reconnectTransportAfterLifecycleResume(reason: string): void {
-    if (typeof window === "undefined") return;
+    // WHY: bare `typeof window` is fine at runtime in SW, but prefer globalThis.window
+    // so lifecycle reconnect never runs outside a real browsing document.
+    if (!(globalThis as { window?: unknown }).window) return;
     logWsState("lifecycle-reconnect", reason);
     stopClipboardPushLoop();
     clearAutoReconnectTimer();
@@ -1413,7 +1434,7 @@ export function reconnectTransportAfterLifecycleResume(reason: string): void {
         }
     }
     socket = null;
-    (window as any).__socket = null;
+    mirrorSocketOnGlobal(null);
     setWsStatus(false);
     autoReconnectAttempts = 0;
     packetWireDedupeGuard.clear();
@@ -1735,16 +1756,38 @@ export function connectWS() {
 
     const getPortsForProtocol = (protocol: 'http' | 'https', preferredPort?: string) => {
         const ports: string[] = [];
-        // Keep user-provided port only when it matches protocol expectations.
-        if (preferredPort && isLikelyPort(preferredPort) && !ports.includes(preferredPort)) {
-            ports.push(preferredPort);
+        const explicitPort =
+            (preferredPort && isLikelyPort(preferredPort) ? preferredPort : "") ||
+            (remotePort && isLikelyPort(remotePort) ? remotePort : "");
+
+        // WHY: Connect URL already names a port (e.g. https://127.0.0.1:8434). Fan-out across
+        // CWSP_DEFAULT_HTTPS_PORTS made CRX probe :9443/:8445/:7443 → ERR_CONNECTION_REFUSED noise
+        // while the real hub is only on :8434 (same as Neutralino).
+        if (explicitPort) {
+            if (protocol === "https") {
+                if (
+                    isLikelyHttpsPort(explicitPort) ||
+                    remoteProtocol === "https" ||
+                    remoteProtocol === "auto"
+                ) {
+                    ports.push(explicitPort);
+                }
+            } else if (
+                isLikelyHttpPort(explicitPort) ||
+                remoteProtocol === "http" ||
+                remoteProtocol === "auto"
+            ) {
+                ports.push(explicitPort);
+            }
+            if (!ports.length && remoteProtocol === protocol) {
+                ports.push(explicitPort);
+            }
+            if (ports.length) {
+                return ports.filter((port, idx) => ports.indexOf(port) === idx);
+            }
         }
-        if (remotePort) {
-            if (protocol === 'https' && isLikelyHttpsPort(remotePort)) ports.push(remotePort);
-            if (protocol === 'http' && isLikelyHttpPort(remotePort)) ports.push(remotePort);
-            // If protocol is explicit in UI, honor custom port as-is.
-            if (remoteProtocol === protocol && !ports.includes(remotePort)) ports.push(remotePort);
-        }
+
+        // No explicit port on the Connect URL — discover via standard CWSP port lists.
         for (const defaultPort of defaultPortsByProtocol[protocol]) {
             ports.push(defaultPort);
         }
@@ -1805,6 +1848,13 @@ export function connectWS() {
     };
     const pageHostnameLower = pageHost.toLowerCase();
     const pageBareForGuest = stripWireEndpointIdPrefix(pageHost) || pageHost;
+    const pageProtocol = String(location.protocol || "").toLowerCase();
+    // WHY: chrome-extension://<id>/ hostname is the extension id — not dialable (ERR_NAME_NOT_RESOLVED).
+    const skipExtensionPageOrigin =
+        pageProtocol === "chrome-extension:" ||
+        pageProtocol === "moz-extension:" ||
+        pageProtocol === "safari-web-extension:" ||
+        /^[a-p]{32}$/.test(pageHostnameLower);
     const skipGuestPageOrigin =
         Boolean(pageHostnameLower) &&
         isGuestPrivateLanIpv4(pageBareForGuest) &&
@@ -1820,7 +1870,13 @@ export function connectWS() {
         Boolean(pageHost) &&
         isLoopbackHost(pageHost);
 
-    if (location.hostname && !skipPageOriginForDirectLan && !skipGuestPageOrigin && !skipOffFleetLoopbackPage) {
+    if (
+        location.hostname &&
+        !skipExtensionPageOrigin &&
+        !skipPageOriginForDirectLan &&
+        !skipGuestPageOrigin &&
+        !skipOffFleetLoopbackPage
+    ) {
         hostEntries.push({
             host: location.hostname,
             source: "page",
@@ -2132,9 +2188,7 @@ export function connectWS() {
             }
         });
 
-        if (typeof window !== "undefined") {
-            (window as any).__socket = socket;
-        }
+        mirrorSocketOnGlobal(socket);
     };
 
     const probeBatch = (startIndex: number, round: number): Promise<boolean> =>
@@ -2368,9 +2422,7 @@ export function disconnectWS() {
     log('Disconnecting WebSocket...');
     socket.disconnect();
     socket = null;
-    if (typeof window !== "undefined") {
-        (window as any).__socket = null;
-    }
+    mirrorSocketOnGlobal(null);
     setWsStatus(false);
 }
 
