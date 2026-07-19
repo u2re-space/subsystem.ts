@@ -32,13 +32,25 @@ const CWSP_MOBILE_HIDDEN_BUILTIN_TABS = [
     "extension"
 ] as const;
 
-/** Remove workcenter / CRX / AI built-in tabs from the settings host DOM. */
+/**
+ * CRX options page: drop built-in Extension (NTP) — folded into contributed `crx`
+ * tab — and Server (CWSP tab owns hub/endpoint).
+ */
+const EXTENSION_HIDDEN_BUILTIN_TABS = ["extension", "server"] as const;
+
+/** Remove host-variant built-in tabs that the profile replaces or folds elsewhere. */
 export const pruneBuiltInSettingsTabs = (
     root: HTMLElement,
     profile: SettingsShellProfile
 ): void => {
-    if (profile !== "cwsp-mobile") return;
-    for (const tab of CWSP_MOBILE_HIDDEN_BUILTIN_TABS) {
+    const hidden =
+        profile === "cwsp-mobile"
+            ? CWSP_MOBILE_HIDDEN_BUILTIN_TABS
+            : profile === "extension"
+              ? EXTENSION_HIDDEN_BUILTIN_TABS
+              : null;
+    if (!hidden) return;
+    for (const tab of hidden) {
         root.querySelector(`[data-tab-panel="${tab}"]`)?.remove();
         root.querySelector(`[data-action="switch-settings-tab"][data-tab="${tab}"]`)?.remove();
     }
@@ -46,7 +58,8 @@ export const pruneBuiltInSettingsTabs = (
 
 export const defaultSettingsTabForProfile = (profile: SettingsShellProfile): string => {
     if (profile === "cwsp-mobile") return "cwsp";
-    if (profile === "extension") return "extension";
+    // WHY: contributed `crx` panel is the single Extension tab after prune.
+    if (profile === "extension") return "crx";
     return "ai";
 };
 
