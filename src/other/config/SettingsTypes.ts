@@ -201,6 +201,12 @@ export type ShellSettings = {
     /** Keep foreground service / daemon for clipboard + share (maps to `cwsp.bridgeDaemonEnabled`). */
     bridgeDaemonEnabled?: boolean;
     /**
+     * When true, Capacitor/Android Java listens on LAN `:8434` for hidden Control API
+     * (`GET|POST /service/config` + PNA CORS) so public `/cwsp` can manage settings.
+     * Default off. Auth: ecosystem token (`X-API-Key`) or generated control key.
+     */
+    allowControlApi?: boolean;
+    /**
      * Outbound clipboard prompt mode (on local user copy).
      * - `auto`: share immediately; popup shows spoiler + optional Erase + Dismiss.
      * - `ask`:  hold share until Share; Dismiss / timeout → no share.
@@ -477,6 +483,7 @@ export const DEFAULT_SETTINGS: AppSettings = {
         acceptSmsBridgeData: false,
         autoStartOnBoot: true,
         bridgeDaemonEnabled: true,
+        allowControlApi: false,
         // WHY: prompt popup defaults per docs/superpowers/specs/2026-07-14-clipboard-prompt-popup-design.md
         clipboardOutboundMode: "auto",
         clipboardInboundMode: "auto",

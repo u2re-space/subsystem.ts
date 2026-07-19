@@ -114,6 +114,11 @@ const mobileDeviceFields = (): SettingsPanelChild[] => [
     "Device",
     settingsCheckboxField("Start CWSP on boot", "shell.autoStartOnBoot"),
     settingsCheckboxField("Foreground CWSP service", "shell.bridgeDaemonEnabled"),
+    // WHY: PNA Control API on :8434 for public /cwsp SPA — off by default (LAN listen + API key).
+    settingsCheckboxField("Allow Control API", "shell.allowControlApi"),
+    settingsHint(
+        "Allow Control API listens on this device at :8434 (/service/config) so CWSP control (PWA/public hub) can reach settings over Private Network Access. Uses your ecosystem token as X-API-Key."
+    ),
     settingsCheckboxField("Enable remote clipboard bridge", "shell.enableRemoteClipboardBridge"),
     settingsCheckboxField("Accept contacts bridge", "shell.acceptContactsBridgeData"),
     // WHY: SMS bridge UI removed — Android never declares/requests READ_SMS (bank malware heuristics).

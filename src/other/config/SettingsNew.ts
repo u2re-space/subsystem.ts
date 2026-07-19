@@ -196,6 +196,7 @@ const CAPACITOR_CWSP_BOOTSTRAP: Partial<AppSettings> = {
     },
     shell: {
         bridgeDaemonEnabled: true,
+        allowControlApi: false,
         autoStartOnBoot: true,
         enableRemoteClipboardBridge: true,
         acceptInboundClipboardData: true,

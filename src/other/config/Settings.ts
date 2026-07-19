@@ -157,9 +157,18 @@ const ensureCapacitorDeskClipboardTargets = (settings: AppSettings): AppSettings
 // shape as the Capacitor overlay. On non-WebNative surfaces these helpers are no-ops (zero regression
 // for Capacitor/PWA/CRX).
 
-interface WebnativeAuth { port: number; key: string }
+/**
+ * Control RPC auth. `host` required for public /cwsp → Capacitor LAN :8434
+ * (hardcoded 127.0.0.1 breaks HTTPS pages — mixed content / hub redirect on desk).
+ */
+interface WebnativeAuth {
+    port: number;
+    key: string;
+    host?: string;
+    scheme?: "http" | "https";
+}
 
-/** Neutralino shares the same loopback control RPC as WebNative (`/service/config`). */
+/** Neutralino / WebNative / /cwsp Control bridge shares `/service/config`. */
 const isWebnativeSurface = (): boolean => {
     try {
         const g = globalThis as unknown as {
@@ -167,11 +176,13 @@ const isWebnativeSurface = (): boolean => {
             __NEUTRALINO_AUTH__?: WebnativeAuth;
             __CWS_WEBNATIVE_BOOT__?: boolean;
             __CWS_NEUTRALINO_BOOT__?: boolean;
+            __CWSP_CONTROL_BRIDGE_LIVE__?: boolean;
         };
         const auth = g.__WEBNATIVE_AUTH__ || g.__NEUTRALINO_AUTH__;
         return Boolean(
             g.__CWS_WEBNATIVE_BOOT__ ||
                 g.__CWS_NEUTRALINO_BOOT__ ||
+                g.__CWSP_CONTROL_BRIDGE_LIVE__ ||
                 (auth && typeof auth.port === "number")
         );
     } catch {
@@ -184,10 +195,56 @@ const readDesktopControlAuth = (): WebnativeAuth | null => {
         const g = globalThis as unknown as {
             __WEBNATIVE_AUTH__?: WebnativeAuth;
             __NEUTRALINO_AUTH__?: WebnativeAuth;
+            __CWSP_CONTROL_VIA__?: string;
+            __CWSP_CONTROL_SOURCE__?: {
+                host?: string;
+                port?: number;
+                apiKey?: string;
+                userKey?: string;
+                scheme?: string;
+            };
         };
+        const src = g.__CWSP_CONTROL_SOURCE__;
+        const via = String(g.__CWSP_CONTROL_VIA__ || "");
+        // WHY: Capacitor L-210 SoT must not fall back to stale Neutralino L-110 auth.
+        if (via === "android" && src && typeof src.port === "number" && src.host) {
+            return {
+                port: src.port,
+                key: String(src.apiKey || src.userKey || ""),
+                host: String(src.host).trim(),
+                scheme: src.scheme === "https" ? "https" : "http"
+            };
+        }
+        // Desk Neutralino L-110 — prefer explicit Neutralino auth.
+        if (via === "neutralino" || g.__NEUTRALINO_AUTH__) {
+            const n = g.__NEUTRALINO_AUTH__ || g.__WEBNATIVE_AUTH__;
+            if (n && typeof n.port === "number") {
+                return {
+                    port: n.port || 29110,
+                    key: String(n.key || "cwsp-neutralino-local"),
+                    host: String(n.host || "127.0.0.1"),
+                    scheme: n.scheme === "https" ? "https" : "http"
+                };
+            }
+        }
         const auth = g.__WEBNATIVE_AUTH__ || g.__NEUTRALINO_AUTH__;
-        if (!auth || typeof auth.port !== "number") return null;
-        return { port: auth.port, key: String(auth.key || "") };
+        if (auth && typeof auth.port === "number") {
+            return {
+                port: auth.port,
+                key: String(auth.key || src?.apiKey || src?.userKey || ""),
+                host: String(auth.host || src?.host || "127.0.0.1").trim() || "127.0.0.1",
+                scheme: auth.scheme === "https" || src?.scheme === "https" ? "https" : "http"
+            };
+        }
+        if (src && typeof src.port === "number" && src.host) {
+            return {
+                port: src.port,
+                key: String(src.apiKey || src.userKey || ""),
+                host: String(src.host).trim() || "127.0.0.1",
+                scheme: src.scheme === "https" ? "https" : "http"
+            };
+        }
+        return null;
     } catch {
         return null;
     }
@@ -197,23 +254,49 @@ const webnativeControl = async <T = unknown>(path: string, init?: RequestInit): 
     try {
         const auth = readDesktopControlAuth();
         if (!auth || typeof auth.port !== "number") return null;
+        const host = String(auth.host || "127.0.0.1").trim() || "127.0.0.1";
+        const scheme = auth.scheme === "https" ? "https" : "http";
+        // WHY: public https://VDS/cwsp must not call desk hub http://127.0.0.1:8434 (redirect breaks CORS).
+        const pageHost = String(location.hostname || "").toLowerCase();
+        const pageIsPublicHttps =
+            location.protocol === "https:" &&
+            pageHost !== "127.0.0.1" &&
+            pageHost !== "localhost" &&
+            pageHost !== "::1";
+        if (
+            pageIsPublicHttps &&
+            (host === "127.0.0.1" || host === "localhost" || host === "::1") &&
+            auth.port === 8434
+        ) {
+            return null;
+        }
         const headers = new Headers(init?.headers);
         headers.set("Content-Type", "application/json");
         if (auth.key) headers.set("X-API-Key", auth.key);
-        // WHY: Neutralino sets __WEBNATIVE_AUTH__ before Node :18765 is up; unbounded
-        // fetch hung BootLoader.loadSettings → blank white screen.
-        const timeoutMs = 1500;
+        const timeoutMs = 2500;
         const signal =
             init?.signal ??
             (typeof AbortSignal !== "undefined" && typeof AbortSignal.timeout === "function"
                 ? AbortSignal.timeout(timeoutMs)
                 : undefined);
-        const res = await fetch(`http://127.0.0.1:${auth.port}${path}`, {
+        const hostPart = host.includes(":") && !host.startsWith("[") ? `[${host}]` : host;
+        const url = `${scheme}://${hostPart}:${auth.port}${path.startsWith("/") ? path : `/${path}`}`;
+        const isLoopback = host === "127.0.0.1" || host === "localhost" || host === "::1";
+        const isPrivate =
+            /^10\./.test(host) ||
+            /^192\.168\./.test(host) ||
+            /^172\.(1[6-9]|2\d|3[0-1])\./.test(host);
+        const fetchInit: RequestInit & { targetAddressSpace?: string } = {
             ...init,
             headers,
             cache: "no-store",
-            signal
-        });
+            signal,
+            mode: "cors",
+            credentials: "omit"
+        };
+        if (isLoopback) fetchInit.targetAddressSpace = "loopback";
+        else if (isPrivate) fetchInit.targetAddressSpace = "local";
+        const res = await fetch(url, fetchInit as RequestInit);
         if (!res.ok) return null;
         return (await res.json()) as T;
     } catch {
@@ -368,24 +451,49 @@ const pushWebnativeSettingsPatch = async (settings: AppSettings): Promise<boolea
     if (core.ops?.directUrl) {
         (patch.bridge as Record<string, unknown>).endpoints = [String(core.ops.directUrl).trim()];
     }
-    const r = await webnativeControl<{ ok?: boolean } | null>("/service/config", {
-        method: "POST",
-        body: JSON.stringify(patch)
-    });
-    // WHY: Node clipboard-hub needs the same token on /ws (gateway closes with 4001 otherwise).
-    try {
-        const hubBody: Record<string, string> = {};
-        if (remoteHost) hubBody.remoteHost = remoteHost;
-        if (token) {
-            hubBody.accessToken = token;
-            hubBody.clientToken = token;
+    // WHY: Neutralino L-110 expects bridge/shell portable patch; Capacitor also accepts full AppSettings.
+    const authForPatch = readDesktopControlAuth();
+    const isCapacitorControl =
+        Number(authForPatch?.port) === 8434 &&
+        String(authForPatch?.host || "") !== "127.0.0.1" &&
+        String(authForPatch?.host || "") !== "localhost";
+    const body = isCapacitorControl
+        ? {
+              ...patch,
+              core: settings.core,
+              shell: { ...(patch.shell as object), ...(settings.shell || {}) },
+              cwsp: (settings as { cwsp?: unknown }).cwsp
+          }
+        : patch;
+    const r = await webnativeControl<{ ok?: boolean; settings?: unknown; portable?: unknown } | null>(
+        "/service/config",
+        {
+            method: "POST",
+            body: JSON.stringify(body)
         }
-        if (clientId) hubBody.clientId = clientId;
-        if (Object.keys(hubBody).length) {
-            await webnativeControl("/service/clipboard-hub", {
-                method: "POST",
-                body: JSON.stringify(hubBody)
-            });
+    );
+    // WHY: Node clipboard-hub only — Capacitor Control API has no this route (404/CORS noise).
+    try {
+        const auth = readDesktopControlAuth();
+        const hubPort = Number(auth?.port) || 0;
+        const hubHost = String(auth?.host || "127.0.0.1");
+        const isNeutralinoHub =
+            hubPort === 29110 &&
+            (hubHost === "127.0.0.1" || hubHost === "localhost" || hubHost === "::1");
+        if (isNeutralinoHub) {
+            const hubBody: Record<string, string> = {};
+            if (remoteHost) hubBody.remoteHost = remoteHost;
+            if (token) {
+                hubBody.accessToken = token;
+                hubBody.clientToken = token;
+            }
+            if (clientId) hubBody.clientId = clientId;
+            if (Object.keys(hubBody).length) {
+                await webnativeControl("/service/clipboard-hub", {
+                    method: "POST",
+                    body: JSON.stringify(hubBody)
+                });
+            }
         }
     } catch {
         /* clipboard-hub optional on older backends */
@@ -394,7 +502,8 @@ const pushWebnativeSettingsPatch = async (settings: AppSettings): Promise<boolea
     webnativeSnapshotFetchedAt = 0;
     webnativeSnapshotCache = null;
     webnativeBundleCache = null;
-    return Boolean(r?.ok);
+    // Neutralino returns `{ ok: true }`; Capacitor may return settings blob with ok.
+    return Boolean(r?.ok === true || (isCapacitorControl && r && (r.settings || r.portable)));
 };
 
 /** First-boot CWSP defaults for CWSAndroid when IDB still has dev/empty endpoint fields. */
@@ -420,6 +529,7 @@ const CAPACITOR_CWSP_BOOTSTRAP: Partial<AppSettings> = {
     },
     shell: {
         bridgeDaemonEnabled: true,
+        allowControlApi: false,
         autoStartOnBoot: true,
         enableRemoteClipboardBridge: true,
         acceptInboundClipboardData: true,
