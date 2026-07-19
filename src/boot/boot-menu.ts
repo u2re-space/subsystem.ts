@@ -12,6 +12,7 @@ import { loadAsAdopted } from "fest/dom";
 import style from "./boot-menu.scss?inline";
 import type { ShellId } from "./types";
 import { pickEnabledView } from "shared/routing/views";
+import { ensureHistoryBaseDataset, withHistoryBase } from "./history-base";
 
 // ============================================================================
 // Type Definitions
@@ -61,9 +62,11 @@ const navigateToDefaultView = (shell: ShellId, remember: boolean): void => {
     const normalizedShell = normalizeShellChoice(shell);
     saveShellPreference(normalizedShell, remember);
     
-    // Navigate to the configured default view.
+    // Navigate to the configured default view (keep VDS path mount e.g. /cwsp).
     const defaultView = pickEnabledView("viewer");
-    globalThis?.history?.pushState?.({ shell: normalizedShell, view: defaultView }, "", `/${defaultView}`);
+    ensureHistoryBaseDataset();
+    const nextPath = withHistoryBase(`/${defaultView}`);
+    globalThis?.history?.pushState?.({ shell: normalizedShell, view: defaultView }, "", nextPath);
     
     // Dispatch route change event
     globalThis?.dispatchEvent?.(new CustomEvent('route-change', {
@@ -71,7 +74,7 @@ const navigateToDefaultView = (shell: ShellId, remember: boolean): void => {
     }));
     
     // Reload to apply shell
-    globalThis.location.href = `/${defaultView}`;
+    globalThis.location.href = nextPath;
 };
 
 // ============================================================================

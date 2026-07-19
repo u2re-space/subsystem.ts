@@ -270,19 +270,28 @@ export class BootLoader {
             // PWA: register SW, clipboard/share receivers, consume ?shared=1 / pending share payloads.
             // Dynamic import avoids wiring the whole stack into unrelated boot paths (extensions, demos).
             // WHY: Neutralino/desktop must not await SW ingress — can stall first paint on file:// / neu.
+            // WHY: /cwsp + gateway :8434 SPA ship no sw.js — probing floods 404s (/sw.js, /apps/cw/sw.js).
             const skipPwaIngress = (() => {
                 try {
                     const g = globalThis as unknown as {
                         __CWS_NEUTRALINO_BOOT__?: boolean;
                         __CWS_WEBNATIVE_BOOT__?: boolean;
+                        __CWS_SKIP_PWA__?: boolean;
                         Neutralino?: unknown;
                         NL_OS?: string;
                     };
+                    const surface =
+                        typeof document !== "undefined"
+                            ? String(document.documentElement?.dataset?.cwspSurface || "")
+                            : "";
                     return Boolean(
-                        g.__CWS_NEUTRALINO_BOOT__ ||
+                        g.__CWS_SKIP_PWA__ ||
+                            g.__CWS_NEUTRALINO_BOOT__ ||
                             g.__CWS_WEBNATIVE_BOOT__ ||
                             g.Neutralino ||
-                            typeof g.NL_OS === "string"
+                            typeof g.NL_OS === "string" ||
+                            surface === "cwsp-control" ||
+                            surface === "gateway"
                     );
                 } catch {
                     return false;

@@ -34,6 +34,7 @@ import {
     normalizeBootShellId,
     readLastActiveBootShell
 } from "./shell-preference";
+import { ensureHistoryBaseDataset, stripHistoryBase, withHistoryBase } from "./history-base";
 
 // ============================================================================
 // ROUTE TYPES
@@ -109,13 +110,15 @@ const DEFAULT_CONFIG: RouteConfig = {
 // ============================================================================
 
 /**
- * Normalize pathname (remove base, leading/trailing slashes)
+ * Normalize pathname (remove history/VDS base, leading/trailing slashes)
  */
 function normalizePathname(pathname: string): string {
+    ensureHistoryBaseDataset();
+    const stripped = stripHistoryBase(pathname);
     const base = document.querySelector("base")?.getAttribute("href") || "/";
-    let normalized = pathname;
-    if (base !== "/" && pathname.startsWith(base.replace(/\/$/, ""))) {
-        normalized = pathname.slice(base.replace(/\/$/, "").length);
+    let normalized = stripped;
+    if (base !== "/" && !base.startsWith(".") && stripped.startsWith(base.replace(/\/$/, ""))) {
+        normalized = stripped.slice(base.replace(/\/$/, "").length);
     }
     return normalized.replace(/^\/+|\/+$/g, "").toLowerCase();
 }
@@ -149,11 +152,12 @@ export function isRootRoute(): boolean {
  * Build URL from route
  */
 export function buildUrl(route: Route): string {
-    let url = "/";
+    ensureHistoryBaseDataset();
+    let url = withHistoryBase("/");
 
     if (route.params && Object.keys(route.params).length > 0) {
         const search = new URLSearchParams(route.params).toString();
-        url += "?" + search;
+        url += (url.includes("?") ? "&" : "?") + search;
     }
 
     return url;
@@ -163,7 +167,8 @@ export function buildUrl(route: Route): string {
  * Build URL for root
  */
 export function buildRootUrl(): string {
-    return "/";
+    ensureHistoryBaseDataset();
+    return withHistoryBase("/");
 }
 
 // ============================================================================

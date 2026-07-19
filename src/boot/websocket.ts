@@ -1900,10 +1900,14 @@ export function connectWS() {
         const hostList = protocol === 'https' ? httpsOrderedHostEntries : candidateHostEntries;
         for (const hostEntry of hostList) {
             const { host, source, preferPort } = hostEntry;
-            /* Same hostname as the tab: always try the tab’s effective port first (e.g. 443) even when
-             * stored connect URL still lists :8434 — unified TLS / reverse-proxy shells serve `/ws` on 443. */
+            /* Same hostname as the tab: prefer the tab port only when Connect URL did not name a
+             * different port. WHY: public Fastify :443 (/cwsp) ≠ CWSP :8434 on the same IP —
+             * rewriting 8434→443 made wss://host/ws hit the wrong server. */
             const hostPortOverride =
-                pageHost && host === pageHost && pageEffectivePort
+                pageHost &&
+                host === pageHost &&
+                pageEffectivePort &&
+                (!preferPort || preferPort === pageEffectivePort)
                     ? pageEffectivePort
                     : preferPort;
             for (const port of getPortsForProtocol(protocol, hostPortOverride)) {

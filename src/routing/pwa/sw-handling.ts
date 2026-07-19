@@ -38,7 +38,15 @@ import { BROADCAST_CHANNELS } from "com/config/Names";
 const shouldRunPwaIngress = (): boolean => {
     try {
         // WHY: never bare `window` — MV3 SW throws ReferenceError: window is not defined.
-        const loc = (globalThis as { location?: Location }).location;
+        const g = globalThis as unknown as {
+            location?: Location;
+            __CWS_SKIP_PWA__?: boolean;
+            document?: Document;
+        };
+        if (g.__CWS_SKIP_PWA__) return false;
+        const surface = String(g.document?.documentElement?.dataset?.cwspSurface || "");
+        if (surface === "cwsp-control" || surface === "gateway") return false;
+        const loc = g.location;
         if (!loc) return false;
         const href = String(loc.href ?? "");
         if (

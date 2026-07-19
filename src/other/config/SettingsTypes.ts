@@ -121,6 +121,19 @@ const defaultSpeechLanguage = (): SpeechRecognitionLanguage => {
 /** Capacitor / embedded WebView shell — mirrors CWSAndroid-style toggles and AirPad transport defaults. Native IPC: {@code shared/native/cws-bridge.ts} + {@code CwsBridge} plugin. */
 export type ShellSettings = {
     /**
+     * Neutralino / Node portable client id (desk hub, PNA `/service/config`).
+     * WHY: on CRX, {@link AppSettings.core.userId} is the Chrome wire peer (`L-110-crx`);
+     * this field carries the backend desk id (typically `L-110`) without socket collision.
+     */
+    clientId?: string;
+    /** COMPAT: portable shell mirror of desk userId (Neutralino control). */
+    userId?: string;
+    /** COMPAT: portable remote host / gateway URL mirrored from core.endpointUrl. */
+    remoteHost?: string;
+    /** COMPAT: portable access / client token mirrored from ecosystem token. */
+    accessToken?: string;
+    clientToken?: string;
+    /**
      * Prefer the native Kotlin websocket runtime on CWSAndroid.
      * When enabled, web WebSocket background maintenance should stay off.
      */

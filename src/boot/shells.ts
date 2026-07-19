@@ -22,6 +22,7 @@ import {
 export * from "./shell-slots";
 import { resolveOverlayMountPoint as resolveGlobalOverlayMount } from "./shell-slots";
 import { showToast } from "./toast";
+import { ensureHistoryBaseDataset, withHistoryBase } from "./history-base";
 
 //@ts-ignore
 import style from "./views.scss?inline";
@@ -398,7 +399,9 @@ export abstract class ShellBase implements Shell {
         // URL contract:
         // - base/minimal shells are path-based (`/${view}?shell=...`) for standalone tabs
         // - other shells keep canonical root (`/?...`) with view in history.state
+        // - VDS path mounts (/cwsp, /markdown) keep their prefix so reload ≠ Fastify 404
         if (typeof window !== "undefined" && typeof window != "undefined") {
+            ensureHistoryBaseDataset();
             const searchParams = new URLSearchParams(params || {});
             // Always stamp the mounted shell — stale `shell=` from another harness must not linger.
             searchParams.set("shell", this.id);
@@ -407,9 +410,11 @@ export abstract class ShellBase implements Shell {
             const search = searchParams.toString()
                 ? "?" + searchParams.toString()
                 : "";
-            const pathname = isPathRoutedShell
-                ? `/${String(viewId || "home").replace(/^\/+/, "")}`
-                : "/";
+            const pathname = withHistoryBase(
+                isPathRoutedShell
+                    ? `/${String(viewId || "home").replace(/^\/+/, "")}`
+                    : "/"
+            );
             const newPathAndSearch = pathname + search;
             try {
                 const next = new URL(newPathAndSearch, globalThis.location.origin);
@@ -423,7 +428,7 @@ export abstract class ShellBase implements Shell {
                 }
             } catch {
                 if (
-                    globalThis?.location?.pathname !== "/" ||
+                    globalThis?.location?.pathname !== pathname ||
                     (globalThis?.location?.search || "") !== search
                 ) {
                     globalThis?.history?.pushState?.({ viewId, params }, "", newPathAndSearch);
