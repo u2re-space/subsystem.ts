@@ -1,8 +1,10 @@
 /*
  * Filename: Settings.ts
  * FullPath: modules/projects/subsystem/src/other/config/Settings.ts
- * Change date and time: 10.30.00_20.07.2026
+ * Change date and time: 15.10.00_20.07.2026
  * Reason for changes: CRX wire-only seed — never overwrite CWSP Relay from Extension bootstrap.
+ *   2026-07-20: Capacitor one-shot migrate clipboardInbound/Outbound auto→ask so Accept
+ *   heads-up notifications actually post (auto only shows Undo after silent paste).
  */
 import { JSOX } from "jsox";
 
@@ -135,6 +137,51 @@ const ensureCapacitorDeskClipboardTargets = (settings: AppSettings): AppSettings
             clipboardShareDestinationIds: s.value
         }
     } as AppSettings;
+};
+
+const CAPACITOR_CLIPBOARD_ASK_MIGRATED_KEY = "cwsp.clipboardAskHeadsMigratedV1";
+
+/**
+ * WHY: older Capacitor IDB defaults used shell.clipboard*Mode=auto — Accept never posts.
+ * One-shot upgrade to ask (user can switch back in Settings).
+ */
+const ensureCapacitorClipboardAskModes = (settings: AppSettings): AppSettings | null => {
+    if (!isCapacitorNativeShell()) return null;
+    try {
+        if (globalThis.localStorage?.getItem?.(CAPACITOR_CLIPBOARD_ASK_MIGRATED_KEY) === "1") {
+            return null;
+        }
+    } catch {
+        /* storage optional */
+    }
+    const inbound = String(settings.shell?.clipboardInboundMode || "auto").trim().toLowerCase();
+    const outbound = String(settings.shell?.clipboardOutboundMode || "auto").trim().toLowerCase();
+    const needIn = inbound !== "ask";
+    const needOut = outbound !== "ask";
+    try {
+        globalThis.localStorage?.setItem?.(CAPACITOR_CLIPBOARD_ASK_MIGRATED_KEY, "1");
+    } catch {
+        /* ignore */
+    }
+    if (!needIn && !needOut) return null;
+    return {
+        ...settings,
+        shell: {
+            ...settings.shell,
+            ...(needIn ? { clipboardInboundMode: "ask" as const } : null),
+            ...(needOut ? { clipboardOutboundMode: "ask" as const } : null)
+        }
+    } as AppSettings;
+};
+
+/** Compose Capacitor shell migrations (desk peers + ask modes). */
+const applyCapacitorShellMigrations = (settings: AppSettings): AppSettings | null => {
+    let next: AppSettings | null = null;
+    const desk = ensureCapacitorDeskClipboardTargets(settings);
+    if (desk) next = desk;
+    const ask = ensureCapacitorClipboardAskModes(next || settings);
+    if (ask) next = ask;
+    return next;
 };
 
 // --- WebNative desktop control-RPC overlay -----------------------------------------------
@@ -435,13 +482,13 @@ const pushWebnativeSettingsPatch = async (settings: AppSettings): Promise<boolea
                     "L-196;L-210"
             ).trim(),
             clipboardOutboundMode:
-                String((shell as { clipboardOutboundMode?: string }).clipboardOutboundMode || "auto")
+                String((shell as { clipboardOutboundMode?: string }).clipboardOutboundMode || "ask")
                     .trim()
                     .toLowerCase() === "ask"
                     ? "ask"
                     : "auto",
             clipboardInboundMode:
-                String((shell as { clipboardInboundMode?: string }).clipboardInboundMode || "auto")
+                String((shell as { clipboardInboundMode?: string }).clipboardInboundMode || "ask")
                     .trim()
                     .toLowerCase() === "ask"
                     ? "ask"
@@ -548,7 +595,10 @@ const CAPACITOR_CWSP_BOOTSTRAP: Partial<AppSettings> = {
         applyRemoteClipboardToDevice: true,
         maintainHubSocketConnection: false,
         // WHY: must include desk L-110 — phone-only lists made Android↔Android work but blocked Win images.
-        clipboardShareDestinationIds: "L-110;L-196;L-210"
+        clipboardShareDestinationIds: "L-110;L-196;L-210",
+        // WHY: Accept/Share heads-up only exists in ask mode (auto → silent paste + Undo).
+        clipboardInboundMode: "ask",
+        clipboardOutboundMode: "ask"
     }
 };
 
@@ -604,15 +654,15 @@ export const ensureCapacitorCwspSettingsSeeded = async (): Promise<AppSettings |
     if (!needsBootstrap && nativeDriftsFromIdb && (idbUserConfigured || nativeIsGuestLanId)) {
         capacitorCwspSeedDone = true;
         console.log("[Settings] pushing WebView client id to native prefs");
-        const migrated = ensureCapacitorDeskClipboardTargets(current) || current;
+        const migrated = applyCapacitorShellMigrations(current) || current;
         return saveSettings(migrated);
     }
 
     if (!needsBootstrap && !identityDrift) {
         capacitorCwspSeedDone = true;
-        const migrated = ensureCapacitorDeskClipboardTargets(current);
+        const migrated = applyCapacitorShellMigrations(current);
         if (migrated) {
-            console.log("[Settings] injecting L-110 into clipboard destinations");
+            console.log("[Settings] Capacitor shell migrations (desk peers / ask modes)");
             return saveSettings(migrated);
         }
         return null;
@@ -633,7 +683,7 @@ export const ensureCapacitorCwspSettingsSeeded = async (): Promise<AppSettings |
             }
         } as AppSettings;
         console.log("[Settings] aligning Capacitor client id with native prefs");
-        return saveSettings(ensureCapacitorDeskClipboardTargets(aligned) || aligned);
+        return saveSettings(applyCapacitorShellMigrations(aligned) || aligned);
     }
 
     const merged = {
@@ -670,7 +720,7 @@ export const ensureCapacitorCwspSettingsSeeded = async (): Promise<AppSettings |
     } as AppSettings;
     console.log("[Settings] seeding Capacitor CWSP defaults");
     capacitorCwspSeedDone = true;
-    return saveSettings(ensureCapacitorDeskClipboardTargets(merged) || merged);
+    return saveSettings(applyCapacitorShellMigrations(merged) || merged);
 };
 
 /**

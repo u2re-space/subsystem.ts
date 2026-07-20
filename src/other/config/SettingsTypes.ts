@@ -500,9 +500,10 @@ export const DEFAULT_SETTINGS: AppSettings = {
         autoStartOnBoot: true,
         bridgeDaemonEnabled: true,
         allowControlApi: false,
-        // WHY: prompt popup defaults per docs/superpowers/specs/2026-07-14-clipboard-prompt-popup-design.md
-        clipboardOutboundMode: "auto",
-        clipboardInboundMode: "auto",
+        // WHY: Capacitor/Android Accept heads-up needs ask; desk Neutralino can still
+        // switch to auto in Settings. Aligns with Configure.java Android defaults.
+        clipboardOutboundMode: "ask",
+        clipboardInboundMode: "ask",
         clipboardOutboundShowErase: true,
         clipboardInboundShowUndo: true,
         clipboardPromptDismissMs: 10000
