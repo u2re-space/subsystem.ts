@@ -4,7 +4,14 @@
  */
 import type { AppSettings } from "./SettingsTypes";
 
-export type SettingsContributionSurface = "web" | "crx" | "capacitor" | "native" | "unknown";
+/** `markdown` = VDS md.u2re.space / /markdown/ (cw-markdown) — document SPA, not CWSP Control. */
+export type SettingsContributionSurface =
+    | "web"
+    | "markdown"
+    | "crx"
+    | "capacitor"
+    | "native"
+    | "unknown";
 
 export type SettingsContributionContext = {
     isExtension?: boolean;

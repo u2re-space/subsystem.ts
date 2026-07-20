@@ -1,8 +1,8 @@
 /*
  * Filename: cwsp.ts
  * FullPath: modules/projects/subsystem/src/other/config/settings/contributions/cwsp.ts
- * Change date and time: 10.40.00_20.07.2026
- * Reason for changes: CRX CWSP shell.clientId must stay desk L-110 (not L-110-crx wire).
+ * Change date and time: 13.35.00_20.07.2026
+ * Reason for changes: Hide CWSP settings tab on markdown SPA (md.u2re.space / /markdown/).
  */
 import {
     registerSettingsContribution,
@@ -145,6 +145,8 @@ export const registerCwspSettingsContribution = (): (() => void) =>
         id: "cwsp",
         label: "CWSP",
         order: 55,
+        // WHY: document PWA (md.u2re.space) must not expose Control endpoint/token UI.
+        excludeSurfaces: ["markdown"],
         render: (ctx: SettingsContributionContext) => {
             const children: SettingsPanelChild[] = [
                 ...connectionFields(ctx),
