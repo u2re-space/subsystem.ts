@@ -1,8 +1,8 @@
 /*
  * Filename: Settings.ts
  * FullPath: modules/projects/subsystem/src/other/config/Settings.ts
- * Change date and time: 23.50.00_19.07.2026
- * Reason for changes: Allow /cwsp→Capacitor loopback:8434 when via=android; skip HTTP RPC in native shell.
+ * Change date and time: 10.30.00_20.07.2026
+ * Reason for changes: CRX wire-only seed — never overwrite CWSP Relay from Extension bootstrap.
  */
 import { JSOX } from "jsox";
 
@@ -684,38 +684,8 @@ export const ensureCapacitorCwspSettingsSeeded = async (): Promise<AppSettings |
 const CRX_CWSP_CLIENT_ID = "L-110-crx";
 /** WHY: hub `verify()` requires a non-empty userKey; L-110-crx policy accepts associated tokens. */
 const CRX_CWSP_BOOTSTRAP_TOKEN = "n3v3rm1nd";
-const CRX_CWSP_BOOTSTRAP: Partial<AppSettings> = {
-    core: {
-        endpointUrl: "https://127.0.0.1:8434",
-        allowInsecureTls: true,
-        useCoreIdentityForAirPad: true,
-        userId: CRX_CWSP_CLIENT_ID,
-        ecosystemToken: CRX_CWSP_BOOTSTRAP_TOKEN,
-        userKey: CRX_CWSP_BOOTSTRAP_TOKEN,
-        ops: {
-            directUrl: "https://127.0.0.1:8434"
-        },
-        socket: {
-            selfId: CRX_CWSP_CLIENT_ID,
-            // WHY: share to phones/gateway — never self (L-110-crx) or desk L-110 as paste ask target.
-            routeTarget: "L-196;L-210;L-200",
-            // WHY: chrome-extension:// SW has location.protocol !== https — force wss candidates.
-            protocol: "https",
-            accessToken: CRX_CWSP_BOOTSTRAP_TOKEN,
-            allowAccessTokenWithoutUserKey: true
-        }
-    },
-    shell: {
-        maintainHubSocketConnection: true,
-        enableRemoteClipboardBridge: true,
-        acceptInboundClipboardData: true,
-        applyRemoteClipboardToDevice: false,
-        pushLocalClipboardToLan: false,
-        clipboardShareDestinationIds: "L-196;L-210;L-200",
-        clipboardInboundMode: "ask",
-        clipboardOutboundMode: "auto"
-    }
-};
+/** Extension wire hub (chrome.storage) — not CWSP Relay / Neutralino portable. */
+const CRX_LOCAL_HUB_URL = "https://127.0.0.1:8434/";
 
 const isCrxExtensionRuntime = (): boolean => {
     try {
@@ -1192,7 +1162,14 @@ export const didPersistShellMaintainHubSocket = async (): Promise<boolean> => {
     }
 };
 
-/** Seed CRX hub + {@code L-110-crx} identity (migrates colliding {@code L-110}). */
+/**
+ * Seed CRX wire identity + Local hub only.
+ *
+ * INVARIANT: do not write CWSP Relay (`core.endpointUrl`), clipboard modes, or
+ * gateway bootstrap into chrome.storage — those load from Neutralino Control at
+ * Extension Local hub URL (`shell.localHubUrl`, default https://127.0.0.1:8434)
+ * via settings:get /service/config.
+ */
 let crxCwspSeedDone = false;
 export const ensureCrxCwspSettingsSeeded = async (): Promise<AppSettings | null> => {
     if (!isCrxExtensionRuntime()) return null;
@@ -1208,25 +1185,42 @@ export const ensureCrxCwspSettingsSeeded = async (): Promise<AppSettings | null>
     const needsHttpsProtocol = current.core?.socket?.protocol !== "https";
     // WHY: L-110 collides with Neutralino desk hub socket — force L-110-crx.
     const needsCrxIdNormalize = /^L-110$/i.test(currentUserId);
-    // WHY: merged defaults always include maintain=false — seed when IDB never set hub,
-    // client id empty, auth token missing (WS closes 4001), protocol still "auto",
-    // or colliding L-110 must become L-110-crx.
-    const needsBootstrap =
-        !currentUserId ||
+    const savedLocalHub = trimSetting(current.shell?.localHubUrl);
+    const needsLocalHub = !savedLocalHub;
+    const needsWireId =
+        !currentUserId || needsCrxIdNormalize || !/^L-110-crx$/i.test(currentUserId);
+    // WHY: wire-only — missing Local hub / L-110-crx / hub-maintain / https / token for WS.
+    // Never treat empty Relay as a reason to seed gateway bootstrap into CWSP tab.
+    const needsWireSeed =
+        needsWireId ||
         !hubPersisted ||
         !existingToken ||
         needsHttpsProtocol ||
-        needsCrxIdNormalize ||
-        !/^L-110-crx$/i.test(currentUserId);
-    if (!needsBootstrap) {
+        needsLocalHub;
+    if (!needsWireSeed) {
         crxCwspSeedDone = true;
         return null;
     }
 
     const keepUserId = CRX_CWSP_CLIENT_ID;
     const savedEp = trimSetting(current.core?.endpointUrl);
-    const defaultEp = trimSetting(DEFAULT_SETTINGS.core?.endpointUrl);
-    const useSavedEp = Boolean(savedEp) && savedEp !== defaultEp;
+    const savedEpIsLoopback = (() => {
+        try {
+            const u = new URL(/^https?:\/\//i.test(savedEp) ? savedEp : `https://${savedEp}`);
+            const h = u.hostname.toLowerCase();
+            return h === "127.0.0.1" || h === "localhost" || h === "::1";
+        } catch {
+            return /^(https?:\/\/)?(127\.0\.0\.1|localhost)(:|\/|$)/i.test(savedEp);
+        }
+    })();
+    // COMPAT: older CRX stored wire host in core.endpointUrl (loopback) — move to localHubUrl.
+    const localHubUrl =
+        savedLocalHub ||
+        (savedEpIsLoopback && savedEp ? savedEp : "") ||
+        CRX_LOCAL_HUB_URL;
+    // WHY: clear loopback Relay so Neutralino hydrate owns CWSP Relay; keep non-loopback.
+    const relayUrl = savedEpIsLoopback ? "" : savedEp;
+    // WHY: token only when missing — do not clobber a value already hydrated from Control.
     const seedToken = existingToken || CRX_CWSP_BOOTSTRAP_TOKEN;
     const merged = {
         ...current,
@@ -1235,54 +1229,54 @@ export const ensureCrxCwspSettingsSeeded = async (): Promise<AppSettings | null>
             allowInsecureTls: current.core?.allowInsecureTls ?? true,
             useCoreIdentityForAirPad: current.core?.useCoreIdentityForAirPad ?? true,
             userId: keepUserId,
-            ecosystemToken: seedToken,
-            userKey: seedToken,
-            endpointUrl: useSavedEp ? savedEp : (CRX_CWSP_BOOTSTRAP.core?.endpointUrl || savedEp),
+            // Only fill token gaps; preferBackendSync keeps Control overlay authoritative for CWSP.
+            ...(existingToken
+                ? {}
+                : {
+                      ecosystemToken: seedToken,
+                      userKey: seedToken
+                  }),
+            // INVARIANT: never inject CRX_RELAY_GATEWAY_URL — CWSP tab loads Relay from Control.
+            endpointUrl: relayUrl,
             ops: {
-                ...(current.core?.ops || {}),
-                directUrl:
-                    trimSetting(current.core?.ops?.directUrl) ||
-                    CRX_CWSP_BOOTSTRAP.core?.ops?.directUrl ||
-                    ""
+                ...(current.core?.ops || {})
+                // WHY: leave directUrl untouched — Neutralino /service/config owns desk ops.
             },
             socket: {
                 ...(current.core?.socket || {}),
                 // INVARIANT: CRX wire id is always L-110-crx (never desk L-110).
                 selfId: keepUserId,
-                routeTarget:
-                    trimSetting(current.core?.socket?.routeTarget) ||
-                    CRX_CWSP_BOOTSTRAP.core?.socket?.routeTarget ||
-                    "",
                 protocol: "https",
-                accessToken: trimSetting(current.core?.socket?.accessToken) || seedToken,
-                allowAccessTokenWithoutUserKey: true
+                ...(existingToken
+                    ? {}
+                    : {
+                          accessToken: seedToken,
+                          allowAccessTokenWithoutUserKey: true
+                      }),
+                allowAccessTokenWithoutUserKey:
+                    current.core?.socket?.allowAccessTokenWithoutUserKey ?? true
             }
         },
         shell: {
             ...current.shell,
+            localHubUrl,
             maintainHubSocketConnection: hubPersisted
                 ? Boolean(current.shell?.maintainHubSocketConnection)
                 : true,
-            enableRemoteClipboardBridge: current.shell?.enableRemoteClipboardBridge !== false,
-            acceptInboundClipboardData: current.shell?.acceptInboundClipboardData !== false,
-            // Prefer hold-for-paste on first seed; keep explicit user choice after.
-            applyRemoteClipboardToDevice: hubPersisted
-                ? Boolean(current.shell?.applyRemoteClipboardToDevice)
-                : false,
-            clipboardShareDestinationIds:
-                trimSetting(current.shell?.clipboardShareDestinationIds) ||
-                CRX_CWSP_BOOTSTRAP.shell?.clipboardShareDestinationIds ||
-                "",
-            clipboardInboundMode:
-                current.shell?.clipboardInboundMode ||
-                CRX_CWSP_BOOTSTRAP.shell?.clipboardInboundMode ||
-                "ask"
+            // WHY: never keep swapped wire id in CWSP desk clientId after seed.
+            clientId: (() => {
+                const cid = trimSetting(current.shell?.clientId);
+                if (!cid || /^L-\d{1,3}-crx$/i.test(cid)) return "L-110";
+                return cid;
+            })()
+            // WHY: clipboard* / applyRemote* stay as-is — CWSP tab hydrates from Control SoT.
         }
     } as AppSettings;
 
-    console.log("[Settings] seeding CRX CWSP defaults", {
+    console.log("[Settings] seeding CRX wire defaults (Relay left for Control hydrate)", {
         clientId: keepUserId,
-        endpoint: merged.core?.endpointUrl
+        relay: merged.core?.endpointUrl || "(empty → Neutralino)",
+        localHub: merged.shell?.localHubUrl
     });
     crxCwspSeedDone = true;
     return saveSettings(merged);

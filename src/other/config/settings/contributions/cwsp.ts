@@ -1,9 +1,8 @@
 /*
  * Filename: cwsp.ts
  * FullPath: modules/projects/subsystem/src/other/config/settings/contributions/cwsp.ts
- * Change date and time: 22.05.00_19.07.2026
- * Reason for changes: CRX CWSP tab shows Neutralino backend clientId (shell.clientId);
- *   Extension tab keeps wire peer L-110-crx (core.userId).
+ * Change date and time: 10.40.00_20.07.2026
+ * Reason for changes: CRX CWSP shell.clientId must stay desk L-110 (not L-110-crx wire).
  */
 import {
     registerSettingsContribution,
@@ -25,13 +24,25 @@ import {
 } from "../settings-contribution-ui";
 
 const MULTI_VALUE_HINT = "Separate with comma, semicolon, space, or newline. Short IDs: L-110, L-196, L-200, L-208, L-210.";
+const CRX_DESK_CLIENT_ID_DEFAULT = "L-110";
+
+const isCrxWireId = (value: unknown): boolean =>
+    /^L-\d{1,3}-crx$/i.test(String(value ?? "").trim());
+
+const pickDeskClientId = (...candidates: unknown[]): string => {
+    for (const raw of candidates) {
+        const id = String(raw ?? "").trim();
+        if (id && !isCrxWireId(id)) return id;
+    }
+    return CRX_DESK_CLIENT_ID_DEFAULT;
+};
 
 const connectionFields = (ctx: SettingsContributionContext): SettingsPanelChild[] => {
     const isCrx = ctx.surface === "crx" || Boolean(ctx.isExtension);
     const fields: SettingsPanelChild[] = [
         settingsHint(
             isCrx
-                ? "Shared with desk Neutralino Node (/service/config + clipboard-hub) when the host is up. CRX wire id lives under Extension."
+                ? "CWSP tab syncs Neutralino portable (/service/config + clipboard-hub). Chrome wire hub URL is under Extension → Local hub URL — not this Relay field."
                 : "Persist to IDB; Neutralino/WebNative also syncs to Node portable.config + clipboard-hub."
         ),
         "Connection",
@@ -41,7 +52,9 @@ const connectionFields = (ctx: SettingsContributionContext): SettingsPanelChild[
             "https://192.168.0.200:8434 or https://45.147.121.152:8434"
         ),
         settingsHint(
-            "Coordinator / gateway. Always include :8434 — bare host dials :443 where /ws is not served (404)."
+            isCrx
+                ? "Neutralino/Node gateway SoT only. Does not overwrite Extension Local hub URL. External/WAN hosts may require the ecosystem token (and gateway login for Control)."
+                : "Coordinator / gateway. Always include :8434 — bare host dials :443 where /ws is not served (404)."
         ),
         settingsTextField("Direct host (optional)", "core.ops.directUrl", "https://192.168.0.110:8434"),
         settingsHint("Optional direct peer (desk). Leave empty when phones only talk via gateway.")
@@ -64,7 +77,9 @@ const connectionFields = (ctx: SettingsContributionContext): SettingsPanelChild[
     fields.push(
         settingsTextField("Ecosystem token", "core.ecosystemToken", "shared ecosystem key", "password"),
         settingsHint(
-            "One shared token for identification + control (replaces separate identifier / access tokens). Leave blank on Save to keep the stored token."
+            isCrx
+                ? "Shared ecosystem key for Neutralino + Chrome hub auth. WAN / external Relay or Local hub still needs this token (Control may also require gateway login)."
+                : "One shared token for identification + control (replaces separate identifier / access tokens). Leave blank on Save to keep the stored token."
         ),
         settingsTextField("Destination node ids", "core.socket.routeTarget", "L-196;L-210;L-208"),
         settingsHint(MULTI_VALUE_HINT),
@@ -148,8 +163,28 @@ export const registerCwspSettingsContribution = (): (() => void) =>
             // WHY: hydrate single UI field from ecosystemToken or legacy userKey/accessToken.
             const input = panel.querySelector('[data-field="core.ecosystemToken"]') as HTMLInputElement | null;
             if (input) input.value = resolveEcosystemToken(settings);
+            // INVARIANT (CRX): shell.clientId field only exists on CRX CWSP tab.
+            const clientInput = panel.querySelector(
+                '[data-field="shell.clientId"]'
+            ) as HTMLInputElement | null;
+            if (clientInput) {
+                const desk = pickDeskClientId(
+                    clientInput.value,
+                    settings.shell?.clientId,
+                    settings.core?.userId
+                );
+                clientInput.value = desk;
+                settings.shell = { ...(settings.shell || {}), clientId: desk };
+            }
         },
         save: (settings: AppSettings) => {
             normalizeEcosystemToken(settings);
+            // WHY: never POST Chrome wire id into Neutralino portable as desk clientId.
+            if (isCrxWireId(settings.shell?.clientId)) {
+                settings.shell = {
+                    ...(settings.shell || {}),
+                    clientId: pickDeskClientId(settings.core?.userId)
+                };
+            }
         }
     });

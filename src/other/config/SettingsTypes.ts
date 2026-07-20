@@ -134,6 +134,14 @@ export type ShellSettings = {
     accessToken?: string;
     clientToken?: string;
     /**
+     * CRX Extension only: local Neutralino / desk CWSP hub for the Chrome wire peer (`L-110-crx`).
+     * Default `https://127.0.0.1:8434/`.
+     * INVARIANT: distinct from {@link AppSettings.core.endpointUrl} (CWSP Relay / gateway for
+     * Neutralino portable + clipboard-hub). Must not overwrite each other on Save/hydrate.
+     * WAN / external hubs here still use the CWSP ecosystem token for WS auth.
+     */
+    localHubUrl?: string;
+    /**
      * Prefer the native Kotlin websocket runtime on CWSAndroid.
      * When enabled, web WebSocket background maintenance should stay off.
      */
@@ -141,7 +149,7 @@ export type ShellSettings = {
     /**
      * When true, CrossWord keeps a **WebSocket** connection to the hub (cwsp / endpoint) in the background,
      * not only when the AirPad view is open — enables clipboard coordinator and realtime ops from any shell (PWA, CRX, Capacitor).
-     * Connection uses {@link AppSettings.core.endpointUrl}.
+     * CRX wire uses {@link ShellSettings.localHubUrl}; other surfaces use {@link AppSettings.core.endpointUrl}.
      * Default **off**: connect on demand from AirPad/UI or coordinator asks; toggle on here for persistent hub.
      */
     maintainHubSocketConnection?: boolean;
@@ -466,6 +474,7 @@ export const DEFAULT_SETTINGS: AppSettings = {
         }
     },
     shell: {
+        localHubUrl: "",
         preferNativeWebsocket: true,
         maintainHubSocketConnection: false,
         enableRemoteClipboardBridge: true,
