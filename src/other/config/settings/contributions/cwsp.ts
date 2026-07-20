@@ -1,8 +1,9 @@
 /*
  * Filename: cwsp.ts
  * FullPath: modules/projects/subsystem/src/other/config/settings/contributions/cwsp.ts
- * Change date and time: 14.18.00_20.07.2026
+ * Change date and time: 20.40.00_20.07.2026
  * Reason for changes: Capacitor App update (dev) source picker + check/install actions.
+ *   CRX: Control pairing UI (persistent session) on CWSP tab.
  */
 import {
     registerSettingsContribution,
@@ -20,6 +21,7 @@ import {
     settingsHint,
     settingsNumberField,
     settingsPanel,
+    settingsSecretDisplayField,
     settingsSelectField,
     settingsTextField,
     type SettingsPanelChild
@@ -126,16 +128,84 @@ const nativeWireFields = (): SettingsPanelChild[] => [
     settingsCheckboxField("Maintain hub socket in background", "shell.maintainHubSocketConnection")
 ];
 
+/** Control pairing credentials shown on device (public token + rotating code). */
+const controlPairingFields = (): SettingsPanelChild[] => [
+    "Control pairing",
+    settingsSecretDisplayField("Device code (20s, +10s grace)", "control-device-code", {
+        placeholder: "••••••"
+    }),
+    settingsSecretDisplayField("Public token", "control-public-token", {
+        mono: true,
+        placeholder: "••••••••••••"
+    }),
+    settingsButtonRow(
+        settingsButton("Refresh code", "control-pairing-refresh"),
+        settingsButton("Regenerate public token", "control-public-token-regenerate")
+    ),
+    settingsHint(
+        "Values are hidden by default — use View / Copy. For https://cwsp.u2re.space enter public token + live code in the pairing modal. Session ≤ 1 hour. Regenerating the public token invalidates old pairings."
+    )
+];
+
+/**
+ * CRX Control pairing — compact status + modal trigger (no inline token/code fields).
+ * WHY: same UX as https://cwsp.u2re.space modal; secrets never land in portable.config.
+ */
+const crxControlPairingFields = (): SettingsPanelChild[] => {
+    const status = document.createElement("p");
+    status.className = "field-hint";
+    status.setAttribute("data-crx-control-status", "1");
+    status.textContent = "Control: …";
+
+    return [
+        "Control pairing",
+        status,
+        settingsButtonRow(
+            settingsButton("Pair Control…", "crx-control-pair", { primary: true }),
+            settingsButton("Unpair", "crx-control-unpair")
+        ),
+        settingsHint(
+            "Opens a pairing dialog (public token + 20s device code from Neutralino). Persistent session authorizes Copy & Share / Paste by CWSP and CWSP tab sync."
+        )
+    ];
+};
+
+/**
+ * Pairing secrets belong on the device shell (Neutralino / Capacitor), never on the
+ * public Control SPA. `resolveSettingsSurface()` maps Neutralino → `"web"`, so we
+ * must not key off `"webnative"` alone.
+ */
+const isPublicCwspControlSpa = (): boolean => {
+    try {
+        const g = globalThis as {
+            NL_OS?: unknown;
+            NL_PORT?: unknown;
+            Neutralino?: unknown;
+            Capacitor?: { isNativePlatform?: () => boolean; getPlatform?: () => string };
+        };
+        if (g.NL_OS != null || g.NL_PORT != null || g.Neutralino) return false;
+        if (g.Capacitor?.isNativePlatform?.()) return false;
+        const plat = String(g.Capacitor?.getPlatform?.() || "").toLowerCase();
+        if (plat === "android" || plat === "ios") return false;
+        const host = String(location.hostname || "").toLowerCase();
+        if (!host || host === "localhost" || host === "127.0.0.1" || host === "[::1]") return false;
+        return location.protocol === "https:";
+    } catch {
+        return false;
+    }
+};
+
 /** Device toggles folded into CWSP tab on mobile (same `AppSettings.shell` paths). */
 const mobileDeviceFields = (): SettingsPanelChild[] => [
     "Device",
     settingsCheckboxField("Start CWSP on boot", "shell.autoStartOnBoot"),
     settingsCheckboxField("Foreground CWSP service", "shell.bridgeDaemonEnabled"),
-    // WHY: PNA Control API on :8434 for public /cwsp SPA — off by default (LAN listen + API key).
+    // WHY: PNA Control API on :8434 for public /cwsp SPA — off by default.
     settingsCheckboxField("Allow Control API", "shell.allowControlApi"),
     settingsHint(
-        "Allow Control API listens on this device at :8434 (/service/config) so CWSP control (PWA/public hub) can reach settings over Private Network Access. Uses your ecosystem token as X-API-Key."
+        "Allow Control API listens on :8434 so public CWSP Control can pair (public token + 20s code + Accept). Ecosystem token stays on-device for the hub — not used as the Control SPA password."
     ),
+    ...controlPairingFields(),
     settingsCheckboxField("Enable remote clipboard bridge", "shell.enableRemoteClipboardBridge"),
     settingsCheckboxField("Accept contacts bridge", "shell.acceptContactsBridgeData"),
     // WHY: SMS bridge UI removed — Android never declares/requests READ_SMS (bank malware heuristics).
@@ -186,10 +256,14 @@ export const registerCwspSettingsContribution = (): (() => void) =>
                     ...mobileApkUpdateFields()
                 );
             } else if (ctx.surface === "crx" || ctx.isExtension) {
-                // WHY: maintainHub / protocol / CRX id live under Extension tab.
-            } else {
-                children.push(...nativeWireFields());
+                // WHY: maintainHub / protocol / CRX id live under Extension tab;
+                // Control pairing for clipboard menus lives here (CWSP tab).
+                children.push(...crxControlPairingFields());
+            } else if (!isPublicCwspControlSpa()) {
+                // Neutralino / local web (surface often reports as "web"): show pairing UI.
+                children.push(...nativeWireFields(), ...controlPairingFields());
             }
+            // Public https Control SPA: no local pairing display / refresh poll.
             return settingsPanel("cwsp", "CWSP", children);
         },
         load: (settings: AppSettings, panel: HTMLElement) => {
@@ -215,6 +289,33 @@ export const registerCwspSettingsContribution = (): (() => void) =>
             if (src) {
                 const v = String((settings.shell as any)?.apkUpdateSource || "wan").trim();
                 src.value = v === "lan" || v === "relay" ? v : "wan";
+            }
+            // Auto-load Control pairing credentials into the CWSP tab.
+            const refreshBtn = panel.querySelector(
+                'button[data-action="control-pairing-refresh"]'
+            ) as HTMLButtonElement | null;
+            if (refreshBtn) {
+                queueMicrotask(() => refreshBtn.click());
+                const prev = Number((panel as HTMLElement & { __cwspPairTimer?: number }).__cwspPairTimer || 0);
+                if (prev) clearInterval(prev);
+                (panel as HTMLElement & { __cwspPairTimer?: number }).__cwspPairTimer = window.setInterval(() => {
+                    if (!panel.isConnected) return;
+                    refreshBtn.click();
+                }, 2500);
+            }
+            // CRX: hydrate persistent Control session status (not device secrets).
+            const crxStatus = panel.querySelector(
+                "[data-crx-control-status]"
+            ) as HTMLElement | null;
+            if (crxStatus) {
+                void import("com/config/settings/crx-control-session")
+                    .then((m) => m.formatCrxControlSessionStatus())
+                    .then((text) => {
+                        if (crxStatus.isConnected) crxStatus.textContent = text;
+                    })
+                    .catch(() => {
+                        crxStatus.textContent = "Control: status unavailable";
+                    });
             }
         },
         save: (settings: AppSettings) => {

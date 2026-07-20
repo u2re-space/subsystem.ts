@@ -52,6 +52,15 @@ let lastSettingsSaveReport: SettingsSaveReport = { nativeSynced: null };
 
 export const getLastSettingsSaveReport = (): SettingsSaveReport => ({ ...lastSettingsSaveReport });
 
+/** Public /cwsp Settings arm reports Control POST outcome (Capacitor Java or Neutralino). */
+export const noteSettingsControlSync = (ok: boolean, error?: string): void => {
+    lastSettingsSaveReport = {
+        ...lastSettingsSaveReport,
+        webnativeSynced: ok,
+        webnativeError: ok ? undefined : error
+    };
+};
+
 const trimSetting = (v: unknown): string => (typeof v === "string" ? v.trim() : "");
 
 /** Factory defaults — not treated as user-configured Client-ID on Capacitor. */
@@ -305,6 +314,64 @@ const readControlBridgeVia = (): string => {
     }
 };
 
+/** https://cwsp.u2re.space Control SPA — settings:patch arm owns device SoT (not saveSettings Node push). */
+const isPublicCwspControlSpa = (): boolean => {
+    try {
+        const surface = String(
+            (globalThis as { document?: { documentElement?: { dataset?: DOMStringMap } } }).document
+                ?.documentElement?.dataset?.cwspSurface || ""
+        ).toLowerCase();
+        if (surface === "cwsp-control") return true;
+        return /^(www\.)?cwsp\.u2re\.space$/i.test(String(location?.hostname || ""));
+    } catch {
+        return false;
+    }
+};
+
+const isChromeExtensionPage = (): boolean => {
+    try {
+        return String(location?.protocol || "").toLowerCase() === "chrome-extension:";
+    } catch {
+        return false;
+    }
+};
+
+const readControlSessionToken = (): string => {
+    try {
+        const g = globalThis as { __CWSP_CONTROL_SESSION__?: string };
+        const fromGlobal = String(g.__CWSP_CONTROL_SESSION__ || "").trim();
+        if (fromGlobal) return fromGlobal;
+    } catch {
+        /* ignore */
+    }
+    try {
+        const raw = sessionStorage.getItem("cwsp-control-session-v1");
+        if (!raw) return "";
+        const parsed = JSON.parse(raw) as { token?: string; expiresAt?: number; origin?: string };
+        if (!parsed?.token) return "";
+        if (Number(parsed.expiresAt) && Date.now() >= Number(parsed.expiresAt)) return "";
+        try {
+            if (parsed.origin && parsed.origin !== String(location.origin || "")) return "";
+        } catch {
+            /* ignore */
+        }
+        return String(parsed.token).trim();
+    } catch {
+        return "";
+    }
+};
+
+/** CRX persistent session lives in chrome.storage.local (not sessionStorage). */
+const readCrxControlSessionTokenAsync = async (): Promise<string> => {
+    if (!isChromeExtensionPage()) return "";
+    try {
+        const m = await import("com/config/settings/crx-control-session");
+        return (await m.getCrxControlSessionToken()) || "";
+    } catch {
+        return "";
+    }
+};
+
 const webnativeControl = async <T = unknown>(path: string, init?: RequestInit): Promise<T | null> => {
     try {
         const auth = readDesktopControlAuth();
@@ -331,7 +398,57 @@ const webnativeControl = async <T = unknown>(path: string, init?: RequestInit): 
         }
         const headers = new Headers(init?.headers);
         headers.set("Content-Type", "application/json");
-        if (auth.key) headers.set("X-API-Key", auth.key);
+        const pageIsChromeExtension = isChromeExtensionPage();
+        let session = readControlSessionToken();
+        if (!session && pageIsChromeExtension) {
+            session = await readCrxControlSessionTokenAsync();
+            if (session) {
+                try {
+                    (globalThis as { __CWSP_CONTROL_SESSION__?: string }).__CWSP_CONTROL_SESSION__ =
+                        session;
+                } catch {
+                    /* ignore */
+                }
+            }
+        }
+        // SECURITY: public SPA + chrome-extension → X-Control-Session only (never desk X-API-Key).
+        if (pageIsPublicHttps || pageIsChromeExtension) {
+            if (!session) {
+                // WHY: CRX hydrate/get must stay silent when unpaired — modal only on writes (POST).
+                const method = String(init?.method || "GET").toUpperCase();
+                if (pageIsChromeExtension && method !== "GET" && method !== "HEAD") {
+                    try {
+                        globalThis.dispatchEvent(
+                            new CustomEvent("cwsp-control-unauthorized", {
+                                detail: { status: 401, path, reason: "missing-session" }
+                            })
+                        );
+                    } catch {
+                        /* ignore */
+                    }
+                }
+                return null;
+            }
+            headers.set("X-Control-Session", session);
+            headers.delete("X-API-Key");
+            // WHY: Capacitor Java historically omitted X-Skip-Legacy-Key from CORS Allow-Headers;
+            // bridgeFetch already strips it. Keep session-only wire so Save works on old APKs too.
+            headers.delete("X-Skip-Legacy-Key");
+            if (pageIsChromeExtension) {
+                try {
+                    const id = String(
+                        (globalThis as { chrome?: { runtime?: { id?: string } } }).chrome?.runtime
+                            ?.id || ""
+                    ).trim();
+                    if (id) headers.set("X-Control-Origin", `chrome-extension://${id}`);
+                } catch {
+                    /* ignore */
+                }
+            }
+        } else {
+            if (session) headers.set("X-Control-Session", session);
+            if (auth.key) headers.set("X-API-Key", auth.key);
+        }
         const timeoutMs = 2500;
         const signal =
             init?.signal ??
@@ -356,6 +473,34 @@ const webnativeControl = async <T = unknown>(path: string, init?: RequestInit): 
         if (isLoopback) fetchInit.targetAddressSpace = "loopback";
         else if (isPrivate) fetchInit.targetAddressSpace = "local";
         const res = await fetch(url, fetchInit as RequestInit);
+        if (
+            (res.status === 401 || res.status === 403) &&
+            (pageIsPublicHttps || pageIsChromeExtension)
+        ) {
+            // WHY: avoid hard import of Control SPA/CRX modules from shared Settings — event bridge.
+            try {
+                sessionStorage.removeItem("cwsp-control-session-v1");
+                delete (globalThis as { __CWSP_CONTROL_SESSION__?: string }).__CWSP_CONTROL_SESSION__;
+                const g = globalThis as {
+                    __CWSP_CONTROL_BRIDGE_LIVE__?: boolean;
+                    __CWS_NODE_CLIPBOARD_HUB__?: boolean;
+                };
+                g.__CWSP_CONTROL_BRIDGE_LIVE__ = false;
+                g.__CWS_NODE_CLIPBOARD_HUB__ = false;
+                if (pageIsChromeExtension) {
+                    void import("com/config/settings/crx-control-session")
+                        .then((m) => m.clearCrxControlSession())
+                        .catch(() => undefined);
+                }
+                globalThis.dispatchEvent(
+                    new CustomEvent("cwsp-control-unauthorized", {
+                        detail: { status: res.status, path }
+                    })
+                );
+            } catch {
+                /* ignore */
+            }
+        }
         if (!res.ok) return null;
         return (await res.json()) as T;
     } catch {
@@ -454,6 +599,21 @@ const loadWebnativeSnapshot = async (): Promise<any> => {
 /** Best-effort push of a settings save into `portable.config.json` via the backend control RPC. */
 const pushWebnativeSettingsPatch = async (settings: AppSettings): Promise<boolean> => {
     if (!isWebnativeSurface()) return false;
+    // WHY: public SPA must be paired (session) before Control RPC — desk key alone is rejected.
+    try {
+        const pageHost = String(location.hostname || "").toLowerCase();
+        const pageIsPublicHttps =
+            location.protocol === "https:" &&
+            pageHost !== "127.0.0.1" &&
+            pageHost !== "localhost" &&
+            pageHost !== "::1";
+        if (pageIsPublicHttps && !readControlSessionToken()) {
+            console.warn("[Settings] Control session missing — pair before saving to device");
+            return false;
+        }
+    } catch {
+        /* ignore */
+    }
     const core = settings.core;
     if (!core) return false;
     const token = String(core.ecosystemToken || core.userKey || core.socket?.accessToken || "").trim();
@@ -510,20 +670,41 @@ const pushWebnativeSettingsPatch = async (settings: AppSettings): Promise<boolea
     if (core.ops?.directUrl) {
         (patch.bridge as Record<string, unknown>).endpoints = [String(core.ops.directUrl).trim()];
     }
-    // WHY: Neutralino L-110 expects bridge/shell portable patch; Capacitor also accepts full AppSettings.
+    // WHY: Neutralino L-110 expects bridge/shell portable patch; Capacitor accepts AppSettings-shaped
+    // patches but must not receive ecosystem tokens (Java stores them in SecureTokenStore).
     // INVARIANT: via=android includes on-device loopback:8434 (phone Chrome → local Capacitor).
     const authForPatch = readDesktopControlAuth();
     const isCapacitorControl =
         readControlBridgeVia() === "android" ||
         Number(authForPatch?.port) === 8434;
-    const body = isCapacitorControl
-        ? {
-              ...patch,
-              core: settings.core,
-              shell: { ...(patch.shell as object), ...(settings.shell || {}) },
-              cwsp: (settings as { cwsp?: unknown }).cwsp
-          }
-        : patch;
+    let body: Record<string, unknown> = patch;
+    if (isCapacitorControl) {
+        const coreIn = { ...(settings.core || {}) } as Record<string, unknown>;
+        delete coreIn.userKey;
+        delete coreIn.ecosystemToken;
+        if (coreIn.socket && typeof coreIn.socket === "object") {
+            const sock = { ...(coreIn.socket as Record<string, unknown>) };
+            delete sock.accessToken;
+            delete sock.airpadAuthToken;
+            delete sock.clientAccessToken;
+            coreIn.socket = sock;
+        }
+        const shellIn = {
+            ...(patch.shell as object),
+            ...(settings.shell || {})
+        } as Record<string, unknown>;
+        delete shellIn.accessToken;
+        delete shellIn.clientToken;
+        const bridgeIn = { ...(patch.bridge as Record<string, unknown>) };
+        delete bridgeIn.userKey;
+        body = {
+            ...patch,
+            bridge: bridgeIn,
+            core: coreIn,
+            shell: shellIn,
+            cwsp: (settings as { cwsp?: unknown }).cwsp
+        };
+    }
     const r = await webnativeControl<{ ok?: boolean; settings?: unknown; portable?: unknown } | null>(
         "/service/config",
         {
@@ -1716,29 +1897,31 @@ export const saveSettings = async (settings: AppSettings) => {
         };
         console.warn("[Settings] native settings patch failed:", e);
     }
-    // WebNative / public /cwsp: push via HTTP Control RPC (Neutralino :29110 or Capacitor :8434).
-    // WHY: Capacitor *native shell* SoT is CwsBridge settings:patch — not HTTP Control API.
-    // Allow Control API is for external PNA clients (/cwsp, CRX), not in-app Settings toast.
-    if (isWebnativeSurface() && !isCapacitorNativeShell()) {
+    // Desk WebNative / CRX: push via HTTP Control RPC here.
+    // WHY: public https://cwsp.u2re.space uses the registered settings:patch arm (bridgeFetch +
+    // X-Control-Session → Capacitor Java or Neutralino). A second pushWebnativeSettingsPatch
+    // here looked like "Node sync failed" with the wrong auth path.
+    if (isWebnativeSurface() && !isCapacitorNativeShell() && !isPublicCwspControlSpa()) {
         try {
             const ok = await pushWebnativeSettingsPatch(merged);
+            const via = readControlBridgeVia();
             lastSettingsSaveReport = {
                 ...lastSettingsSaveReport,
                 webnativeSynced: ok,
                 webnativeError: ok
                     ? undefined
-                    : readControlBridgeVia() === "android"
-                      ? "Control API unreachable (enable Allow Control API + matching token)"
-                      : "control RPC unavailable"
+                    : via === "android"
+                      ? "phone Control unreachable (Allow Control API + Pair + Accept)"
+                      : "desk Control RPC unavailable"
             };
-            if (!ok) console.warn("[Settings] webnative config patch not confirmed (control RPC unavailable?)");
+            if (!ok) console.warn("[Settings] Control config patch not confirmed");
         } catch (e) {
             lastSettingsSaveReport = {
                 ...lastSettingsSaveReport,
                 webnativeSynced: false,
                 webnativeError: String(e instanceof Error ? e.message : e)
             };
-            console.warn("[Settings] webnative config patch failed:", e);
+            console.warn("[Settings] Control config patch failed:", e);
         }
     }
     try {

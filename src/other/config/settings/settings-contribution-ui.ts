@@ -1,8 +1,8 @@
 /*
  * Filename: settings-contribution-ui.ts
  * FullPath: modules/projects/subsystem/src/other/config/settings/settings-contribution-ui.ts
- * Change date and time: 14.18.00_20.07.2026
- * Reason for changes: Add settingsButton helper for Capacitor APK update actions.
+ * Change date and time: 20.05.00_20.07.2026
+ * Reason for changes: settingsSecretDisplayField — View/Copy for masked Control pairing secrets.
  */
 
 /**
@@ -122,6 +122,112 @@ export const settingsButtonRow = (...buttons: HTMLElement[]): HTMLElement => {
     row.style.gap = "0.5rem";
     for (const btn of buttons) row.appendChild(btn);
     return row;
+};
+
+/**
+ * Read-only secret display: masked with dots until View; Copy writes the real value.
+ * WHY: Control public token / rotating device code must not sit in cleartext by default.
+ */
+export const settingsSecretDisplayField = (
+    label: string,
+    dataKey: string,
+    opts?: { mono?: boolean; placeholder?: string }
+): HTMLElement => {
+    const wrap = document.createElement("div");
+    wrap.className = "field settings-secret-field";
+    wrap.setAttribute("data-secret-field", dataKey);
+
+    const span = document.createElement("span");
+    span.textContent = label;
+
+    const row = document.createElement("div");
+    row.style.cssText = "display:flex;gap:.4rem;align-items:center;margin-top:.3rem;";
+
+    const input = document.createElement("input");
+    input.className = "form-input";
+    input.type = "password";
+    input.readOnly = true;
+    input.autocomplete = "off";
+    input.spellcheck = false;
+    input.placeholder = opts?.placeholder || "••••••";
+    input.setAttribute(`data-${dataKey}`, "1");
+    input.setAttribute("data-secret-input", dataKey);
+    input.value = "";
+    if (opts?.mono) {
+        input.style.fontFamily = "ui-monospace, SFMono-Regular, Menlo, monospace";
+        input.style.fontSize = "0.9rem";
+        input.style.letterSpacing = "0.04em";
+    } else {
+        input.style.fontSize = "1.15rem";
+        input.style.fontWeight = "700";
+        input.style.letterSpacing = "0.12em";
+    }
+    input.style.flex = "1 1 auto";
+    input.style.minWidth = "0";
+
+    const viewBtn = document.createElement("button");
+    viewBtn.type = "button";
+    viewBtn.className = "view-settings__btn";
+    viewBtn.textContent = "View";
+    viewBtn.title = "Show / hide";
+    viewBtn.setAttribute("data-action", "control-secret-toggle");
+    viewBtn.setAttribute("data-secret-for", dataKey);
+
+    const copyBtn = document.createElement("button");
+    copyBtn.type = "button";
+    copyBtn.className = "view-settings__btn";
+    copyBtn.textContent = "Copy";
+    copyBtn.title = "Copy to clipboard";
+    copyBtn.setAttribute("data-action", "control-secret-copy");
+    copyBtn.setAttribute("data-secret-for", dataKey);
+
+    const meta = document.createElement("p");
+    meta.className = "field-hint";
+    meta.setAttribute("data-secret-meta", dataKey);
+    meta.style.margin = "0.2rem 0 0";
+    meta.textContent = "";
+
+    const applyMasked = (): void => {
+        const revealed = input.dataset.revealed === "1";
+        input.type = revealed ? "text" : "password";
+        viewBtn.textContent = revealed ? "Hide" : "View";
+    };
+
+    viewBtn.addEventListener("click", (ev) => {
+        ev.preventDefault();
+        ev.stopPropagation();
+        input.dataset.revealed = input.dataset.revealed === "1" ? "0" : "1";
+        applyMasked();
+    });
+
+    copyBtn.addEventListener("click", async (ev) => {
+        ev.preventDefault();
+        ev.stopPropagation();
+        const value = String(input.value || "").trim();
+        if (!value) return;
+        try {
+            await navigator.clipboard.writeText(value);
+            const prev = copyBtn.textContent;
+            copyBtn.textContent = "Copied";
+            window.setTimeout(() => {
+                copyBtn.textContent = prev || "Copy";
+            }, 1200);
+        } catch {
+            // COMPAT: fallback select+copy for older WebViews
+            input.type = "text";
+            input.select();
+            try {
+                document.execCommand("copy");
+            } catch {
+                /* ignore */
+            }
+            applyMasked();
+        }
+    });
+
+    row.append(input, viewBtn, copyBtn);
+    wrap.append(span, row, meta);
+    return wrap;
 };
 
 export type SettingsPanelChild = HTMLElement | string;

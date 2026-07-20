@@ -1408,6 +1408,21 @@ export function reconnectTransportAfterLifecycleResume(reason: string): void {
     // WHY: bare `typeof window` is fine at runtime in SW, but prefer globalThis.window
     // so lifecycle reconnect never runs outside a real browsing document.
     if (!(globalThis as { window?: unknown }).window) return;
+    // WHY: Control SPA saves via paired Control RPC — never probe wss://cwsp.u2re.space/ws.
+    try {
+        const surface = String(document.documentElement?.dataset?.cwspSurface || "").toLowerCase();
+        const host = String(location.hostname || "").toLowerCase();
+        if (
+            surface === "cwsp-control" ||
+            host === "cwsp.u2re.space" ||
+            host === "www.cwsp.u2re.space"
+        ) {
+            logWsState("lifecycle-reconnect-skip-control-spa", reason);
+            return;
+        }
+    } catch {
+        /* continue */
+    }
     logWsState("lifecycle-reconnect", reason);
     stopClipboardPushLoop();
     clearAutoReconnectTimer();
@@ -1449,6 +1464,21 @@ export function reconnectTransportAfterLifecycleResume(reason: string): void {
  * behavior for browser tabs, extensions, and native shells.
  */
 export function connectWS() {
+    // WHY: public Control SPA must never dial page-host /ws (not a CWSP hub).
+    try {
+        const surface = String(document.documentElement?.dataset?.cwspSurface || "").toLowerCase();
+        const host = String(location.hostname || "").toLowerCase();
+        if (
+            surface === "cwsp-control" ||
+            host === "cwsp.u2re.space" ||
+            host === "www.cwsp.u2re.space"
+        ) {
+            log("WS skip: Control SPA — use paired Control RPC, not browser hub /ws");
+            return;
+        }
+    } catch {
+        /* continue */
+    }
     // WHY: Neutralino/WebNative Node clipboard-hub already holds `/ws` as L-110.
     // A second browser WebSocket with the same clientId kicks the hub → clipboard dies.
     if (isNeutralinoNodeClipboardHubOwned()) {

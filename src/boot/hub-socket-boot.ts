@@ -166,6 +166,21 @@ export async function applyHubSocketFromSettings(settings: AppSettings): Promise
     }
     applyAirpadRuntimeFromAppSettings(settings);
 
+    // WHY: public Control SPA is not a hub — settings persist via paired Control only.
+    try {
+        const surface = String(document.documentElement?.dataset?.cwspSurface || "").toLowerCase();
+        const host = String(location.hostname || "").toLowerCase();
+        if (
+            surface === "cwsp-control" ||
+            host === "cwsp.u2re.space" ||
+            host === "www.cwsp.u2re.space"
+        ) {
+            return;
+        }
+    } catch {
+        /* continue */
+    }
+
     // WHY: Capacitor Java / NativeScript owns exclusive `/ws` — do not open WebView socket.
     if (nativeShellOwnsExclusiveHubWebsocket()) {
         return;
@@ -184,6 +199,22 @@ export async function applyHubSocketFromSettings(settings: AppSettings): Promise
     const host = getRemoteHost().trim();
     if (!host) {
         return;
+    }
+    // WHY: Control SPA page-host is not a CWSP hub — refuse poisoned connect URLs.
+    try {
+        const raw = /^https?:\/\//i.test(host) ? host.split(",")[0]!.trim() : `https://${host}`;
+        const h = new URL(raw).hostname.toLowerCase();
+        if (
+            h === "cwsp.u2re.space" ||
+            h === "www.cwsp.u2re.space" ||
+            h === "md.u2re.space" ||
+            h === "www.md.u2re.space"
+        ) {
+            console.warn("[hub-socket-boot] refusing Control SPA host as /ws target", host);
+            return;
+        }
+    } catch {
+        /* connect below */
     }
 
     initWebSocket(null);
