@@ -131,19 +131,20 @@ const nativeWireFields = (): SettingsPanelChild[] => [
 /** Control pairing credentials shown on device (public token + rotating code). */
 const controlPairingFields = (): SettingsPanelChild[] => [
     "Control pairing",
-    settingsSecretDisplayField("Device code (20s, +10s grace)", "control-device-code", {
-        placeholder: "••••••"
-    }),
+    // WHY: Public token first — same order as SPA/CRX pairing modal (copy top→bottom).
     settingsSecretDisplayField("Public token", "control-public-token", {
         mono: true,
         placeholder: "••••••••••••"
+    }),
+    settingsSecretDisplayField("Device code (20s, +10s grace)", "control-device-code", {
+        placeholder: "••••••"
     }),
     settingsButtonRow(
         settingsButton("Refresh code", "control-pairing-refresh"),
         settingsButton("Regenerate public token", "control-public-token-regenerate")
     ),
     settingsHint(
-        "Values are hidden by default — use View / Copy. For https://cwsp.u2re.space enter public token + live code in the pairing modal. Session ≤ 1 hour. Regenerating the public token invalidates old pairings."
+        "Copy order for https://cwsp.u2re.space: Public token, then live Device code. Values are hidden by default — use View / Copy. Session ≤ 1 hour. Regenerating the public token invalidates old pairings."
     )
 ];
 
