@@ -765,6 +765,51 @@ const writeLocalStorageSettingsMirror = (value: unknown): boolean => {
     }
 };
 
+/** Control SPA hosts that must never win as Relay / gateway in Capacitor Settings. */
+const isControlSpaRelayUrl = (url: string): boolean => {
+    const raw = String(url || "").trim().toLowerCase();
+    if (!raw) return false;
+    try {
+        const withScheme = /^https?:\/\//i.test(raw) ? raw : `https://${raw}`;
+        const host = new URL(withScheme).hostname.toLowerCase();
+        return (
+            host === "cwsp.u2re.space" ||
+            host === "www.cwsp.u2re.space" ||
+            host === "md.u2re.space" ||
+            host === "www.md.u2re.space"
+        );
+    } catch {
+        return /cwsp\.u2re\.space|md\.u2re\.space/i.test(raw);
+    }
+};
+
+/**
+ * Capacitor-only: overlay native Relay when IDB is empty/loopback/Control-SPA-poisoned.
+ * WHY: full native overlay was disabled so IDB stays SoT — but Relay must track Java Configure.
+ */
+const mergeCapacitorNativeRelayOverlay = (
+    base: AppSettings,
+    native: Partial<AppSettings> | null | undefined
+): AppSettings => {
+    if (!native || typeof native !== "object") return base;
+    const nativeEp = trimSetting(native.core?.endpointUrl);
+    if (!nativeEp || isControlSpaRelayUrl(nativeEp)) return base;
+    const localEp = trimSetting(base.core?.endpointUrl);
+    const localBad =
+        !localEp ||
+        isControlSpaRelayUrl(localEp) ||
+        /^(https?:\/\/)?(127\.0\.0\.1|localhost)(:\d+)?\/?$/i.test(localEp);
+    if (!localBad && localEp === nativeEp) return base;
+    if (!localBad) return base;
+    return {
+        ...base,
+        core: {
+            ...base.core,
+            endpointUrl: nativeEp
+        }
+    } as AppSettings;
+};
+
 /** Only apply native fields that carry a non-empty value — empty bridge rows must not wipe IDB. */
 const mergeNativeSettingsOverlay = (
     base: AppSettings,
@@ -1420,13 +1465,18 @@ export const loadSettings = async (opts?: LoadSettingsOptions): Promise<AppSetti
             };
 
             // CWSAndroid bridge may expose canonical native settings projection.
-            // WHY: On Capacitor WebView, IDB/localStorage is the Settings UI source of truth;
-            // native prefs are a downstream sink — overlaying stale native values wipes saved fields.
+            // WHY: On Capacitor, prefer native Configure Relay (endpointUrl) when IDB was poisoned
+            // by Control SPA page-host (cwsp.u2re.space). Other fields stay IDB-first.
             try {
-                if (opts?.nativeOverlay !== false && !isCapacitorNativeShell()) {
-                    if (isCwsNativeIpcAvailable()) {
-                        const nativeSettings = await getNativeUnifiedSettings();
-                        if (nativeSettings && typeof nativeSettings === "object") {
+                if (opts?.nativeOverlay !== false && isCwsNativeIpcAvailable()) {
+                    const nativeSettings = await getNativeUnifiedSettings();
+                    if (nativeSettings && typeof nativeSettings === "object") {
+                        if (isCapacitorNativeShell()) {
+                            result = mergeCapacitorNativeRelayOverlay(
+                                result as AppSettings,
+                                nativeSettings as Partial<AppSettings>
+                            );
+                        } else {
                             result = mergeNativeSettingsOverlay(
                                 result as AppSettings,
                                 nativeSettings as Partial<AppSettings>
