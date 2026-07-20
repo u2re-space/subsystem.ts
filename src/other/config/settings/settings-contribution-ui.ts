@@ -1,3 +1,10 @@
+/*
+ * Filename: settings-contribution-ui.ts
+ * FullPath: modules/projects/subsystem/src/other/config/settings/settings-contribution-ui.ts
+ * Change date and time: 14.18.00_20.07.2026
+ * Reason for changes: Add settingsButton helper for Capacitor APK update actions.
+ */
+
 /**
  * DOM helpers for settings contribution panels (no fest/lure — safe for any host).
  */
@@ -88,6 +95,33 @@ export const settingsSelectField = (
     }
     wrap.append(span, sel);
     return wrap;
+};
+
+/** Action button (not a settings field) — wire via `data-action` in Settings.ts. */
+export const settingsButton = (
+    label: string,
+    action: string,
+    opts?: { primary?: boolean; className?: string }
+): HTMLElement => {
+    const btn = document.createElement("button");
+    btn.type = "button";
+    btn.className =
+        opts?.className ||
+        (opts?.primary ? "view-settings__btn view-settings__btn--primary" : "view-settings__btn");
+    btn.setAttribute("data-action", action);
+    btn.textContent = label;
+    return btn;
+};
+
+/** Horizontal row of action buttons. */
+export const settingsButtonRow = (...buttons: HTMLElement[]): HTMLElement => {
+    const row = document.createElement("div");
+    row.className = "field settings-action-row";
+    row.style.display = "flex";
+    row.style.flexWrap = "wrap";
+    row.style.gap = "0.5rem";
+    for (const btn of buttons) row.appendChild(btn);
+    return row;
 };
 
 export type SettingsPanelChild = HTMLElement | string;

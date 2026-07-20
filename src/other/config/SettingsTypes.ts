@@ -242,6 +242,13 @@ export type ShellSettings = {
      * WHY: on `ask` mode, timeout counts as Dismiss (no share / no apply).
      */
     clipboardPromptDismissMs?: number;
+    /**
+     * Capacitor APK update source picker:
+     * - `wan` → https://45.147.121.152:8434
+     * - `lan` → https://192.168.0.200:8434
+     * - `relay` → core.endpointUrl
+     */
+    apkUpdateSource?: "wan" | "lan" | "relay";
 };
 
 export type AppSettings = {
