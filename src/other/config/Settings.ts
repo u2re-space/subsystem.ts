@@ -680,6 +680,9 @@ const pushWebnativeSettingsPatch = async (settings: AppSettings): Promise<boolea
                     .toLowerCase() === "auto"
                     ? "auto"
                     : "ask",
+            // WHY: Neutralino/Windows default ON — Accept then CF_HDROP for re-forward.
+            filesCopyOnReceive:
+                (shell as { filesCopyOnReceive?: boolean }).filesCopyOnReceive !== false,
             filesByteTransport: (() => {
                 const v = String(
                     (shell as { filesByteTransport?: string }).filesByteTransport || "auto"

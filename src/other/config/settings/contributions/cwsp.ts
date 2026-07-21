@@ -154,6 +154,13 @@ const filesTransferFields = (ctx: SettingsContributionContext): SettingsPanelChi
             ["ask", "Ask — Accept / Decline prompt"],
             ["auto", "Auto — accept into landing folder"]
         ]),
+        settingsCheckboxField(
+            "Copy received files to clipboard (for Paste / re-share)",
+            "shell.filesCopyOnReceive"
+        ),
+        settingsHint(
+            "Neutralino/Windows: after Accept, place landed files on CF_HDROP (Explorer Paste). On by default."
+        ),
         settingsSelectField("Byte transport hint", "shell.filesByteTransport", [
             ["auto", "Auto — receiver chooses"],
             ["http", "HTTP blob GET/PUT"],
