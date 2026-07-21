@@ -591,6 +591,7 @@ const getCoordinatorPacketSenderId = (packet: unknown): string => {
 const inferPacketPurpose = (what: string): string => {
     const normalized = String(what || "").trim().toLowerCase();
     if (normalized.startsWith("clipboard:")) return "clipboard";
+    if (normalized.startsWith("files:")) return "storage";
     if (normalized.startsWith("mouse:")) return "mouse";
     if (normalized.startsWith("keyboard:")) return "input";
     if (normalized.startsWith("airpad:")) return "airpad";
@@ -829,6 +830,29 @@ const handleCoordinatorPacket = async (packet: CoordinatorPacket): Promise<void>
                 ? String((clipboardPayload as Record<string, unknown>).source || "")
                 : undefined
         });
+        return;
+    }
+
+    // WHY: inbound files:offer (desk → phone) — route to the Capacitor files-hub
+    // inbound listener (which forwards to the Java notification bridge) and emit
+    // a web heads-up toast. The files-hub owns accept/decline; this is the minimal
+    // W4 notification surface. Bare wildcard senders are not auto-accepted here.
+    if (what === "files:offer" || what === "files:error") {
+        const filesPayload = packet.payload ?? packet.data ?? packet.result ?? packet.results;
+        try {
+            globalThis.dispatchEvent(new CustomEvent("cws:filesIncomingOffer", {
+                detail: {
+                    what,
+                    payload: filesPayload,
+                    sender: getCoordinatorPacketSenderId(packet),
+                    uuid,
+                    from: packet.from
+                }
+            }));
+        } catch {
+            /* best-effort dispatch */
+        }
+        return;
     }
 };
 

@@ -660,7 +660,57 @@ const pushWebnativeSettingsPatch = async (settings: AppSettings): Promise<boolea
             clipboardPromptDismissMs: (() => {
                 const n = Number((shell as { clipboardPromptDismissMs?: number }).clipboardPromptDismissMs);
                 return Number.isFinite(n) && n >= 1000 ? Math.floor(n) : 10000;
-            })()
+            })(),
+            // WHY: files-hub (Capacitor + Neutralino) reads shell.files* from portable.
+            filesShareDestinationIds: String(
+                (shell as { filesShareDestinationIds?: string }).filesShareDestinationIds || ""
+            ).trim(),
+            filesAllowShareToAll: Boolean(
+                (shell as { filesAllowShareToAll?: boolean }).filesAllowShareToAll
+            ),
+            filesOpenForShareMode:
+                String((shell as { filesOpenForShareMode?: string }).filesOpenForShareMode || "auto")
+                    .trim()
+                    .toLowerCase() === "manual"
+                    ? "manual"
+                    : "auto",
+            filesInboundMode:
+                String((shell as { filesInboundMode?: string }).filesInboundMode || "ask")
+                    .trim()
+                    .toLowerCase() === "auto"
+                    ? "auto"
+                    : "ask",
+            filesByteTransport: (() => {
+                const v = String(
+                    (shell as { filesByteTransport?: string }).filesByteTransport || "auto"
+                )
+                    .trim()
+                    .toLowerCase();
+                return v === "http" || v === "ws" ? v : "auto";
+            })(),
+            filesLandingMode: (() => {
+                const v = String(
+                    (shell as { filesLandingMode?: string }).filesLandingMode || "app"
+                )
+                    .trim()
+                    .toLowerCase();
+                return v === "downloads" || v === "saf" ? v : "app";
+            })(),
+            filesIncomingDir: String(
+                (shell as { filesIncomingDir?: string }).filesIncomingDir || ""
+            ).trim(),
+            filesAskDirEveryTime:
+                (shell as { filesAskDirEveryTime?: boolean }).filesAskDirEveryTime !== false,
+            filesStagingRoot: (() => {
+                const v = String(
+                    (shell as { filesStagingRoot?: string }).filesStagingRoot || "app"
+                )
+                    .trim()
+                    .toLowerCase();
+                return v === "cache" || v === "external" ? v : "app";
+            })(),
+            acceptInboundFilesData:
+                (shell as { acceptInboundFilesData?: boolean }).acceptInboundFilesData !== false
         },
         launcherEnv: {
             CWS_ASSOCIATED_ID: clientId,

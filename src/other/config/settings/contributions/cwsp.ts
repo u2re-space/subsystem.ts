@@ -1,9 +1,13 @@
 /*
  * Filename: cwsp.ts
  * FullPath: modules/projects/subsystem/src/other/config/settings/contributions/cwsp.ts
- * Change date and time: 20.40.00_20.07.2026
+ * Change date and time: 17.05.00_21.07.2026
  * Reason for changes: Capacitor App update (dev) source picker + check/install actions.
  *   CRX: Control pairing UI (persistent session) on CWSP tab.
+ *   2026-07-21: Files transfer section (W5) — destinations, allow-share-to-all,
+ *   open-for-share / inbound modes, byte transport hint.
+ *   2026-07-21f: Capacitor files landing (app/Downloads/SAF) + staging root
+ *   options; Show paths / Choose SAF (app-private dirs are invisible in Files).
  */
 import {
     registerSettingsContribution,
@@ -121,6 +125,112 @@ const clipboardFields = (): SettingsPanelChild[] => [
     ),
     settingsHint("On Ask mode, dismiss / timeout means no share and no apply. Defaults to 10000ms.")
 ];
+
+/**
+ * Files transfer (Open-with / share-target / files:* hub).
+ * WHY: W3 hubs already honor these keys; CWSP tab had no UI until W5.
+ * INVARIANT: never overload clipboard prompt fields — separate shell.files*.
+ */
+const filesTransferFields = (ctx: SettingsContributionContext): SettingsPanelChild[] => {
+    const fields: SettingsPanelChild[] = [
+        "Files transfer",
+        settingsHint(
+            "Open-with / share-target and files:offer use these knobs. Empty destinations open a peer picker. Wildcards (`*`) need Allow share to all."
+        ),
+        settingsCheckboxField("Accept inbound files", "shell.acceptInboundFilesData"),
+        settingsTextField(
+            "Default destination ids",
+            "shell.filesShareDestinationIds",
+            "L-196;L-210 (empty = picker)"
+        ),
+        settingsHint(MULTI_VALUE_HINT),
+        settingsCheckboxField("Allow share to all (*)", "shell.filesAllowShareToAll"),
+        settingsHint("SECURITY: off by default — blocks accidental fleet-wide files:offer fan-out."),
+        settingsSelectField("Open for share", "shell.filesOpenForShareMode", [
+            ["auto", "Auto — offer when destinations are set"],
+            ["manual", "Manual — always ask for destinations"]
+        ]),
+        settingsSelectField("Inbound accept", "shell.filesInboundMode", [
+            ["ask", "Ask — Accept / Decline prompt"],
+            ["auto", "Auto — accept into landing folder"]
+        ]),
+        settingsSelectField("Byte transport hint", "shell.filesByteTransport", [
+            ["auto", "Auto — receiver chooses"],
+            ["http", "HTTP blob GET/PUT"],
+            ["ws", "WebSocket chunks"]
+        ]),
+        settingsHint(
+            "Transport hint is advisory. Large batches still need a live blob endpoint (W4); small batches may embed."
+        )
+    ];
+
+    // WHY: Cap-only storage — app-private dirs are invisible in system Files;
+    // user must pick Downloads/SAF or use Show paths / Share README.
+    if (ctx.surface === "capacitor" || ctx.surface === "native") {
+        const safHint = document.createElement("p");
+        safHint.className = "field-hint";
+        safHint.setAttribute("data-files-saf-uri", "1");
+        safHint.textContent = "SAF folder: (not set)";
+
+        const pathsHint = document.createElement("p");
+        pathsHint.className = "field-hint";
+        pathsHint.setAttribute("data-files-storage-paths", "1");
+        pathsHint.style.whiteSpace = "pre-wrap";
+        pathsHint.textContent = "Staging / landing paths: tap Show paths.";
+
+        fields.push(
+            "Files storage (Capacitor)",
+            settingsSelectField("Save received files to", "shell.filesLandingMode", [
+                ["app", "App storage (private — default)"],
+                ["downloads", "Downloads (user-visible)"],
+                ["saf", "SAF folder (pick below)"]
+            ]),
+            settingsHint(
+                "App storage is NOT under Android/data in File Manager. After install, open Files → sidebar → “CWSP Files” (DocumentsProvider / SAF). Or use Downloads / SAF landing, Show paths, Share README."
+            ),
+            safHint,
+            settingsButtonRow(
+                settingsButton("Choose SAF folder", "files-storage-pick-saf", { primary: true }),
+                settingsButton("Clear SAF folder", "files-storage-clear-saf")
+            ),
+            settingsCheckboxField("Ask for folder every time if SAF unset", "shell.filesAskDirEveryTime"),
+            settingsSelectField("Temp staging place", "shell.filesStagingRoot", [
+                ["app", "App internal (files/) — default"],
+                ["cache", "App cache (may be purged)"],
+                ["external", "App external (Android/data/… — OEM may hide)"]
+            ]),
+            settingsHint(
+                "Outgoing (Open-with) and incoming unpack stage here first, then export to the Save location above."
+            ),
+            pathsHint,
+            settingsButtonRow(
+                settingsButton("Show paths", "files-storage-show-paths"),
+                settingsButton("Browse CWSP Files…", "files-storage-open-explorer"),
+                settingsButton("Share README…", "files-storage-share-readme")
+            ),
+            "File access permissions",
+            (() => {
+                const el = document.createElement("p");
+                el.className = "field-hint";
+                el.setAttribute("data-files-perm-status", "1");
+                el.style.whiteSpace = "pre-wrap";
+                el.textContent =
+                    "Permissions: tap Refresh status. Media/storage is a runtime dialog; all-files opens system settings.";
+                return el;
+            })(),
+            settingsButtonRow(
+                settingsButton("Refresh status", "files-storage-perm-status"),
+                settingsButton("Request media access", "files-storage-request-media", { primary: true }),
+                settingsButton("Allow manage all files…", "files-storage-request-all-files")
+            ),
+            settingsHint(
+                "All-files access (MANAGE_EXTERNAL_STORAGE) is for shared storage / USB / MediaStore — not other apps’ Android/data. Our tree stays under Files → CWSP Files. Play may review this permission if you publish."
+            )
+        );
+    }
+
+    return fields;
+};
 
 const nativeWireFields = (): SettingsPanelChild[] => [
     "Native wire (Capacitor)",
@@ -248,7 +358,8 @@ export const registerCwspSettingsContribution = (): (() => void) =>
         render: (ctx: SettingsContributionContext) => {
             const children: SettingsPanelChild[] = [
                 ...connectionFields(ctx),
-                ...clipboardFields()
+                ...clipboardFields(),
+                ...filesTransferFields(ctx)
             ];
             if (ctx.surface === "capacitor" || ctx.surface === "native") {
                 children.push(
@@ -290,6 +401,14 @@ export const registerCwspSettingsContribution = (): (() => void) =>
             if (src) {
                 const v = String((settings.shell as any)?.apkUpdateSource || "wan").trim();
                 src.value = v === "lan" || v === "relay" ? v : "wan";
+            }
+            // WHY: show truncated SAF URI (Cap files storage section).
+            const safEl = panel.querySelector("[data-files-saf-uri]") as HTMLElement | null;
+            if (safEl) {
+                const uri = String(settings.shell?.filesIncomingDir || "").trim();
+                safEl.textContent = uri
+                    ? `SAF folder: ${uri.length > 72 ? `${uri.slice(0, 36)}…${uri.slice(-28)}` : uri}`
+                    : "SAF folder: (not set)";
             }
             // Auto-load Control pairing credentials into the CWSP tab.
             const refreshBtn = panel.querySelector(

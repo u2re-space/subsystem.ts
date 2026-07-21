@@ -249,6 +249,62 @@ export type ShellSettings = {
      * - `relay` → core.endpointUrl
      */
     apkUpdateSource?: "wan" | "lan" | "relay";
+    /**
+     * Default destinations for files:offer / Open-with / share-target.
+     * WHY: empty → destination picker (needDestinations). Same multi-value
+     * list grammar as clipboardShareDestinationIds (L-196;L-210).
+     */
+    filesShareDestinationIds?: string;
+    /**
+     * Allow bare wildcard destinations (`*` / `all` / `broadcast`) on
+     * files:offer. Default false — silent fleet-wide fan-out is dangerous.
+     */
+    filesAllowShareToAll?: boolean;
+    /**
+     * Outbound open-for-share mode (clipboard/picker ingress).
+     * - `auto`: offer when destinations are non-empty
+     * - `manual`: always show destination picker / Open for Share
+     */
+    filesOpenForShareMode?: "auto" | "manual";
+    /**
+     * Inbound files:offer accept policy.
+     * - `ask` / `manual`: Accept/Decline prompt
+     * - `auto`: accept immediately into landing dir
+     */
+    filesInboundMode?: "auto" | "ask";
+    /**
+     * Byte transport hint placed on outbound files:offer
+     * (`auto` | `http` | `ws`). Receivers may still negotiate.
+     */
+    filesByteTransport?: "auto" | "http" | "ws";
+    /**
+     * Where Capacitor lands received files after unpack (W4 export).
+     * - `app`: keep under app-private files/incoming (default; not in system Files)
+     * - `downloads`: MediaStore Downloads (user-visible)
+     * - `saf`: persisted SAF tree URI in {@link filesIncomingDir}
+     */
+    filesLandingMode?: "app" | "downloads" | "saf";
+    /**
+     * Opaque SAF tree URI for landing when {@link filesLandingMode} is `saf`.
+     * WHY: content:// tree grant — never a filesystem path.
+     */
+    filesIncomingDir?: string;
+    /**
+     * When true (default) and SAF URI is unset / mode asks, prompt SAF each receive.
+     */
+    filesAskDirEveryTime?: boolean;
+    /**
+     * Temp staging root for Open-with / share-target / inbound unpack.
+     * - `app`: getFilesDir()/files (default, durable)
+     * - `cache`: getCacheDir()/files (OS may purge)
+     * - `external`: getExternalFilesDir()/files (sometimes under Android/data)
+     */
+    filesStagingRoot?: "app" | "cache" | "external";
+    /**
+     * When false, inbound files:offer packets are ignored locally
+     * (connection may stay up for clipboard / other ops).
+     */
+    acceptInboundFilesData?: boolean;
 };
 
 export type AppSettings = {
@@ -506,7 +562,18 @@ export const DEFAULT_SETTINGS: AppSettings = {
         clipboardInboundMode: "ask",
         clipboardOutboundShowErase: true,
         clipboardInboundShowUndo: true,
-        clipboardPromptDismissMs: 10000
+        clipboardPromptDismissMs: 10000,
+        // WHY: files-transfer W5 settings — safe defaults (no wildcard fan-out).
+        filesShareDestinationIds: "",
+        filesAllowShareToAll: false,
+        filesOpenForShareMode: "auto",
+        filesInboundMode: "ask",
+        filesByteTransport: "auto",
+        filesLandingMode: "app",
+        filesIncomingDir: "",
+        filesAskDirEveryTime: true,
+        filesStagingRoot: "app",
+        acceptInboundFilesData: true
     },
     ai: {
         apiKey: "",
