@@ -1417,17 +1417,14 @@ export const idbPutSettings = async (value: any, key: string = SETTINGS_KEY): Pr
     }
 }
 
-/** Normalize `core.endpointUrl` for equality checks (scheme + host + port, lowercase). */
+/** Normalize `core.endpointUrl` for equality checks (scheme + host + port, lowercase).
+ * Multi-hub lists stay multi-hub (`;`-joined); never parse the whole list as one URL.
+ */
 export const normalizeCoreEndpointOrigin = (raw: string): string => {
     const t = (raw || "").trim();
     if (!t) return "";
-    try {
-        const withScheme = /^[a-z][a-z0-9+.-]*:\/\//i.test(t) ? t : `http://${t}`;
-        const u = new URL(withScheme);
-        return `${u.protocol}//${u.host}`.toLowerCase();
-    } catch {
-        return t.toLowerCase();
-    }
+    const healed = migrateLegacyCwspPublicPort(t);
+    return (healed || t).toLowerCase();
 };
 
 /** Rewrite legacy `:8443` URLs and listenPort in persisted settings after fleet port migration. */

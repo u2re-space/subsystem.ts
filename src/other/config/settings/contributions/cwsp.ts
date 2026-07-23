@@ -57,12 +57,12 @@ const connectionFields = (ctx: SettingsContributionContext): SettingsPanelChild[
         settingsTextField(
             "Relay / gateway host",
             "core.endpointUrl",
-            "https://192.168.0.200:8434 or https://45.147.121.152:8434"
+            "https://192.168.0.200:8434;https://45.147.121.152:8434"
         ),
         settingsHint(
             isCrx
                 ? "Neutralino/Node gateway SoT only. Does not overwrite Extension Local hub URL. External/WAN hosts may require the ecosystem token (and gateway login for Control)."
-                : "Coordinator / gateway. Always include :8434 — bare host dials :443 where /ws is not served (404)."
+                : "Coordinator / gateway. Multi-hub: separate with `;` or `,` (never `:`). Always include :8434 — bare host dials :443 where /ws is not served (404)."
         ),
         settingsTextField("Direct host (optional)", "core.ops.directUrl", "https://192.168.0.110:8434"),
         settingsHint("Optional direct peer (desk). Leave empty when phones only talk via gateway.")
