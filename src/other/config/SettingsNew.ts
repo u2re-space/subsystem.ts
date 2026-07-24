@@ -1101,7 +1101,7 @@ export const saveSettings = async (settings: AppSettings) => {
         }
     }
     try {
-        const { applyAirpadRuntimeFromAppSettings, syncAirpadRemoteConfigFromAppSettings } = await import("views/airpad/config/config");
+        const { applyAirpadRuntimeFromAppSettings, syncAirpadRemoteConfigFromAppSettings } = await import("cwsp-shared/remote-connection-runtime");
         applyAirpadRuntimeFromAppSettings(merged);
         syncAirpadRemoteConfigFromAppSettings(merged, { persist: true });
     } catch (e) {

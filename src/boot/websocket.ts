@@ -12,7 +12,6 @@
  */
 
 import { createWsSocket, NativeSocket, Socket } from './native-socket';
-import { log, getWsStatusEl } from "views/airpad/utils/utils";
 import {
     getRemoteHost,
     getAirPadEndpointUrl,
@@ -36,8 +35,8 @@ import {
     isNeutralinoNodeClipboardHubOwned,
     getAirPadHandshakeArchetype,
     getAirPadHandshakeConnectionType,
-} from "views/airpad/config/config";
-import { nativeShellOwnsExclusiveHubWebsocket } from "./hub-socket-boot";
+} from "cwsp-shared/remote-connection-runtime";
+import { setAirpadCredentialInvalidator } from "cwsp-shared/transport-credential-bridge";
 import {
     isCapacitorNativeShell,
     readClipboardTextFromDevice,
@@ -78,7 +77,6 @@ import {
     shouldPreferWanGatewayForAirpad,
 } from "cwsp-shared/airpad-cwsp-client-parity";
 import { annotatePacketWireTime64 } from "cwsp-shared/wire-time64";
-import { setAirpadCredentialInvalidator } from "views/airpad/credential-cache-bridge";
 import {
     isNativeCoordinatorConnected,
     refreshNativeCoordinatorStatus,
@@ -87,7 +85,13 @@ import {
     sendNativeCoordinatorBinary,
     shouldUseNativeCoordinatorTransport
 } from "./native-coordinator-bridge";
+import { nativeShellOwnsExclusiveHubWebsocket } from "./hub-socket-boot";
 
+/** AirPad view removed — status DOM no longer exists; keep console breadcrumbs. */
+const log = (msg: string): void => {
+    console.log("[ws]", msg);
+};
+const getWsStatusEl = (): HTMLElement | null => null;
 let socket: Socket | null = null;
 let wsConnected = false;
 let isConnecting = false;

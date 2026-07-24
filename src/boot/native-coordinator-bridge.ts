@@ -14,7 +14,7 @@ import {
     annotateCoordinatorPayload,
     shouldAnnotateCoordinatorPayload
 } from "cwsp-shared/input-command-timing";
-import { isPreferNativeWebsocketEnabled } from "views/airpad/config/config";
+import { isPreferNativeWebsocketEnabled } from "cwsp-shared/remote-connection-runtime";
 import { nativeShellOwnsExclusiveHubWebsocket } from "./hub-socket-boot";
 
 let nativeConnectedCache = false;

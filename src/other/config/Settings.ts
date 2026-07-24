@@ -27,7 +27,7 @@ import {
 import {
     applyAirpadRuntimeFromAppSettings,
     syncAirpadRemoteConfigFromAppSettings
-} from "views/airpad/config/config";
+} from "cwsp-shared/remote-connection-runtime";
 
 //
 export const SETTINGS_KEY = "rs-settings";

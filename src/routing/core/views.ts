@@ -8,15 +8,12 @@ export const VIEW_ENABLED_SETTINGS = "settings";
 export const VIEW_ENABLED_HISTORY = "history";
 export const VIEW_ENABLED_HOME = "home";
 export const VIEW_ENABLED_PRINT = "print";
-/** AirPad (remote trackpad/keyboard + clipboard) — used by the Capacitor shell and PWA. */
-export const VIEW_ENABLED_AIRPAD = "airpad";
 /** CWSP connection / probe diagnostics — primary Capacitor (CWSAndroid) home view. */
 export const VIEW_ENABLED_NETWORK = "network";
 export const DEFAULT_VIEW_ID = "viewer";
 
 const VIEW_FLAGS: Record<string, string> = {
     network: VIEW_ENABLED_NETWORK,
-    airpad: VIEW_ENABLED_AIRPAD,
     settings: VIEW_ENABLED_SETTINGS,
     viewer: VIEW_ENABLED_VIEWER,
     editor: VIEW_ENABLED_EDITOR,
@@ -104,7 +101,6 @@ const BUILD_VIEW_FLAGS: Record<string, boolean | undefined> = {
     history: typeof __RS_VIEW_HISTORY__ !== "undefined" ? __RS_VIEW_HISTORY__ : undefined,
     home: typeof __RS_VIEW_HOME__ !== "undefined" ? __RS_VIEW_HOME__ : undefined,
     print: typeof __RS_VIEW_PRINT__ !== "undefined" ? __RS_VIEW_PRINT__ : undefined,
-    airpad: typeof __RS_VIEW_AIRPAD__ !== "undefined" ? __RS_VIEW_AIRPAD__ : undefined,
     network: typeof __RS_VIEW_NETWORK__ !== "undefined" ? __RS_VIEW_NETWORK__ : undefined
 };
 

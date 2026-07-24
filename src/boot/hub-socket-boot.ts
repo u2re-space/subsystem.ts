@@ -17,7 +17,7 @@ import {
     isMaintainHubSocketConnectionEnabled,
     isNeutralinoNodeClipboardHubOwned,
     isPreferNativeWebsocketEnabled
-} from "views/airpad/config/config";
+} from "cwsp-shared/remote-connection-runtime";
 // WHY: static — CRX SW calls applyHubSocketFromSettings; dynamic import() is illegal there.
 import {
     connectWS,

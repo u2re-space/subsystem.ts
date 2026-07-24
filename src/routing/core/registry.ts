@@ -31,7 +31,6 @@ import {
     VIEW_ENABLED_EDITOR,
     VIEW_ENABLED_HOME,
     VIEW_ENABLED_PRINT,
-    VIEW_ENABLED_AIRPAD,
     VIEW_ENABLED_NETWORK
 } from "./views";
 import type { ChannelMessage } from "fest/uniform";
@@ -396,15 +395,6 @@ export function registerDefaultViews(): void {
             name: "Settings",
             icon: "gear",
             loader: () => import("views/settings")
-        });
-    }
-
-    if (VIEW_ENABLED_AIRPAD) {
-        ViewRegistry.register({
-            id: "airpad",
-            name: "AirPad",
-            icon: "hand-pointing",
-            loader: () => import("views/airpad")
         });
     }
 
