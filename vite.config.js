@@ -81,16 +81,22 @@ export const projectMap = new Map([
 export function initiate(name = NAME, tsconfig = {}, dir = resolve(import.meta.dirname, "./")) {
     const $resolve = { alias: importFromTSConfig(tsconfig, dir) };
 
+    // WHY: vite-plugin-external injects esbuild optimizeDeps hooks that Vite 8/Rolldown
+    // cannot load (`vite:dep-pre-bundle:external-conversion:fest/*` → UNLOADABLE_DEPENDENCY).
+    // INVARIANT: externalize fest/* only for library `build`; `serve` must resolve via aliases.
+    const externalPlugin = pluginExternal({
+        include: Array.from(projectMap.keys()).filter((n) => !n.endsWith(name)),
+        exclude: [
+            resolve(dir, "./src/index.ts"),
+            "./src/index.ts",
+            resolve(dir, `./dist/${name}.js`),
+            `./dist/${name}.js`
+        ]
+    });
+    externalPlugin.apply = "build";
+
     const plugins = [
-        pluginExternal({
-            include: Array.from(projectMap.keys()).filter((n) => !n.endsWith(name)),
-            exclude: [
-                resolve(dir, "./src/index.ts"),
-                "./src/index.ts",
-                resolve(dir, `./dist/${name}.js`),
-                `./dist/${name}.js`
-            ]
-        }),
+        externalPlugin,
         ...(process.env.FEST_NPM_IMPORTS === "1" ? [npmFestImportRewritePlugin()] : [])
     ];
 
