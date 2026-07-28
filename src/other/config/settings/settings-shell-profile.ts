@@ -1,6 +1,6 @@
 /*
  * Filename: settings-shell-profile.ts
- * FullPath: apps/CrossWord/src/shared/other/config/settings/settings-shell-profile.ts
+ * FullPath: apps/CWSP-shell/src/shared/other/config/settings/settings-shell-profile.ts
  * Change date and time: 13.35.00_20.07.2026
  * Reason for changes: Markdown SPA profile drops Server/CWSP built-ins (Control owns those).
  */

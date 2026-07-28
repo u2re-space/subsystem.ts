@@ -1,6 +1,6 @@
 /**
  * Build-time view gating flags injected by the host app's bundler
- * (CrossWord Vite `define`, generated from `VITE_ENABLED_VIEWS`).
+ * (CWSP-shell Vite `define`, generated from `VITE_ENABLED_VIEWS`).
  *
  * Declared here so `routing/core/views.ts` can read them with a safe
  * `typeof` guard. In non-bundled contexts (tsx/dev) they are simply

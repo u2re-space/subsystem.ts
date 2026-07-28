@@ -1,13 +1,23 @@
+/*
+ * Filename: shell-preference.ts
+ * FullPath: modules/shared/src/boot/shell-preference.ts
+ * Change date and time: 06.10.00_29.07.2026
+ * Reason for changes: Default boot shell is environment (web-desktop / launcher); mobile stays minimal.
+ */
 /**
  * Cross-window shell default: last-focused / last-interacted window updates
  * `rs-boot-shell-last-active`. Explicit choice stays in `rs-boot-shell` (boot menu, ?shell=, etc.).
  *
- * Mobile / small viewports: default to minimal; experimental `environment` is desktop-oriented.
+ * Desktop / large viewports: default to `environment` (Speed Dial + ui-window desktop).
+ * Mobile / small viewports: coerce `environment` → `minimal`.
  */
 
 import type { ShellId } from "./types";
 
 export const LS_BOOT_SHELL_LAST_ACTIVE = "rs-boot-shell-last-active";
+/** Soft legacy default key — when absent or not remembered, prefer environment on desktop. */
+export const LS_BOOT_SHELL = "rs-boot-shell";
+export const LS_BOOT_REMEMBER = "rs-boot-remember";
 
 const LAST_ACTIVE_MAX_MS = 30 * 24 * 60 * 60 * 1000;
 
@@ -26,7 +36,7 @@ export function normalizeBootShellId(shell: ShellId | null | undefined): ShellId
     ) {
         return shell;
     }
-    return "minimal";
+    return getDefaultBootShellId();
 }
 
 /**
@@ -46,7 +56,7 @@ export function isMobileBootShellViewport(): boolean {
     }
 }
 
-/** Experimental environment shell is not the default on mobile / small screens. */
+/** Environment shell is not the default on mobile / small screens. */
 export function coerceShellForBootViewport(shell: ShellId): ShellId {
     if (!isMobileBootShellViewport()) {
         return shell;
@@ -55,6 +65,38 @@ export function coerceShellForBootViewport(shell: ShellId): ShellId {
         return "minimal";
     }
     return shell;
+}
+
+/**
+ * Canonical default when no explicit shell preference exists.
+ * Desktop → environment (web-desktop / launcher); mobile → minimal.
+ */
+export function getDefaultBootShellId(): ShellId {
+    return coerceShellForBootViewport("environment");
+}
+
+/**
+ * Soft `minimal` from older builds was the implicit default — promote to environment
+ * on desktop unless the user checked “Remember my choice”.
+ */
+export function promoteSoftMinimalShellPreference(shell: ShellId): ShellId {
+    if (shell !== "minimal") return coerceShellForBootViewport(shell);
+    try {
+        if (globalThis.localStorage?.getItem(LS_BOOT_REMEMBER) === "1") {
+            return "minimal";
+        }
+    } catch {
+        /* ignore */
+    }
+    const next = getDefaultBootShellId();
+    if (next === "environment") {
+        try {
+            globalThis.localStorage?.setItem(LS_BOOT_SHELL, "environment");
+        } catch {
+            /* ignore */
+        }
+    }
+    return next;
 }
 
 type LastActivePayload = { shell: string; t: number };

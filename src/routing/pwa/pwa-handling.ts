@@ -214,7 +214,7 @@ function showReloadNotification(): void {
     notification.innerHTML = `
         <div style="font-size: 1.5rem; margin-bottom: 8px;"><ui-icon icon="arrow-clockwise" icon-style="duotone"></ui-icon></div>
         <div style="font-size: 1.1rem; font-weight: 600; margin-bottom: 8px;">Update Available</div>
-        <div style="opacity: 0.8; margin-bottom: 16px;">CrossWord has been updated and will reload shortly.</div>
+        <div style="opacity: 0.8; margin-bottom: 16px;">CWSP-shell has been updated and will reload shortly.</div>
         <div style="font-size: 0.9rem; opacity: 0.6;">Reloading in 3 seconds...</div>
     `;
 
@@ -399,7 +399,7 @@ class ServiceWorkerUpdateManager {
 
         this.updateToast.innerHTML = `
             <div style="font-weight: 600; margin-bottom: 4px;">Update Available</div>
-            <div style="opacity: 0.9; margin-bottom: 12px;">A new version of CrossWord is ready</div>
+            <div style="opacity: 0.9; margin-bottom: 12px;">A new version of CWSP-shell is ready</div>
             <div style="display: flex; gap: 8px;">
                 <button id="update-now" style="
                     background: white;

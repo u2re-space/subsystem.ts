@@ -6,7 +6,7 @@
  */
 /**
  * Standalone toast layer (forked from `fl.ui` `misc/Toast.ts`, zero framework deps).
- * Kept in subsystem so CrossWord / PWA / CRX need not import `fest/fl-ui` for toasts.
+ * Kept in subsystem so CWSP-shell / PWA / CRX need not import `fest/fl-ui` for toasts.
  *
  * Works in PWA, Chrome extension (content script / popup), and main-thread pages.
  *

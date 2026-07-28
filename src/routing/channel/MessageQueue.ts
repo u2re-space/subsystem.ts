@@ -1,5 +1,5 @@
 /**
- * Message Queue for CrossWord
+ * Message Queue for CWSP-shell
  * Re-exports fest/uniform MessageQueue with app-specific configuration
  */
 
@@ -18,7 +18,7 @@ export type { QueuedMessage, MessagePriority, MessageQueueOptions, QueueMessageO
 
 // App-specific configuration
 const APP_QUEUE_OPTIONS: MessageQueueOptions = {
-    dbName: 'CrossWordMessageQueue',
+    dbName: 'CWSP-shellMessageQueue',
     storeName: 'messages',
     maxRetries: 3,
     defaultExpirationMs: 24 * 60 * 60 * 1000, // 24 hours

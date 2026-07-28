@@ -1,5 +1,5 @@
 /**
- * Service Channels for CrossWord
+ * Service Channels for CWSP-shell
  * Extends fest/uniform ServiceChannelManager with app-specific configuration
  */
 

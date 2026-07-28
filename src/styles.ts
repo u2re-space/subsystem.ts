@@ -1,7 +1,7 @@
 /**
- * CrossWord Styles Module
+ * CWSP-shell Styles Module
  *
- * Provides style system integration for the CrossWord application.
+ * Provides style system integration for the CWSP-shell application.
  * Supports multiple style systems based on veela CSS variants.
  *
  * Style Systems:

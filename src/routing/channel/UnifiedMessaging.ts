@@ -1,5 +1,5 @@
 /**
- * Unified Messaging System for CrossWord
+ * Unified Messaging System for CWSP-shell
  * Extends fest/uniform messaging with app-specific configuration
  */
 
@@ -69,7 +69,7 @@ export function getUnifiedMessaging(): UnifiedMessagingManager {
         appMessagingInstance = getBaseMessaging({
             channelMappings: APP_CHANNEL_MAPPINGS,
             queueOptions: {
-                dbName: 'CrossWordMessageQueue',
+                dbName: 'CWSP-shellMessageQueue',
                 storeName: 'messages',
                 maxRetries: 3,
                 defaultExpirationMs: 24 * 60 * 60 * 1000 // 24 hours

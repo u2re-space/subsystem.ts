@@ -10,7 +10,7 @@ export type ViewChannelInvokeResult =
     | { ok: true; result?: unknown }
     | { ok: false; reason: "not-loaded" | "not-invokable" | "error"; detail?: string };
 
-export async function invokeCrossWordViewChannel(
+export async function invokeCWSP-shellViewChannel(
     viewId: ViewId,
     action: string,
     payload?: unknown

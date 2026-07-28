@@ -31,7 +31,9 @@ import { bootMinimal, bootBase, bootWindow, bootTabbed, bootEnvironment, bootCon
 import { ENABLED_VIEW_IDS, DEFAULT_VIEW_ID, isEnabledView, pickEnabledView } from "shared/routing/views";
 import {
     coerceShellForBootViewport,
+    getDefaultBootShellId,
     normalizeBootShellId,
+    promoteSoftMinimalShellPreference,
     readLastActiveBootShell
 } from "./shell-preference";
 import { ensureHistoryBaseDataset, stripHistoryBase, withHistoryBase } from "./history-base";
@@ -287,6 +289,7 @@ export function getSavedShellPreference(): ShellId | null {
         } catch {
             // Ignore storage issues
         }
+        // Explicit `?shell=` wins (including minimal); do not soft-promote.
         return coerceShellForBootViewport(fromQuery);
     }
 
@@ -306,17 +309,18 @@ export function getSavedShellPreference(): ShellId | null {
             if (normalized !== saved) {
                 localStorage.setItem("rs-boot-shell", normalized);
             }
-            return coerceShellForBootViewport(normalized);
+            // WHY: older installs persisted soft default `minimal`; promote to environment on desktop.
+            return promoteSoftMinimalShellPreference(normalized);
         }
 
         const lastActive = readLastActiveBootShell();
         if (lastActive && lastActive !== "immersive" && lastActive !== "content") {
-            return coerceShellForBootViewport(lastActive);
+            return promoteSoftMinimalShellPreference(lastActive);
         }
     } catch {
         // Ignore
     }
-    return null;
+    return getDefaultBootShellId();
 }
 
 /**
@@ -331,7 +335,7 @@ export const loadSubAppWithShell = async (
     shellId?: ShellId,
     initialView?: ViewId
 ): Promise<AppLoaderResult> => {
-    const shell = normalizeShellPreference(shellId || getSavedShellPreference() || "minimal");
+    const shell = normalizeShellPreference(shellId || getSavedShellPreference() || getDefaultBootShellId());
     const shellDefaultView = resolveShellDefaultView(shell);
     const view = pickEnabledView(initialView || getViewFromPath() || shellDefaultView, "home");
     
@@ -440,7 +444,7 @@ export function resolvePathToView(pathname: string): ViewId | null {
  * saved shell preference state.
  */
 export function createBootConfigFromUrl(): BootConfig {
-    const shell = normalizeShellPreference(getSavedShellPreference() || "minimal");
+    const shell = normalizeShellPreference(getSavedShellPreference() || getDefaultBootShellId());
     const shellDefaultView = resolveShellDefaultView(shell);
     const view = pickEnabledView(getViewFromPath() || shellDefaultView, "home");
     const params = Object.fromEntries(new URLSearchParams(location.search));

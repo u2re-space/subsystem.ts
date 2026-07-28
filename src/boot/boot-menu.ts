@@ -1,9 +1,14 @@
+/*
+ * Filename: boot-menu.ts
+ * FullPath: modules/shared/src/boot/boot-menu.ts
+ * Change date and time: 06.12.00_29.07.2026
+ * Reason for changes: Default / recommend environment shell (web-desktop launcher).
+ */
 /**
  * Boot Menu
- * 
+ *
  * Shell selection screen displayed at root (/) route.
- * User selects a shell (Basic, Faint, etc.) which is saved to preferences.
- * Then navigates to the default view (/viewer).
+ * Default auto-boot: `environment` (Speed Dial / desktop); Minimal remains available.
  */
 
 import { H } from "fest/lure";
@@ -13,6 +18,7 @@ import style from "./boot-menu.scss?inline";
 import type { ShellId } from "./types";
 import { pickEnabledView } from "shared/routing/views";
 import { ensureHistoryBaseDataset, withHistoryBase } from "./history-base";
+import { getDefaultBootShellId } from "./shell-preference";
 
 // ============================================================================
 // Type Definitions
@@ -61,19 +67,26 @@ const saveShellPreference = (shell: ShellId, remember: boolean): void => {
 const navigateToDefaultView = (shell: ShellId, remember: boolean): void => {
     const normalizedShell = normalizeShellChoice(shell);
     saveShellPreference(normalizedShell, remember);
-    
-    // Navigate to the configured default view (keep VDS path mount e.g. /cwsp).
-    const defaultView = pickEnabledView("viewer");
+
+    // WHY: environment opens on home (launcher); minimal/base keep viewer/network path entry.
+    const defaultView =
+        normalizedShell === "environment" || normalizedShell === "window" || normalizedShell === "tabbed"
+            ? pickEnabledView("home", "viewer")
+            : normalizedShell === "minimal"
+                ? pickEnabledView("network", "viewer")
+                : pickEnabledView("viewer");
     ensureHistoryBaseDataset();
-    const nextPath = withHistoryBase(`/${defaultView}`);
+    // Environment uses canonical `/` + shell state (not path-routed views).
+    const nextPath =
+        normalizedShell === "environment" || normalizedShell === "window" || normalizedShell === "tabbed"
+            ? withHistoryBase(`/?shell=${encodeURIComponent(normalizedShell)}`)
+            : withHistoryBase(`/${defaultView}?shell=${encodeURIComponent(normalizedShell)}`);
     globalThis?.history?.pushState?.({ shell: normalizedShell, view: defaultView }, "", nextPath);
-    
-    // Dispatch route change event
+
     globalThis?.dispatchEvent?.(new CustomEvent('route-change', {
         detail: { view: defaultView, shell: normalizedShell }
     }));
-    
-    // Reload to apply shell
+
     globalThis.location.href = nextPath;
 };
 
@@ -104,7 +117,7 @@ export const ChoiceScreen = (opts: ChoiceScreenOptions): ChoiceScreenResult => {
  */
 const createUIElements = (opts: ChoiceScreenOptions) => {
     const headerText = H`<header class="choice-header">Boot menu</header>` as HTMLElement;
-    const reasonsText = H`<div class="choice-reasons">Use the stable <b>Minimal</b> shell to ensure a safe first launch.</div>` as HTMLElement;
+    const reasonsText = H`<div class="choice-reasons">Default: <b>Environment</b> — web desktop / Speed Dial launcher. <b>Minimal</b> is the compact toolbar shell.</div>` as HTMLElement;
 
     const countdown = H`<div class="choice-countdown">Auto-starting in <b data-countdown>${opts.seconds}</b> seconds…</div>` as HTMLElement;
     const hint = H`<div class="choice-hint">Use <b>↑</b>/<b>↓</b> to select, <b>Enter</b> to boot.</div>` as HTMLElement;
@@ -117,10 +130,9 @@ const createUIElements = (opts: ChoiceScreenOptions) => {
     const rememberInput = remember.querySelector("input") as HTMLInputElement | null;
     if (rememberInput) rememberInput.checked = Boolean(opts.initialRemember);
 
-    // Menu buttons
-    const bigMinimalButton = H`<button class="minimal big recommended" type="button">Minimal</button>` as HTMLButtonElement;
-    // Menu buttons array
-    const buttons = [bigMinimalButton];
+    const bigEnvironmentButton = H`<button class="environment big recommended" type="button">Environment</button>` as HTMLButtonElement;
+    const bigMinimalButton = H`<button class="minimal big" type="button">Minimal</button>` as HTMLButtonElement;
+    const buttons = [bigEnvironmentButton, bigMinimalButton];
 
     // Keyboard navigation state object (mutable reference to persist currentIndex)
     const keyboardNavigation = {
@@ -139,6 +151,7 @@ const createUIElements = (opts: ChoiceScreenOptions) => {
         hint,
         remember,
         rememberInput,
+        bigEnvironmentButton,
         bigMinimalButton,
         buttons,
         keyboardNavigation
@@ -152,7 +165,7 @@ const createContainer = (_opts: ChoiceScreenOptions, elements: ReturnType<typeof
     const container = H`<div class="choice container"></div>` as HTMLElement;
     const menu = H`<div class="choice-menu" role="menu"></div>` as HTMLElement;
 
-    menu.append(elements.bigMinimalButton);
+    menu.append(elements.bigEnvironmentButton, elements.bigMinimalButton);
     container.append(
         elements.headerText,
         elements.countdown,
@@ -169,7 +182,7 @@ const createContainer = (_opts: ChoiceScreenOptions, elements: ReturnType<typeof
  * Set up event handlers for buttons and keyboard navigation
  */
 const setupEventHandlers = (opts: ChoiceScreenOptions, elements: ReturnType<typeof createUIElements>) => {
-    const { bigMinimalButton, keyboardNavigation, rememberInput, countdown } = elements;
+    const { bigEnvironmentButton, bigMinimalButton, keyboardNavigation, rememberInput, countdown } = elements;
 
     // Track if countdown is active (for cancellation on interaction)
     let countdownActive = true;
@@ -192,10 +205,11 @@ const setupEventHandlers = (opts: ChoiceScreenOptions, elements: ReturnType<type
         const remember = Boolean(rememberInput?.checked);
         
         // For shells, save preference and navigate to default view
-        const shell = (choice || "minimal") as ShellId;
+        const shell = (choice || getDefaultBootShellId()) as ShellId;
         navigateToDefaultView(shell, remember);
     };
 
+    bigEnvironmentButton.addEventListener("click", () => handleChoice("environment"));
     bigMinimalButton.addEventListener("click", () => handleChoice("minimal"));
 
     // Start countdown timer
@@ -209,14 +223,13 @@ const setupEventHandlers = (opts: ChoiceScreenOptions, elements: ReturnType<type
             
             if (remainingSeconds <= 0) {
                 stopCountdown();
-                // Auto-select default choice (basic)
-                handleChoice(opts.defaultChoice || "minimal");
+                handleChoice(opts.defaultChoice || getDefaultBootShellId());
             }
         }, 1000);
     }
 
     // Keyboard navigation
-    const container = bigMinimalButton.closest('.choice.container') as HTMLElement;
+    const container = bigEnvironmentButton.closest('.choice.container') as HTMLElement;
     const brokenKey = (e) => {
         // Any key press cancels countdown
         stopCountdown();
@@ -265,9 +278,9 @@ export default async (mountingElement: HTMLElement): Promise<void> => {
     // Show boot menu for shell selection
     const { container } = ChoiceScreen({
         seconds: 10,
-        defaultChoice: "minimal",
+        defaultChoice: getDefaultBootShellId(),
         onChoose: (choice, remember) => {
-            const shell = (choice || "minimal") as ShellId;
+            const shell = (choice || getDefaultBootShellId()) as ShellId;
             navigateToDefaultView(shell, remember);
         },
         initialRemember: false

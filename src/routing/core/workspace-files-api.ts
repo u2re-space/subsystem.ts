@@ -16,7 +16,7 @@ import {
     FileAttachmentApiAction,
     WorkcenterChannelAction
 } from "views/apis/channel-actions";
-import { invokeCrossWordViewChannel, type ViewChannelInvokeResult } from "./view-channel-invoke";
+import { invokeCWSP-shellViewChannel, type ViewChannelInvokeResult } from "./view-channel-invoke";
 
 export type { ViewChannelInvokeResult };
 
@@ -68,12 +68,12 @@ export function workspacePinFileToSpeedDial(file: File, label?: string): SpeedDi
 
 /** Attach binary/text files to the loaded Work Center instance. */
 export function channelAttachFilesToWorkcenter(files: File[]): Promise<ViewChannelInvokeResult> {
-    return invokeCrossWordViewChannel("workcenter", FileAttachmentApiAction.WorkcenterAttach, { files });
+    return invokeCWSP-shellViewChannel("workcenter", FileAttachmentApiAction.WorkcenterAttach, { files });
 }
 
 /** Push markdown/text content into Work Center without a File handle. */
 export function channelAttachMarkdownToWorkcenter(text: string, filename?: string): Promise<ViewChannelInvokeResult> {
-    return invokeCrossWordViewChannel("workcenter", WorkcenterChannelAction.ContentShare, {
+    return invokeCWSP-shellViewChannel("workcenter", WorkcenterChannelAction.ContentShare, {
         text,
         content: text,
         filename,
@@ -83,23 +83,23 @@ export function channelAttachMarkdownToWorkcenter(text: string, filename?: strin
 
 /** Runs viewer’s built-in “attach current document to Work Center” flow (markdown in buffer). */
 export function channelAttachViewerDocumentToWorkcenter(): Promise<ViewChannelInvokeResult> {
-    return invokeCrossWordViewChannel("viewer", FileAttachmentApiAction.ViewerPushToWorkcenter, {});
+    return invokeCWSP-shellViewChannel("viewer", FileAttachmentApiAction.ViewerPushToWorkcenter, {});
 }
 
 /** Save a file through the explorer’s wired `ui-file-manager` / OPFS operative. */
 export function channelSaveFileThroughExplorer(file: File, destPath?: string): Promise<ViewChannelInvokeResult> {
-    return invokeCrossWordViewChannel("explorer", ExplorerChannelAction.FileSave, { file, path: destPath });
+    return invokeCWSP-shellViewChannel("explorer", ExplorerChannelAction.FileSave, { file, path: destPath });
 }
 
 /** Mirror of FL-UI toolbar “Use” — pick/consume external file into workspace. */
 export function channelExplorerRequestUse(): Promise<ViewChannelInvokeResult> {
-    return invokeCrossWordViewChannel("explorer", ExplorerChannelAction.RequestUse, {});
+    return invokeCWSP-shellViewChannel("explorer", ExplorerChannelAction.RequestUse, {});
 }
 
 export function channelExplorerRequestUpload(): Promise<ViewChannelInvokeResult> {
-    return invokeCrossWordViewChannel("explorer", ExplorerChannelAction.RequestUpload, {});
+    return invokeCWSP-shellViewChannel("explorer", ExplorerChannelAction.RequestUpload, {});
 }
 
 export function channelExplorerRequestPaste(): Promise<ViewChannelInvokeResult> {
-    return invokeCrossWordViewChannel("explorer", ExplorerChannelAction.RequestPaste, {});
+    return invokeCWSP-shellViewChannel("explorer", ExplorerChannelAction.RequestPaste, {});
 }

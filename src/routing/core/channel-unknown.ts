@@ -100,7 +100,7 @@ type HistoryEntry = {
 
 const HISTORY_KEY = "rs-history";
 const LAST_SRC_KEY = "rs-last-src";
-const DEFAULT_MD = "# CrossWord (Basic)\n\nOpen a markdown file or paste content here.\n";
+const DEFAULT_MD = "# CWSP-shell (Basic)\n\nOpen a markdown file or paste content here.\n";
 const MARKDOWN_EXTENSION_PATTERN = /\.(?:md|markdown|mdown|mkd|mkdn|mdtxt|mdtext)(?:$|[?#])/i;
 
 // Hash location mappings for views
@@ -786,7 +786,7 @@ export const mountShellApp = (mountElement: HTMLElement, options: ShellOptions =
                         <!DOCTYPE html>
                         <html>
                         <head>
-                            <title>Print - CrossWord</title>
+                            <title>Print - CWSP-shell</title>
                             <style>
                                 body { font-family: system-ui, -apple-system, sans-serif; margin: 2rem; line-height: 1.6; }
                                 pre { white-space: pre-wrap; word-wrap: break-word; }
@@ -1586,7 +1586,7 @@ export const mountShellApp = (mountElement: HTMLElement, options: ShellOptions =
                                 <!DOCTYPE html>
                                 <html>
                                 <head>
-                                    <title>Print - CrossWord</title>
+                                    <title>Print - CWSP-shell</title>
                                     <style>
                                         body { font-family: system-ui, -apple-system, sans-serif; margin: 2rem; line-height: 1.6; }
                                         pre { white-space: pre-wrap; word-wrap: break-word; }
@@ -2133,7 +2133,7 @@ export const mountShellApp = (mountElement: HTMLElement, options: ShellOptions =
                 if (md.trim()) {
                     const { downloadMarkdownAsDocx } = await import("core/document/DocxExport");
                     await downloadMarkdownAsDocx(md, {
-                        title: "CrossWord",
+                        title: "CWSP-shell",
                         filename: `crossword-${Date.now()}.docx`,
                     });
                 }

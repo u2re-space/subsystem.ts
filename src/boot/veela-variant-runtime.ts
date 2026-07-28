@@ -1,5 +1,5 @@
 /**
- * Veela stylesheet loader for CrossWord (no `fest/fl-ui` runtime SCSS dependency).
+ * Veela stylesheet loader for CWSP-shell (no `fest/fl-ui` runtime SCSS dependency).
  *
  * Uses the canonical forwarded stack in `veela.css/src/scss/index.scss` (core + curated basic surface).
  * `advanced` / `beercss` currently share that stack until a standalone advanced bundle exists with stable `@use` paths.

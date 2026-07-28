@@ -1,7 +1,7 @@
 /**
  * Core Module
  *
- * Central module providing core utilities for the CrossWord application.
+ * Central module providing core utilities for the CWSP-shell application.
  *
  * Structure (PWA `dist/core/` chunks group by first directory; api/time/text/phone/workers fold into `main`):
  * - api/      : API client and service communication

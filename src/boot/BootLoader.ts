@@ -1,7 +1,7 @@
 /**
  * Boot Loader - Shell/Style Initialization System
  * 
- * Manages the boot sequence for the CrossWord application:
+ * Manages the boot sequence for the CWSP-shell application:
  * 1. Load settings and apply document theme (`:root` / color-scheme before Veela paints)
  * 2. Load style system (Veela CSS or Minimal)
  * 3. Initialize shell (frame/layout/environment)
@@ -29,8 +29,8 @@ import { applyTheme } from "com/other/utils";
 import { startImplicitViewMessagingBridge } from "com/routing/core/implicit-view-bridge";
 import { loadStyleSystem } from "com/styles";
 import { isEnabledView, pickEnabledView } from "com/routing/core/views";
-import { applyHubSocketFromSettings } from "../boot/hub-socket-boot";
-import { ensureCapacitorBridgeDaemonStarted } from "../boot/capacitor-settings-permissions";
+import { applyHubSocketFromSettings } from "./hub-socket-boot";
+import { ensureCapacitorBridgeDaemonStarted } from "./capacitor-settings-permissions";
 
 
 // ============================================================================
@@ -584,7 +584,7 @@ export class BootLoader {
         try {
             const remember = localStorage.getItem("rs-boot-remember");
             if (remember !== "1") return null;
-            const shell = normalizeShellId((localStorage.getItem("rs-boot-shell") as ShellId) || "minimal");
+            const shell = normalizeShellId((localStorage.getItem("rs-boot-shell") as ShellId) || "environment");
             
             return {
                 styleSystem: (localStorage.getItem("rs-boot-style") as StyleSystem) || undefined,
@@ -671,8 +671,17 @@ export async function bootEnvironment(
     container: HTMLElement,
     view: ViewId = "home"
 ): Promise<Shell> {
-    const channels = ["workcenter", "settings", "viewer", "explorer", "history", "editor", "home"]
-        .filter((channelId) => isEnabledView(channelId)) as ServiceChannelId[];
+    // WHY: environment launcher — no airpad channel; network is a first-class CWSP tile.
+    const channels = [
+        "home",
+        "network",
+        "workcenter",
+        "settings",
+        "viewer",
+        "explorer",
+        "history",
+        "editor"
+    ].filter((channelId) => isEnabledView(channelId)) as ServiceChannelId[];
     const defaultView = pickEnabledView(view, "home");
     const channelPriorityId: ServiceChannelId | undefined =
         (channels.find((c) => c === defaultView) ?? channels[0]) as ServiceChannelId | undefined;

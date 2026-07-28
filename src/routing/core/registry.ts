@@ -367,6 +367,27 @@ export function registerDefaultShells(): void {
         description: "Chromeless immersive host (extensions / embedded)",
         loader: () => import("shells/immersive/index")
     });
+
+    ShellRegistry.register({
+        id: "window",
+        name: "Window",
+        description: "Window-capable shell (multi-view)",
+        loader: () => import("shells/window")
+    });
+
+    ShellRegistry.register({
+        id: "tabbed",
+        name: "Tabbed",
+        description: "Tabbed window shell",
+        loader: () => import("shells/window/tabbed")
+    });
+
+    ShellRegistry.register({
+        id: "environment",
+        name: "Environment",
+        description: "Desktop/launcher shell: wallpaper, Speed Dial, taskbar, ui-window",
+        loader: () => import("shells/window/environment")
+    });
 }
 
 /** Register the built-in views that are enabled by current feature flags. */

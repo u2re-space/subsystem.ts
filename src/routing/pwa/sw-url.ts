@@ -237,7 +237,7 @@ export const ensureServiceWorkerRegistered = async (): Promise<ServiceWorkerRegi
         const scope = scopeForServiceWorkerScript(url);
         const isDevVirtualWorker = url.includes("/dev-sw.js?dev-sw");
 
-        // Prod `sw.js` is built as IIFE (see CrossWord `injectManifest.rollupFormat`). Register as
+        // Prod `sw.js` is built as IIFE (see CWSP-shell `injectManifest.rollupFormat`). Register as
         // classic by default so we never parse a non-module script as `type: "module"`.
         try {
             return await navigator.serviceWorker.register(url, {

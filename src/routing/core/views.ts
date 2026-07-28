@@ -88,7 +88,7 @@ const readEnabledViewsAllowlist = (): Set<string> | null => {
 const ENABLED_VIEWS_ALLOWLIST = readEnabledViewsAllowlist();
 
 /**
- * Build-time gate: the host bundler (CrossWord Vite) replaces `__RS_VIEW_<ID>__`
+ * Build-time gate: the host bundler (CWSP-shell Vite) replaces `__RS_VIEW_<ID>__`
  * with a boolean from `VITE_ENABLED_VIEWS`. `typeof` is safe for undeclared
  * globals (returns "undefined") so non-bundled/tsx contexts fall back to enabled.
  */

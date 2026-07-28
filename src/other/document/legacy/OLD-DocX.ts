@@ -1169,7 +1169,7 @@ export async function createDocxBlobFromHtml(html: string, options: DocxExportOp
     }
 
     const doc = new Document({
-        creator: options.creator || "CrossWord",
+        creator: options.creator || "CWSP-shell",
         title,
         styles: {
             default: {

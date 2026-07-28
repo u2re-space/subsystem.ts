@@ -1,7 +1,7 @@
 /**
  * PWA Module
  *
- * Progressive Web App features for CrossWord:
+ * Progressive Web App features for CWSP-shell:
  * - Service worker registration
  * - Install prompts
  * - Update handling

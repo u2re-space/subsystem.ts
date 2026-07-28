@@ -42,8 +42,14 @@ export const SHELL_HOST_SELECTOR = [
 export function resolveShellOverlaysMount(from?: Element | null): HTMLElement | null {
     if (!(from instanceof Element) || typeof from.closest !== "function") return null;
     const host = from.closest(SHELL_HOST_SELECTOR) as HTMLElement | null;
-    const overlays = host?.shadowRoot?.querySelector?.("[data-shell-overlays]") ?? null;
-    return overlays instanceof HTMLElement ? overlays : null;
+    if (!host) return null;
+    // WHY: `env-shell-container` exposes overlayMount; light-DOM environment host may keep overlays without shadow.
+    const fromApi = (host as HTMLElement & { overlayMount?: HTMLElement | null }).overlayMount;
+    if (fromApi instanceof HTMLElement) return fromApi;
+    const fromShadow = host.shadowRoot?.querySelector?.("[data-shell-overlays]") ?? null;
+    if (fromShadow instanceof HTMLElement) return fromShadow;
+    const fromLight = host.querySelector?.("[data-shell-overlays]") ?? null;
+    return fromLight instanceof HTMLElement ? fromLight : null;
 }
 
 /**

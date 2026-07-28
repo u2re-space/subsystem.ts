@@ -147,7 +147,7 @@ export type ShellSettings = {
      */
     preferNativeWebsocket?: boolean;
     /**
-     * When true, CrossWord keeps a **WebSocket** connection to the hub (cwsp / endpoint) in the background,
+     * When true, CWSP-shell keeps a **WebSocket** connection to the hub (cwsp / endpoint) in the background,
      * not only when the AirPad view is open — enables clipboard coordinator and realtime ops from any shell (PWA, CRX, Capacitor).
      * CRX wire uses {@link ShellSettings.localHubUrl}; other surfaces use {@link AppSettings.core.endpointUrl}.
      * Default **off**: connect on demand from AirPad/UI or coordinator asks; toggle on here for persistent hub.

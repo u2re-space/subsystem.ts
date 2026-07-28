@@ -1,5 +1,5 @@
 /**
- * Uniform Channel Manager for CrossWord
+ * Uniform Channel Manager for CWSP-shell
  * Re-exports fest/uniform channel management with app-specific configuration
  */
 

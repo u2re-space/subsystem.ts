@@ -19,16 +19,16 @@ export type ShellId = "base" | "window" | "tabbed" | "minimal" | "environment" |
 /**
  * Available view identifiers
  */
-export type ViewId = 
-    | "viewer" 
-    | "workcenter" 
-    | "settings" 
-    | "history" 
-    | "explorer" 
+export type ViewId =
+    | "viewer"
+    | "workcenter"
+    | "settings"
+    | "history"
+    | "explorer"
     | "editor"
     | "home"
-    | "airpad"
-    | string; // Allow custom views
+    | "network"
+    | string; // Allow custom views (airpad UI removed from environment shell)
 
 /**
  * Theme configuration for shells
