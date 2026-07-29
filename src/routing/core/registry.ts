@@ -506,7 +506,7 @@ export const darkTheme: ShellTheme = {
  */
 export function getDefaultBootConfig(): BootConfig {
     return {
-        defaultShell: "minimal",
+        defaultShell: "environment",
         defaultView: "home",
         theme: defaultTheme,
         rememberShellChoice: true,

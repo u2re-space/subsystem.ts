@@ -1,8 +1,8 @@
 /*
  * Filename: settings-shell-profile.ts
- * FullPath: apps/CWSP-shell/src/shared/other/config/settings/settings-shell-profile.ts
- * Change date and time: 13.35.00_20.07.2026
- * Reason for changes: Markdown SPA profile drops Server/CWSP built-ins (Control owns those).
+ * FullPath: apps/CWSP-document/src/shared/other/config/settings/settings-shell-profile.ts
+ * Change date and time: 09.00.00_29.07.2026
+ * Reason for changes: Document + markdown PWAs drop Server/Extension; CWSP contribution stays off those surfaces.
  */
 
 import { isEnabledView } from "../../../routing/core/views";
@@ -47,7 +47,7 @@ const CWSP_MOBILE_HIDDEN_BUILTIN_TABS = [
  */
 const EXTENSION_HIDDEN_BUILTIN_TABS = ["extension", "server"] as const;
 
-/** VDS markdown PWA: no CWSP Server / Extension tabs (those belong to Control). */
+/** Document / md.u2re.space PWA: no Server / Extension (Control/CRX own those). */
 const MARKDOWN_HIDDEN_BUILTIN_TABS = ["server", "extension"] as const;
 
 /** Remove host-variant built-in tabs that the profile replaces or folds elsewhere. */

@@ -1,21 +1,21 @@
 /*
  * Filename: shell-preference.ts
  * FullPath: modules/shared/src/boot/shell-preference.ts
- * Change date and time: 06.10.00_29.07.2026
- * Reason for changes: Default boot shell is environment (web-desktop / launcher); mobile stays minimal.
+ * Change date and time: 09.20.00_29.07.2026
+ * Reason for changes: CWSP-shell default is environment on desktop and mobile (launcher / NTP).
  */
 /**
  * Cross-window shell default: last-focused / last-interacted window updates
  * `rs-boot-shell-last-active`. Explicit choice stays in `rs-boot-shell` (boot menu, ?shell=, etc.).
  *
- * Desktop / large viewports: default to `environment` (Speed Dial + ui-window desktop).
- * Mobile / small viewports: coerce `environment` → `minimal`.
+ * WHY: CWSP-shell is web-desktop + mobile launcher + Speed Dial / new-tab — default `environment`
+ * on all viewports. Users can still pick `minimal` via boot menu when `rs-boot-remember=1`.
  */
 
 import type { ShellId } from "./types";
 
 export const LS_BOOT_SHELL_LAST_ACTIVE = "rs-boot-shell-last-active";
-/** Soft legacy default key — when absent or not remembered, prefer environment on desktop. */
+/** Soft legacy default key — when absent or not remembered, prefer `environment`. */
 export const LS_BOOT_SHELL = "rs-boot-shell";
 export const LS_BOOT_REMEMBER = "rs-boot-remember";
 
@@ -40,7 +40,8 @@ export function normalizeBootShellId(shell: ShellId | null | undefined): ShellId
 }
 
 /**
- * Treat narrow and coarse-pointer layouts as “mobile shell” — prefer minimal shell there.
+ * Narrow / coarse-pointer viewport helper (diagnostics, adaptive chrome).
+ * INVARIANT: does **not** force shell id away from `environment` — launcher is mobile-first too.
  */
 export function isMobileBootShellViewport(): boolean {
     if (typeof globalThis.matchMedia !== "function") {
@@ -56,28 +57,25 @@ export function isMobileBootShellViewport(): boolean {
     }
 }
 
-/** Environment shell is not the default on mobile / small screens. */
+/**
+ * Viewport coercion for boot shell ids.
+ * WHY: previously demoted `environment` → `minimal` on phones; CWSP-shell keeps environment
+ * as the launcher/NTP shell on mobile. Pass-through keeps explicit choices intact.
+ */
 export function coerceShellForBootViewport(shell: ShellId): ShellId {
-    if (!isMobileBootShellViewport()) {
-        return shell;
-    }
-    if (shell === "environment") {
-        return "minimal";
-    }
     return shell;
 }
 
 /**
- * Canonical default when no explicit shell preference exists.
- * Desktop → environment (web-desktop / launcher); mobile → minimal.
+ * Canonical default when no explicit shell preference exists: environment launcher.
  */
 export function getDefaultBootShellId(): ShellId {
-    return coerceShellForBootViewport("environment");
+    return "environment";
 }
 
 /**
  * Soft `minimal` from older builds was the implicit default — promote to environment
- * on desktop unless the user checked “Remember my choice”.
+ * unless the user checked “Remember my choice”.
  */
 export function promoteSoftMinimalShellPreference(shell: ShellId): ShellId {
     if (shell !== "minimal") return coerceShellForBootViewport(shell);
@@ -88,15 +86,12 @@ export function promoteSoftMinimalShellPreference(shell: ShellId): ShellId {
     } catch {
         /* ignore */
     }
-    const next = getDefaultBootShellId();
-    if (next === "environment") {
-        try {
-            globalThis.localStorage?.setItem(LS_BOOT_SHELL, "environment");
-        } catch {
-            /* ignore */
-        }
+    try {
+        globalThis.localStorage?.setItem(LS_BOOT_SHELL, "environment");
+    } catch {
+        /* ignore */
     }
-    return next;
+    return "environment";
 }
 
 type LastActivePayload = { shell: string; t: number };

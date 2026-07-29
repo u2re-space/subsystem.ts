@@ -19,7 +19,7 @@
 
 export * from "./other/utils";
 export * from "../types";
-export * from "../registry";
+// NOTE: `../registry` was a stale CrossWord app path — not part of this library package.
 export * from "./routing/api/channel-actions";
 export * from "./routing/core/registry";
 export * from "./routing/core/channel-mixin";
