@@ -6,4 +6,4 @@ export {
     formatDateTime,
     formatAsDate,
     formatAsTime,
-} from "./time";
+} from "./time.ts";
