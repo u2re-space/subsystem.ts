@@ -360,8 +360,8 @@ export const registerCwspSettingsContribution = (): (() => void) =>
         id: "cwsp",
         label: "CWSP",
         order: 55,
-        // WHY: document PWA (md.u2re.space) must not expose Control endpoint/token UI.
-        excludeSurfaces: ["markdown"],
+        // WHY: document PWA + environment desktop must not expose Control endpoint/token UI.
+        excludeSurfaces: ["markdown", "environment"],
         render: (ctx: SettingsContributionContext) => {
             const children: SettingsPanelChild[] = [
                 ...connectionFields(ctx),

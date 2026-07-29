@@ -4,10 +4,14 @@
  */
 import type { AppSettings } from "./SettingsTypes";
 
-/** `markdown` = VDS md.u2re.space / /markdown/ (cw-markdown) — document SPA, not CWSP Control. */
+/**
+ * `markdown` = VDS md.u2re.space / /markdown/ (cw-markdown) — document SPA, not CWSP Control.
+ * `environment` = CWSP-shell environment desktop (Speed Dial / ui-window) — no CWSP/Server/Extension tabs.
+ */
 export type SettingsContributionSurface =
     | "web"
     | "markdown"
+    | "environment"
     | "crx"
     | "capacitor"
     | "native"

@@ -86,7 +86,7 @@
 @mixin tonal-surface($surface, $opacity: 1, $radius: 0, $padding: 0, $border: 0) {
     background: color-mix(in srgb, var(--#{$surface}, canvas) calc($opacity * 100%), transparent);
     border-radius: $radius;
-    padding: $padding;
+    /*padding: $padding;*/
     @if $border != 0 {
         border: 1px solid var(--view-border, rgba(127, 127, 127, 0.22));
     }

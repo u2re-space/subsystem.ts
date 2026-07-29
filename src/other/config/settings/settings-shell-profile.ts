@@ -1,15 +1,15 @@
 /*
  * Filename: settings-shell-profile.ts
- * FullPath: apps/CWSP-document/src/shared/other/config/settings/settings-shell-profile.ts
- * Change date and time: 09.00.00_29.07.2026
- * Reason for changes: Document + markdown PWAs drop Server/Extension; CWSP contribution stays off those surfaces.
+ * FullPath: modules/projects/subsystem/src/other/config/settings/settings-shell-profile.ts
+ * Change date and time: 12.55.00_29.07.2026
+ * Reason for changes: Environment shell profile drops Server/Extension (CWSP via excludeSurfaces).
  */
 
 import { isEnabledView } from "../../../routing/core/views";
 import type { SettingsContributionContext } from "../SettingsContributions";
 
 /** Which built-in settings host variant to render. */
-export type SettingsShellProfile = "full" | "cwsp-mobile" | "extension" | "markdown";
+export type SettingsShellProfile = "full" | "cwsp-mobile" | "extension" | "markdown" | "environment";
 
 /**
  * CWSAndroid / Capacitor CWSP shells enable only `network` + `settings` — no workcenter,
@@ -21,6 +21,8 @@ export const resolveSettingsShellProfile = (
     if (ctx.isExtension || ctx.surface === "crx") return "extension";
     // WHY: md.u2re.space settings are document/AI only — CWSP Control is cwsp.u2re.space.
     if (ctx.surface === "markdown") return "markdown";
+    // WHY: CWSP-shell environment desktop — Appearance/AI/etc only; Control lives on Cap/Neu.
+    if (ctx.surface === "environment") return "environment";
     if (ctx.surface === "capacitor" || ctx.surface === "native") {
         const desktopViews =
             isEnabledView("workcenter") ||
@@ -50,6 +52,12 @@ const EXTENSION_HIDDEN_BUILTIN_TABS = ["extension", "server"] as const;
 /** Document / md.u2re.space PWA: no Server / Extension (Control/CRX own those). */
 const MARKDOWN_HIDDEN_BUILTIN_TABS = ["server", "extension"] as const;
 
+/**
+ * CWSP-shell environment: no Server / Extension / CWSP.
+ * NOTE: `cwsp` is contributed (not built-in); same DOM selectors still remove the tab/panel.
+ */
+const ENVIRONMENT_HIDDEN_BUILTIN_TABS = ["server", "extension", "cwsp"] as const;
+
 /** Remove host-variant built-in tabs that the profile replaces or folds elsewhere. */
 export const pruneBuiltInSettingsTabs = (
     root: HTMLElement,
@@ -62,7 +70,9 @@ export const pruneBuiltInSettingsTabs = (
               ? EXTENSION_HIDDEN_BUILTIN_TABS
               : profile === "markdown"
                 ? MARKDOWN_HIDDEN_BUILTIN_TABS
-                : null;
+                : profile === "environment"
+                  ? ENVIRONMENT_HIDDEN_BUILTIN_TABS
+                  : null;
     if (!hidden) return;
     for (const tab of hidden) {
         root.querySelector(`[data-tab-panel="${tab}"]`)?.remove();
@@ -75,6 +85,7 @@ export const defaultSettingsTabForProfile = (profile: SettingsShellProfile): str
     // WHY: contributed `crx` panel is the single Extension tab after prune.
     if (profile === "extension") return "crx";
     if (profile === "markdown") return "markdown";
+    if (profile === "environment") return "appearance";
     return "ai";
 };
 
