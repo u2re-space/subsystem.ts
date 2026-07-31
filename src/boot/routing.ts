@@ -34,7 +34,8 @@ import {
     getDefaultBootShellId,
     normalizeBootShellId,
     promoteSoftMinimalShellPreference,
-    readLastActiveBootShell
+    readLastActiveBootShell,
+    resolveForcedBootShell
 } from "./shell-preference";
 import { ensureHistoryBaseDataset, stripHistoryBase, withHistoryBase } from "./history-base";
 
@@ -72,6 +73,10 @@ const normalizeShellPreference = (shell: ShellId | null | undefined): ShellId =>
     normalizeBootShellId(shell);
 
 export const getShellFromQuery = (): ShellId | null => {
+    // WHY: u2re.space hub ignores `?shell=` (bookmarks often carry minimal from Cap/control).
+    if (resolveForcedBootShell()) {
+        return null;
+    }
     try {
         const params = new URLSearchParams(location.search);
         const shell = (params.get("shell") || "").trim().toLowerCase();
@@ -282,6 +287,16 @@ export function initRouteListening(): void {
  * Get saved shell preference
  */
 export function getSavedShellPreference(): ShellId | null {
+    const forced = resolveForcedBootShell();
+    if (forced) {
+        try {
+            localStorage.setItem("rs-boot-shell", forced);
+        } catch {
+            // Ignore storage issues
+        }
+        return forced;
+    }
+
     const fromQuery = getShellFromQuery();
     if (fromQuery) {
         try {
@@ -335,7 +350,10 @@ export const loadSubAppWithShell = async (
     shellId?: ShellId,
     initialView?: ViewId
 ): Promise<AppLoaderResult> => {
-    const shell = normalizeShellPreference(shellId || getSavedShellPreference() || getDefaultBootShellId());
+    // INVARIANT: VDS hub always mounts environment regardless of caller/query/localStorage.
+    const shell = normalizeShellPreference(
+        resolveForcedBootShell() || shellId || getSavedShellPreference() || getDefaultBootShellId()
+    );
     const shellDefaultView = resolveShellDefaultView(shell);
     const view = pickEnabledView(initialView || getViewFromPath() || shellDefaultView, "home");
     

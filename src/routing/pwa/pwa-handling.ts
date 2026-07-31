@@ -128,12 +128,12 @@ class AssetUpdateManager {
         if (this.isChecking) return [];
         this.isChecking = true;
 
+        // WHY: Vite SPA builds often omit root favicon.* (index uses data: URI);
+        // probing missing paths only floods SW with 404 / FetchEvent network errors.
         const criticalAssets = IS_DEV
             ? [] // Dev server + injectManifest can cause noisy update signals.
             : [
-                './choice.js',
-                './favicon.svg',
-                './favicon.png'
+                './choice.js'
             ];
 
         const updatedAssets: string[] = [];

@@ -1,8 +1,8 @@
 /*
  * Filename: shell-preference.ts
  * FullPath: modules/shared/src/boot/shell-preference.ts
- * Change date and time: 09.20.00_29.07.2026
- * Reason for changes: CWSP-shell default is environment on desktop and mobile (launcher / NTP).
+ * Change date and time: 07.52.00_31.07.2026
+ * Reason for changes: VDS u2re.space (data-cwsp-surface=vds-main) always forces environment shell.
  */
 /**
  * Cross-window shell default: last-focused / last-interacted window updates
@@ -10,6 +10,9 @@
  *
  * WHY: CWSP-shell is web-desktop + mobile launcher + Speed Dial / new-tab — default `environment`
  * on all viewports. Users can still pick `minimal` via boot menu when `rs-boot-remember=1`.
+ *
+ * INVARIANT: `data-cwsp-surface="vds-main"` (u2re.space hub) always boots `environment` —
+ * ignore `?shell=minimal`, soft prefs, and remember flags for that surface only.
  */
 
 import type { ShellId } from "./types";
@@ -20,6 +23,23 @@ export const LS_BOOT_SHELL = "rs-boot-shell";
 export const LS_BOOT_REMEMBER = "rs-boot-remember";
 
 const LAST_ACTIVE_MAX_MS = 30 * 24 * 60 * 60 * 1000;
+
+/**
+ * VDS public hub (`apps/.../vds-main` → u2re.space) stamps `data-cwsp-surface="vds-main"`.
+ * WHY: bookmarks / deep links often carry `?shell=minimal` from Capacitor/control; hub must stay desktop.
+ */
+export function isForcedEnvironmentBootSurface(): boolean {
+    try {
+        return globalThis.document?.documentElement?.dataset?.cwspSurface === "vds-main";
+    } catch {
+        return false;
+    }
+}
+
+/** Returns `environment` when the current document is the VDS hub; otherwise `null`. */
+export function resolveForcedBootShell(): ShellId | null {
+    return isForcedEnvironmentBootSurface() ? "environment" : null;
+}
 
 export function normalizeBootShellId(shell: ShellId | null | undefined): ShellId {
     if (shell === "faint") {
@@ -78,6 +98,15 @@ export function getDefaultBootShellId(): ShellId {
  * unless the user checked “Remember my choice”.
  */
 export function promoteSoftMinimalShellPreference(shell: ShellId): ShellId {
+    // WHY: VDS hub never keeps minimal, even with rs-boot-remember=1.
+    if (isForcedEnvironmentBootSurface()) {
+        try {
+            globalThis.localStorage?.setItem(LS_BOOT_SHELL, "environment");
+        } catch {
+            /* ignore */
+        }
+        return "environment";
+    }
     if (shell !== "minimal") return coerceShellForBootViewport(shell);
     try {
         if (globalThis.localStorage?.getItem(LS_BOOT_REMEMBER) === "1") {
