@@ -1,4 +1,9 @@
-/**
+/*
+ * Filename: app-layers.ts
+ * FullPath: modules/projects/subsystem/src/routing/core/app-layers.ts
+ * Change date and time: 09.40.00_31.07.2026
+ * Reason for changes: Size bare body/#app mount roots so absolute shell layers get a viewport box.
+ *
  * App shell / canvas / overlay stacking under #app (or another mount root).
  * Implemented here (under `shared/routing`) so PWA and CRX entries resolve one stable
  * module — avoids dev-server secondary fetches to `frontend/ai-slop/*` that could fail behind proxies.
@@ -88,6 +93,28 @@ export const ensureAppLayers = (
     mountElement.style.position = "relative";
     mountElement.style.overflow = "hidden";
     mountElement.dataset.appLayerRoot = "true";
+    /*
+     * WHY: Shell/canvas/overlay layers are `position: absolute; inset: 0`.
+     * Bare `body` / `#app` often collapse to content height 0, so the shell host
+     * (grid-placed on `content-row`) becomes unclickable / appears frozen.
+     * INVARIANT: the mount root must establish a viewport-sized containing block.
+     */
+    try {
+        const root = document.documentElement;
+        if (mountElement === document.body || mountElement.id === "app") {
+            if (!root.style.minBlockSize) root.style.minBlockSize = "100dvb";
+            if (!root.style.blockSize && !root.style.height) root.style.blockSize = "100%";
+            if (!document.body.style.margin && mountElement === document.body) {
+                document.body.style.margin = "0";
+            }
+        }
+        if (!mountElement.style.minBlockSize) mountElement.style.minBlockSize = "100dvb";
+        if (!mountElement.style.blockSize && !mountElement.style.height) {
+            mountElement.style.blockSize = "100%";
+        }
+    } catch {
+        /* ignore */
+    }
 
     const canvasLayer = enableCanvasLayer ? createCanvasLayer() : null;
 

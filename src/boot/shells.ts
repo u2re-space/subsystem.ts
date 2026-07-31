@@ -35,7 +35,8 @@ const VIEW_SERVICE_CHANNEL_IDS = new Set<string>([
     "viewer",
     "explorer",
     "print",
-    "history",
+    // WHY: Transfer History (`views/history`) is not the undo/redo service channel.
+    // Init-ing `history` BroadcastChannel on navigate was unnecessary work on Neu.
     "editor",
     "home"
 ]);
@@ -161,8 +162,28 @@ export abstract class ShellBase implements Shell {
         this.rootElement.style.minInlineSize = "0";
         // Immersive mounts flush in `#app` without app-layers grid; min-size 0 + inline host = 0 height.
         // Let immersive `base.scss` :host set `min-block-size` / `min-height` instead.
+        // WHY: If container is not the app-layers shell grid (legacy direct body mount),
+        // named lines do nothing and host height stays 0 — fill the container instead.
+        const parentIsShellGrid =
+            container?.dataset?.appLayer === "shell" ||
+            (() => {
+                try {
+                    const cs = getComputedStyle(container);
+                    return cs.display === "grid" && String(cs.gridTemplateRows || "").includes("content-row");
+                } catch {
+                    return false;
+                }
+            })();
         if (this.id !== "immersive" && this.id !== "content") {
-            this.rootElement.style.minBlockSize = "0";
+            if (parentIsShellGrid) {
+                this.rootElement.style.minBlockSize = "0";
+            } else {
+                this.rootElement.style.position = "absolute";
+                this.rootElement.style.inset = "0";
+                this.rootElement.style.inlineSize = "100%";
+                this.rootElement.style.blockSize = "100%";
+                this.rootElement.style.minBlockSize = "100%";
+            }
         } else {
             this.rootElement.style.minBlockSize = "";
         }

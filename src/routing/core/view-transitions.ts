@@ -1,3 +1,12 @@
+/*
+ * Filename: view-transitions.ts
+ * FullPath: modules/projects/subsystem/src/routing/core/view-transitions.ts
+ * Change date and time: 10.05.00_31.07.2026
+ * Reason for changes: Neutralino/WebView2 can leave a stuck ::view-transition
+ *   root that swallows all pointer hits — skip VT there and force skipTransition
+ *   on timeout.
+ */
+
 /**
  * View Transition API utilities for shell/view navigation.
  *
@@ -78,6 +87,30 @@ type KnownView = (typeof VIEW_ORDER)[number];
 export const supportsViewTransitions = (): boolean =>
     typeof document !== "undefined" && "startViewTransition" in document;
 
+/**
+ * WHY: Neutralino / WebNative WebViews have flaky View Transition teardown —
+ * a stuck `::view-transition` layer makes the whole shell unclickable.
+ * Prefer an instant DOM swap there.
+ */
+function shouldSkipViewTransitions(): boolean {
+    try {
+        const g = globalThis as unknown as {
+            __CWS_NEUTRALINO_BOOT__?: boolean;
+            __CWS_WEBNATIVE_BOOT__?: boolean;
+            NL_OS?: string;
+            Neutralino?: unknown;
+        };
+        if (g.__CWS_NEUTRALINO_BOOT__ || g.__CWS_WEBNATIVE_BOOT__) return true;
+        if (g.NL_OS || g.Neutralino) return true;
+        if (typeof document !== "undefined" && document.documentElement?.dataset?.cwspDisableVt === "1") {
+            return true;
+        }
+    } catch {
+        /* ignore */
+    }
+    return false;
+}
+
 // ─── Direction helpers ───────────────────────────────────────────────────────
 
 /**
@@ -122,7 +155,7 @@ export async function withViewTransition(
         finishOnce();
     };
 
-    if (!supportsViewTransitions()) {
+    if (!supportsViewTransitions() || shouldSkipViewTransitions()) {
         await update();
         requestAnimationFrame(() => requestAnimationFrame(guardedFinish));
         return;
@@ -142,7 +175,15 @@ export async function withViewTransition(
             : doc.startViewTransition(update);
 
     void transition.finished.then(guardedFinish).catch(guardedFinish);
-    globalThis.setTimeout?.(() => guardedFinish(), 1400);
+    // WHY: if the animation never settles, skipTransition tears down the hit-test overlay.
+    globalThis.setTimeout?.(() => {
+        try {
+            transition.skipTransition();
+        } catch {
+            /* already finished */
+        }
+        guardedFinish();
+    }, 900);
 
     try {
         // Wait only until the DOM update callback settles. `finished` can stall in some Chromium

@@ -1,18 +1,23 @@
-/**
+/*
+ * Filename: BootLoader.ts
+ * FullPath: modules/projects/subsystem/src/boot/BootLoader.ts
+ * Change date and time: 09.40.00_31.07.2026
+ * Reason for changes: bootMinimal mounts via ensureAppLayers shell grid so host is not 0-height on body.
+ *
  * Boot Loader - Shell/Style Initialization System
- * 
+ *
  * Manages the boot sequence for the CWSP-shell application:
  * 1. Load settings and apply document theme (`:root` / color-scheme before Veela paints)
  * 2. Load style system (Veela CSS or Minimal)
  * 3. Initialize shell (frame/layout/environment)
  * 4. Load view/component/module and connect uniform channels
- * 
+ *
  * Shell/Style Matrix:
  * | Shells/Styles: | Faint | Minimal | Raw |
  * |----------------|-------|-------|-----|
  * | Veela          |  [r]  |  [o]  | [o] |
  * | Minimal        |  [o]  |  [r]  | [r] |
- * 
+ *
  * [r] - recommended, [o] - optional
  */
 
@@ -31,6 +36,7 @@ import { loadStyleSystem } from "com/styles";
 import { isEnabledView, pickEnabledView } from "com/routing/core/views";
 import { applyHubSocketFromSettings } from "./hub-socket-boot";
 import { ensureCapacitorBridgeDaemonStarted } from "./capacitor-settings-permissions";
+import { ensureAppLayers } from "shared/routing/app-layers";
 
 
 // ============================================================================
@@ -696,6 +702,29 @@ export async function bootEnvironment(
 }
 
 /**
+ * Resolve the grid shell layer that {@link ShellBase.mount} anchors to
+ * (`content-row` / `content-column`). Bare `body` has no named lines → 0-height host.
+ * WHY: CWSP Control / Neutralino / Capacitor call `bootMinimal(document.body, …)`.
+ */
+function resolveMinimalShellMount(container: HTMLElement): HTMLElement {
+    try {
+        if (container?.dataset?.appLayer === "shell") return container;
+        const existing = container.querySelector?.(
+            ':scope > [data-app-layer="shell"]'
+        ) as HTMLElement | null;
+        if (existing) return existing;
+        const layers = ensureAppLayers(container, {
+            enableOrientLayer: false,
+            enableCanvasLayer: false
+        });
+        return layers.shellLayer;
+    } catch (error) {
+        console.warn("[BootLoader] ensureAppLayers failed; mounting into container directly:", error);
+        return container;
+    }
+}
+
+/**
  * Boot with Minimal shell
  */
 export async function bootMinimal(
@@ -709,7 +738,8 @@ export async function bootMinimal(
         ? ([defaultView] as ServiceChannelId[])
         : (["viewer"] as ServiceChannelId[]);
     const channelPriorityId = channels[0];
-    return bootLoader.boot(container, {
+    const mountRoot = resolveMinimalShellMount(container);
+    return bootLoader.boot(mountRoot, {
         styleSystem: "vl-basic",
         shell: "minimal",
         defaultView,
