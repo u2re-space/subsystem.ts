@@ -54,6 +54,7 @@
         display: flex;
         background-color: var(--shell-bg);
         color: var(--shell-fg);
+        color: contrast-color(var(--shell-fg));
         font-family: system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
         overflow: hidden;
     }
@@ -63,6 +64,7 @@
         flex-direction: column;
         inline-size: var(--shell-sidebar-width);
         background-color: var(--shell-sidebar-bg);
+        color: contrast-color(var(--shell-fg));
         border-inline-end: 1px solid var(--shell-sidebar-border);
         flex-shrink: 0;
         transition: inline-size 0.2s ease;
@@ -106,6 +108,7 @@
         &:hover {
             opacity: 1;
             background-color: var(--shell-tab-hover);
+            color: contrast-color(var(--shell-tab-hover));
         }
     }
 
@@ -140,11 +143,13 @@
 
         &:hover {
             background-color: var(--shell-tab-hover);
+            color: contrast-color(var(--shell-tab-hover));
         }
 
         &.active {
             background-color: var(--shell-tab-active-bg);
             color: var(--shell-accent);
+            color: contrast-color(var(--shell-tab-active-bg));
 
             ui-icon {
                 opacity: 1;
@@ -171,6 +176,7 @@
         align-items: center;
         block-size: var(--shell-tabs-height);
         background-color: var(--shell-tabs-bg);
+        color: contrast-color(var(--shell-tabs-bg));
         border-block-end: 1px solid var(--shell-sidebar-border);
         flex-shrink: 0;
     }
@@ -196,6 +202,7 @@
         border-block-end: 2px solid transparent;
         background: transparent;
         color: var(--shell-fg);
+        color: contrast-color(inherit(background-color));
         font-size: 0.8125rem;
         cursor: pointer;
         transition: background-color 0.15s ease, border-color 0.15s ease;
@@ -208,11 +215,13 @@
 
         &:hover {
             background-color: var(--shell-tab-hover);
+            color: contrast-color(var(--shell-tab-hover));
         }
 
         &.active {
             background-color: var(--shell-tab-active-bg);
             border-block-end-color: var(--shell-tab-active-border);
+            color: contrast-color(var(--shell-tab-active-bg));
 
             ui-icon {
                 opacity: 1;

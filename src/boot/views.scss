@@ -24,6 +24,7 @@
         z-index: 0;
         color-scheme: light dark;
         color: var(--view-fg, var(--color-on-surface, canvasText));
+        color: contrast-color(var(--view-bg, var(--color-surface, canvas)));
         background-color: var(--view-bg, var(--color-surface, canvas));
     }
 }
@@ -54,6 +55,7 @@
         min-block-size: 0;
         color: var(--view-fg, var(--color-on-surface, #{_viewer-css-light-dark("light-dark(#1a1a1a, #e5e7eb)")}));
         background: var(--view-bg, var(--color-surface, #{_viewer-css-light-dark("light-dark(#f4f6fa, #060d17)")}));
+        color: contrast-color(var(--view-bg, var(--color-surface, #{_viewer-css-light-dark("light-dark(#f4f6fa, #060d17)")})));
     }
 
     .view-viewer__content {

@@ -52,6 +52,7 @@
         outline: none 0 transparent;
         background: var(--choice-bg);
         color: var(--choice-fg);
+        color: contrast-color(var(--choice-bg));
         font-family: var(--choice-font);
     }
 
@@ -132,6 +133,7 @@
             align-content: start;
             justify-items: stretch;
             color: var(--choice-fg);
+            color: contrast-color(var(--choice-card));
             background: var(--choice-card);
             border-radius: var(--choice-radius-xl);
             box-shadow: var(--choice-elev-3);
@@ -168,6 +170,7 @@
                 line-height: 1.4;
                 cursor: pointer;
                 background: rgba(255, 255, 255, 0.02);
+                color: contrast-color(rgba(255, 255, 255, 0.02));
                 color: var(--choice-fg);
                 transition: all 200ms cubic-bezier(0.2, 0, 0, 1);
                 text-align: center;
@@ -192,6 +195,7 @@
                     outline: none;
                     background: rgba(139, 183, 255, 0.12);
                     color: var(--choice-fg);
+                    color: contrast-color(rgba(139, 183, 255, 0.12));
                     box-shadow: var(--choice-elev-1), 0 0 0 3px var(--choice-focus);
                 }
 
@@ -204,10 +208,12 @@
                 &.recommended {
                     background: var(--choice-primary);
                     color: var(--choice-primary-fg);
+                    color: contrast-color(var(--choice-primary));
                     box-shadow: var(--choice-elev-1);
 
                     &:hover {
                         background: color-mix(in oklab, var(--choice-primary) 90%, black);
+                        color: contrast-color(color-mix(in oklab, var(--choice-primary) 90%, black));
                         box-shadow: var(--choice-elev-2);
                     }
                 }
@@ -242,6 +248,7 @@
             background: rgba(255, 255, 255, 0.03);
             padding: var(--choice-radius-sm) var(--choice-radius-md);
             border-radius: var(--choice-radius-md);
+            color: contrast-color(rgba(255, 255, 255, 0.03));
         }
 
         &-hint {
@@ -259,6 +266,7 @@
             padding: var(--choice-radius-md);
             background: rgba(255, 255, 255, 0.02);
             border-radius: var(--choice-radius-lg);
+            color: contrast-color(rgba(255, 255, 255, 0.02));
         }
 
         &-reasons {
@@ -270,6 +278,7 @@
             background: rgba(255, 255, 255, 0.02);
             border-radius: var(--choice-radius-md);
             border: 1px solid rgba(255, 255, 255, 0.05);
+            color: contrast-color(rgba(255, 255, 255, 0.02));
         }
 
         &-remember {
@@ -288,6 +297,7 @@
             &:hover {
                 background: rgba(255, 255, 255, 0.05);
                 border-color: rgba(255, 255, 255, 0.12);
+                color: contrast-color(rgba(255, 255, 255, 0.05));
             }
 
             input[type="checkbox"] {
@@ -295,6 +305,7 @@
                 block-size: 20px;
                 accent-color: var(--choice-primary);
                 margin: 0;
+                color: contrast-color(var(--choice-primary));
             }
 
             span {
@@ -302,6 +313,7 @@
                 font-weight: 500;
                 color: var(--choice-fg);
                 opacity: 0.9;
+                color: contrast-color(var(--choice-fg));
             }
         }
     }
