@@ -176,9 +176,16 @@ export const syncBrowserChromeTheme = (
     }
 
     // When LUR.E dynamic theme is active, it is the single writer for meta theme-color.
+    // Native mono ui-window also owns theme-color (WCO title strip) — never stomp with #007acc.
     if ((globalThis as any)?.__LURE_DYNAMIC_THEME_PRIORITY__ !== true) {
         const applyMetaThemeColor = (): void => {
             if ((globalThis as any)?.__LURE_DYNAMIC_THEME_PRIORITY__ === true) {
+                return;
+            }
+            if ((globalThis as any)?.__CWSP_NATIVE_THEME_COLOR_OWNED__) {
+                return;
+            }
+            if (document.querySelector("ui-window[native-mode]:not([minimized])")) {
                 return;
             }
 
@@ -186,7 +193,8 @@ export const syncBrowserChromeTheme = (
             if (!meta) return;
 
             const sampled = samplePwaToolbarBackgroundColor();
-            const fallback = resolved === "dark" ? "#0f1419" : "#007acc";
+            /* WHY: #007acc painted a blue WCO control strip over warm Settings titlebars. */
+            const fallback = resolved === "dark" ? "#0f1419" : "#cbb8a4";
             meta.setAttribute("content", sampled ?? fallback);
         };
 

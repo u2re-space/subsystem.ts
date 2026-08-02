@@ -22,7 +22,7 @@ import {
 export * from "./shell-slots";
 import { resolveOverlayMountPoint as resolveGlobalOverlayMount } from "./shell-slots";
 import { showToast } from "./toast";
-import { ensureHistoryBaseDataset, withHistoryBase } from "./history-base";
+import { ensureHistoryBaseDataset, stripHistoryBase, withHistoryBase } from "./history-base";
 
 //@ts-ignore
 import style from "./views.scss?inline";
@@ -418,16 +418,19 @@ export abstract class ShellBase implements Shell {
         this.currentView.value = viewId;
 
         // URL contract:
-        // - base/minimal shells are path-based (`/${view}?shell=...`) for standalone tabs
+        // - minimal / immersive / environment are path-based (`/${view}?shell=...`)
         // - other shells keep canonical root (`/?...`) with view in history.state
         // - VDS path mounts (/cwsp, /markdown) keep their prefix so reload ≠ Fastify 404
+        // WHY: environment mono native must show `/settings?...`, not `/?view=settings`.
         if (typeof window !== "undefined" && typeof window != "undefined") {
             ensureHistoryBaseDataset();
             const searchParams = new URLSearchParams(params || {});
             // Always stamp the mounted shell — stale `shell=` from another harness must not linger.
             searchParams.set("shell", this.id);
             const isPathRoutedShell =
-                this.id === "minimal" || this.id === "immersive";
+                this.id === "minimal" ||
+                this.id === "immersive" ||
+                this.id === "environment";
             const search = searchParams.toString()
                 ? "?" + searchParams.toString()
                 : "";
@@ -1063,16 +1066,19 @@ export abstract class ShellBase implements Shell {
 
     /**
      * Get view ID from current pathname
+     * WHY: strip VDS mounts (`/cwsp`, `/markdown`) so `/cwsp/settings` boots Settings.
      */
     protected getViewFromPathname(): ViewId | null {
         if (typeof window === "undefined" || typeof window == "undefined") return null;
 
-        const pathname = globalThis?.location?.pathname?.replace(/^\//, "").toLowerCase();
-        if (!pathname || pathname === "/") {
+        const stripped = stripHistoryBase(String(globalThis?.location?.pathname || "/"))
+            .replace(/^\//, "")
+            .toLowerCase();
+        if (!stripped || stripped === "/") {
             const stateView = (globalThis?.history?.state as { viewId?: ViewId } | null)?.viewId;
             return stateView && isEnabledView(String(stateView)) ? stateView : null;
         }
-        return isEnabledView(pathname) ? (pathname as ViewId) : null;
+        return isEnabledView(stripped) ? (stripped as ViewId) : null;
     }
 }
 

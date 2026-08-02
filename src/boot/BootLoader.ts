@@ -339,7 +339,19 @@ export class BootLoader {
             if (config.skipInitialNavigate) {
                 this.dismissShellLoadingSpinner(shell);
             } else {
-                await shell.navigate(config.defaultView);
+                /*
+                 * WHY: pass address-bar query (esp. `native=1`) into navigate so environment
+                 * mono deep links (`/settings?shell=environment&native=1`) enter native-mode.
+                 */
+                let bootParams: Record<string, string> | undefined;
+                try {
+                    bootParams = Object.fromEntries(
+                        new URLSearchParams(globalThis.location?.search || "")
+                    );
+                } catch {
+                    bootParams = undefined;
+                }
+                await shell.navigate(config.defaultView, bootParams);
             }
             
             // Mark as ready

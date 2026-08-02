@@ -156,11 +156,18 @@ export function isRootRoute(): boolean {
 }
 
 /**
- * Build URL from route
+ * Build URL from route.
+ * WHY: prefer `/${view}?…` so environment/native deep links stay readable
+ * (`/settings?shell=environment&native=1`), not root `/?view=settings`.
  */
 export function buildUrl(route: Route): string {
     ensureHistoryBaseDataset();
-    let url = withHistoryBase("/");
+    const view = String(route.view || "").trim().replace(/^\/+/, "").toLowerCase();
+    const path =
+        view && view !== "home"
+            ? withHistoryBase(`/${view}`)
+            : withHistoryBase("/");
+    let url = path;
 
     if (route.params && Object.keys(route.params).length > 0) {
         const search = new URLSearchParams(route.params).toString();
@@ -355,7 +362,24 @@ export const loadSubAppWithShell = async (
         resolveForcedBootShell() || shellId || getSavedShellPreference() || getDefaultBootShellId()
     );
     const shellDefaultView = resolveShellDefaultView(shell);
-    const view = pickEnabledView(initialView || getViewFromPath() || shellDefaultView, "home");
+    /*
+     * WHY: mono `?native=1` with a path view (`/settings`) must boot that view, not Home.
+     * When path was stripped to `/` but `view=` query remains, honor it.
+     */
+    let nativeViewHint: ViewId | null = null;
+    try {
+        const sp = new URLSearchParams(location.search || "");
+        if (sp.get("native") === "1" || sp.get("native") === "true") {
+            const qView = (sp.get("view") || "").trim().toLowerCase();
+            if (qView && isEnabledView(qView)) nativeViewHint = qView as ViewId;
+        }
+    } catch {
+        /* ignore */
+    }
+    const view = pickEnabledView(
+        initialView || getViewFromPath() || nativeViewHint || shellDefaultView,
+        "home"
+    );
     
     console.log('[App] Loading sub-app with shell:', shell, 'view:', view);
 
