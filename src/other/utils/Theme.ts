@@ -1,6 +1,51 @@
-import { loadSettings } from "com/config/Settings";
+import { loadSettings, saveSettings } from "com/config/Settings";
 import type { AppSettings } from "com/config/SettingsTypes";
 import { applyGridSettings } from "core/store/StateStorage";
+
+/**
+ * WHY: fl.ui Quick Settings cannot import this module (layer cycle). It dispatches
+ * `u2-theme-change` with `{ source: "quick-settings", theme }`; we persist to IDB and
+ * re-run {@link applyTheme} so env-shell + minimal shells share one persistence path.
+ */
+let quickSettingsThemeBridgeBound = false;
+let quickSettingsThemeBridgeBusy = false;
+
+export const bindQuickSettingsThemePersistence = (): void => {
+    if (quickSettingsThemeBridgeBound || typeof document === "undefined") return;
+    quickSettingsThemeBridgeBound = true;
+
+    document.documentElement.addEventListener("u2-theme-change", (ev: Event) => {
+        const detail = (ev as CustomEvent)?.detail;
+        if (!detail || detail.source !== "quick-settings") return;
+        const theme = detail.theme;
+        if (theme !== "light" && theme !== "dark") return;
+        if (quickSettingsThemeBridgeBusy) return;
+        quickSettingsThemeBridgeBusy = true;
+        void (async () => {
+            try {
+                const current = await loadSettings();
+                if (current?.appearance?.theme === theme) {
+                    /* DOM already set by applyQuickTheme — keep chrome attrs authoritative. */
+                    syncBrowserChromeTheme(theme, theme);
+                    return;
+                }
+                const saved = await saveSettings({
+                    ...current,
+                    appearance: {
+                        ...(current.appearance || {}),
+                        theme
+                    }
+                });
+                applyTheme(saved);
+            } catch (e) {
+                console.warn("[Theme] Quick Settings persistence failed", e);
+                syncBrowserChromeTheme(theme, theme);
+            } finally {
+                quickSettingsThemeBridgeBusy = false;
+            }
+        })();
+    });
+};
 
 /** Convert getComputedStyle background (rgb/rgba or hex) to #rrggbb for meta theme-color / PWA chrome. */
 export const cssBackgroundToOpaqueHex = (css: string): string | null => {
@@ -85,6 +130,16 @@ const syncShellHostVisualScheme = (resolved: "light" | "dark"): void => {
     } catch {
         /* ignore */
     }
+    /* WHY: env-shell floating windows must pin scheme or titlebar/content light-dark() follows OS. */
+    try {
+        document.querySelectorAll("ui-window, .env-shell-root").forEach((el) => {
+            const h = el as HTMLElement;
+            h.dataset.theme = resolved;
+            h.style.colorScheme = resolved;
+        });
+    } catch {
+        /* ignore */
+    }
 };
 
 /** Keep <html> + PWA chrome aligned with resolved light/dark and user preference (auto/light/dark). */
@@ -148,6 +203,9 @@ export const applyTheme = (settings: AppSettings | null | undefined) => {
         // Service worker/offscreen-like runtimes have no DOM. Keep this a no-op.
         return;
     }
+
+    /* Idempotent — ensures QS → IDB bridge is live after BootLoader applyTheme. */
+    bindQuickSettingsThemePersistence();
 
     const root = document.documentElement;
     const theme = settings.appearance?.theme || "auto";
@@ -226,6 +284,7 @@ export const resyncThemeAfterAdoptedViewSheet = (): void => {
 export const initTheme = async () => {
     try {
         if (typeof document === "undefined") return;
+        bindQuickSettingsThemePersistence();
         const settings = await loadSettings();
         applyTheme(settings);
 
