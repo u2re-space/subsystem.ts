@@ -74,54 +74,6 @@ const generateItemId = () => {
 };
 
 const EXTERNAL_SHORTCUTS: SpeedDialPersistedItem[] = [
-    {
-        id: "shortcut-docs",
-        cell: observe([0, 1]),
-        icon: "book-open-text",
-        label: "Docs",
-        action: "open-link",
-        meta: { href: "https://github.com/fest-live", description: "Project documentation" }
-    },
-    {
-        id: "shortcut-roadmap",
-        cell: observe([1, 1]),
-        icon: "signpost",
-        label: "Roadmap",
-        action: "open-link",
-        meta: { href: "https://github.com/u2re-space/unite-2.man", description: "Manifest notes" }
-    },
-    {
-        id: "shortcut-fest-live",
-        cell: observe([2, 1]),
-        icon: "github-logo",
-        label: "Fest Live",
-        action: "open-link",
-        meta: { href: "https://github.com/fest-live", description: "Fest Live Organization" }
-    },
-    {
-        id: "shortcut-l2ne-dev",
-        cell: observe([3, 1]),
-        icon: "user",
-        label: "L2NE Dev",
-        action: "open-link",
-        meta: { href: "https://github.com/L2NE-dev", description: "L2NE Developer Profile" }
-    },
-    {
-        id: "shortcut-u2re-space",
-        cell: observe([0, 2]),
-        icon: "planet",
-        label: "U2RE Space",
-        action: "open-link",
-        meta: { href: "https://github.com/u2re-space/", description: "U2RE Space Organization" }
-    },
-    {
-        id: "shortcut-telegram",
-        cell: observe([1, 2]),
-        icon: "telegram-logo",
-        label: "Telegram",
-        action: "open-link",
-        meta: { href: "https://t.me/u2re_space", description: "U2RE Space Telegram" }
-    }
 ];
 
 const DEFAULT_SPEED_DIAL_DATA: SpeedDialPersistedItem[] = [
