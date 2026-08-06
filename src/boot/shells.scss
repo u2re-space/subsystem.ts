@@ -8,14 +8,19 @@
         --shell-toolbar-height: 40px;
         --shell-status-height: 24px;
 
-        /* Colors */
-        --faint-nav-bg: light-dark(var(--color-surface-container-high), var(--color-surface-container-high));
-        --faint-nav-border: light-dark(var(--color-outline-variant), var(--color-outline-variant));
-        --faint-sidebar-bg: light-dark(var(--color-surface-container-high), var(--color-surface-container-high));
+        /* Colors
+         * NOTE: `--faint-*` / `--shell-sidebar-*` / `--shell-tabs-*` color defaults are owned
+         * by veela `core/misc/_tokens.scss` (single source of truth) and inherit via `:root`.
+         * The `light-dark(x, x)` wrappers below are equivalent to `var(--x)` and remain as
+         * standalone fallbacks for the faint shell without veela.
+         */
+        --faint-nav-bg: var(--color-surface-container-high);
+        --faint-nav-border: var(--color-outline-variant);
+        --faint-sidebar-bg: var(--color-surface-container-high);
 
-        --shell-sidebar-bg: light-dark(var(--color-surface), var(--color-surface));
-        --shell-sidebar-fg: light-dark(var(--color-on-surface), var(--color-on-surface));
-        --shell-sidebar-border: light-dark(var(--color-border), var(--color-border));
+        --shell-sidebar-bg: var(--color-surface);
+        --shell-sidebar-fg: var(--color-on-surface);
+        --shell-sidebar-border: var(--color-border);
 
         --shell-tabs-bg: light-dark(var(--color-surface-elevated), var(--color-surface-elevated));
         --shell-tab-active-bg: light-dark(var(--color-surface), var(--color-surface));

@@ -1,4 +1,9 @@
 @layer boot.tokens {
+    /*
+     * NOTE: `--choice-*` is a standalone boot-screen palette (concrete `light-dark(#…)`),
+     * intentionally local: the boot view renders before veela is guaranteed loaded.
+     * Canonical color-token source of truth is veela `core/misc/_tokens.scss`.
+     */
     :root:has([data-view="boot"]),
     html:has([data-view="boot"]) {
         --view-padding: var(--space-8);
