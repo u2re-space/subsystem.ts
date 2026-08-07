@@ -1,6 +1,15 @@
 /**
- * Library build config for `@fest-lib/subsystem` sources under modules/shared/src.
- * Named export `initiate` is reused by modules/projects/subsystem and fl.ui vite configs.
+ * Filename: vite.config.js
+ * FullPath: modules/projects/subsystem/vite.config.js
+ * Change date and time: 21.41.00_07.08.2026
+ * Reason for changes: Document that consumers must use named `initiate`, not `default`.
+ *
+ * Library build config for `@fest-lib/subsystem` (also linked as modules/shared).
+ *
+ * INVARIANT: Sibling packages (core/dom/lure/…) MUST import named `initiate(NAME, tsconfig, dir)`.
+ * Calling `default` always builds this package as `subsystem.js` and ignores any NAME args —
+ * that was why every library emitted dist/subsystem.js.
+ *
  * Dev playground with HTTPS: npm run dev → vite.dev.config.js
  */
 import { resolve } from "node:path";
@@ -11,8 +20,6 @@ import deduplicate from "postcss-discard-duplicates";
 import autoprefixer from "autoprefixer";
 import cssnano from "cssnano";
 import { npmFestImportRewritePlugin } from "./vite-npm-imports.mjs";
-
-const NAME = "subsystem";
 
 //
 export const importConfig = (url, ...args)=>{ return import(url)?.then?.((m)=>m?.default?.(...args)); }
@@ -78,7 +85,13 @@ export const projectMap = new Map([
     ["fest/image", "image.ts"]
 ]);
 
-export function initiate(name = NAME, tsconfig = {}, dir = resolve(import.meta.dirname, "./")) {
+/**
+ * Shared Vite lib config for fest-lib packages.
+ * @param {string} name - Output basename (`core` → dist/core.js). Must match package.json main.
+ * @param {object} tsconfig - Parsed tsconfig for path→alias mapping.
+ * @param {string} dir - Package root (usually import.meta.dirname of the caller).
+ */
+export function initiate(name = "subsystem", tsconfig = {}, dir = resolve(import.meta.dirname, "./")) {
     const $resolve = { alias: importFromTSConfig(tsconfig, dir) };
 
     // WHY: vite-plugin-external injects esbuild optimizeDeps hooks that Vite 8/Rolldown
@@ -228,7 +241,9 @@ export function initiate(name = NAME, tsconfig = {}, dir = resolve(import.meta.d
 
 const pkgDir = resolve(import.meta.dirname, "./");
 
+// WHY: Default export is only for building @fest-lib/subsystem itself.
+// Other packages must use named `initiate(NAME, …)` — see header INVARIANT.
 export default defineConfig(async () => {
     const tsconfig = JSON.parse(await readFile(resolve(pkgDir, "./tsconfig.json"), { encoding: "utf8" }));
-    return initiate(NAME, tsconfig, pkgDir);
+    return initiate("subsystem", tsconfig, pkgDir);
 });
