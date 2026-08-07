@@ -2,7 +2,7 @@
  * Minimal HTTPS harness: loads `explorer-view` only (OPFS / secure context).
  * Open https://localhost/demo.html when dev server uses default port 443.
  */
-import "fest/icon";
+import "@fest-lib/icon";
 import { mountViewModule, type ShellContext, type ViewModule } from "../types";
 
 const MOUNT_ID = "fl-ui-explorer-mount";

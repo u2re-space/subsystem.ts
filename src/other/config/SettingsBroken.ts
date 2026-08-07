@@ -3,7 +3,7 @@ import { JSOX } from "jsox";
 //
 import type { AppSettings } from "com/config/SettingsTypes";
 import { DEFAULT_SETTINGS } from "com/config/SettingsTypes";
-import { writeFileSmart } from "fest/lure";
+import { writeFileSmart } from "@fest-lib/lure";
 import { migrateLegacyCwspPublicPort } from "cwsp-shared/cwsp-endpoint-resolve";
 
 //
@@ -1134,10 +1134,10 @@ type SyncOptions = {
 };
 
 /** Lazy `fest/lure` — keeps content scripts / lightweight callers from pulling lure + UI CSS. */
-let lureFsPromise: Promise<{ getDirectoryHandle: typeof import("fest/lure").getDirectoryHandle; readFile: typeof import("fest/lure").readFile }> | null = null;
+let lureFsPromise: Promise<{ getDirectoryHandle: typeof import("@fest-lib/lure").getDirectoryHandle; readFile: typeof import("@fest-lib/lure").readFile }> | null = null;
 const loadLureFs = () => {
     if (!lureFsPromise) {
-        lureFsPromise = import("fest/lure").then((m) => ({
+        lureFsPromise = import("@fest-lib/lure").then((m) => ({
             getDirectoryHandle: m.getDirectoryHandle,
             readFile: m.readFile,
         }));

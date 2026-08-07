@@ -18,7 +18,7 @@ import {
     type PipelineConfig,
     type PipelineStage,
     type UnifiedMessagingConfig
-} from 'fest/uniform';
+} from '@fest-lib/uniform';
 
 import {
     BROADCAST_CHANNELS,

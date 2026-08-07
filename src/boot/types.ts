@@ -5,7 +5,7 @@
  * They do NOT contain application logic - only layout structure and navigation.
  */
 
-import type { refType } from "fest/object";
+import type { refType } from "@fest-lib/object";
 
 // ============================================================================
 // CORE SHELL TYPES

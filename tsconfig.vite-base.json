@@ -80,8 +80,8 @@
                 "../../projects/cwsp-shared/src/clipboard-wire-constants.ts"
             ],
             "cwsp-shared/cwsp-global": ["../../projects/cwsp-shared/src/cwsp-global.ts"],
-            "fest/cwsp-shared": ["../../projects/cwsp-shared/src/index.ts"],
-            "fest/cwsp-shared/*": ["../../projects/cwsp-shared/src/*"],
+            "@fest-lib/cwsp-shared": ["../../projects/cwsp-shared/src/index.ts"],
+            "@fest-lib/cwsp-shared/*": ["../../projects/cwsp-shared/src/*"],
             "veela-lib": ["../../projects/veela.css/src/scss/index.scss"],
             "veela-lib/*": ["../../projects/veela.css/src/scss/*"],
             "core/misc/config": [
@@ -96,15 +96,15 @@
             "core/misc/functions": [
                 "../../projects/veela.css/src/scss/core/misc/_functions.scss"
             ],
-            "fest/core": ["../../projects/core.ts/src/index.ts"],
-            "fest/dom": ["../../projects/dom.ts/src/index.ts"],
-            "fest/fl-ui": ["../../projects/fl.ui/src/index.ts"],
-            "fest/icon": ["../../projects/icon.ts/src/index.ts"],
-            "fest/lure": ["../../projects/lur.e/src/index.ts"],
-            "fest/object": ["../../projects/object.ts/src/index.ts"],
-            "fest/subsystem": ["../../projects/subsystem/src/index.ts"],
-            "fest/uniform": ["../../projects/uniform.ts/src/index.ts"],
-            "fest/image": ["../../projects/image.ts/src/index.ts"],
+            "@fest-lib/core": ["../../projects/core.ts/src/index.ts"],
+            "@fest-lib/dom": ["../../projects/dom.ts/src/index.ts"],
+            "@fest-lib/fl-ui": ["../../projects/fl.ui/src/index.ts"],
+            "@fest-lib/icon": ["../../projects/icon.ts/src/index.ts"],
+            "@fest-lib/lure": ["../../projects/lur.e/src/index.ts"],
+            "@fest-lib/object": ["../../projects/object.ts/src/index.ts"],
+            "@fest-lib/subsystem": ["../../projects/subsystem/src/index.ts"],
+            "@fest-lib/uniform": ["../../projects/uniform.ts/src/index.ts"],
+            "@fest-lib/image": ["../../projects/image.ts/src/index.ts"],
             "fl-ui": ["../../projects/fl.ui/src/ui"]
         }
     }

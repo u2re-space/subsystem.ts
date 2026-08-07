@@ -1,6 +1,6 @@
 import type { CustomInstruction } from "com/config/SettingsTypes";
 import { AI_INSTRUCTIONS } from "./core";
-import type { PromptTemplate } from "fest/lure";
+import type { PromptTemplate } from "@fest-lib/lure";
 
 export const DEFAULT_TEMPLATES: PromptTemplate[] = [
 	{

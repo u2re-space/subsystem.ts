@@ -11,7 +11,7 @@ import {
     type MessagePriority,
     type MessageQueueOptions,
     type QueueMessageOptions
-} from 'fest/uniform';
+} from '@fest-lib/uniform';
 
 // Re-export types
 export type { QueuedMessage, MessagePriority, MessageQueueOptions, QueueMessageOptions };

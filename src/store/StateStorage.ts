@@ -5,8 +5,8 @@
  * storage records and reactive UI state, and the metadata registry that keeps
  * richer shortcut configuration separate from the compact visible item list.
  */
-import { makeObjectAssignable, observe, stringRef, safe } from "fest/object";
-import { makeUIState } from "fest/lure";
+import { makeObjectAssignable, observe, stringRef, safe } from "@fest-lib/object";
+import { makeUIState } from "@fest-lib/lure";
 import { JSOX } from "jsox";
 import { readText } from "../modules/Clipboard";
 import { scheduleFrame } from "../other/utils/Runtime";

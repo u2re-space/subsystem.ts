@@ -1,6 +1,6 @@
-import { ref } from "fest/object";
+import { ref } from "@fest-lib/object";
 import type { Shell, ShellContext, ShellId, ShellLayoutConfig, ShellNavigationState, ShellTheme, View, ViewId, ViewOptions, ShellNavigateOptions } from "./types";
-import { loadInlineStyle, preloadStyle } from "fest/dom";
+import { loadInlineStyle, preloadStyle } from "@fest-lib/dom";
 import { withViewTransition, getTransitionDirection } from "com/routing/core/view-transitions";
 import { loadSettings, saveSettings } from "com/config/Settings";
 import {
@@ -11,9 +11,9 @@ import {
 import { isEnabledView } from "com/routing/core/views";
 import { scheduleViewModulePrefetch } from "com/routing/core/view-prefetch";
 import { serviceChannels, type ServiceChannelId } from "com/routing/channel/ServiceChannels";
-import { ensureStyleSheet } from "fest/icon";
-import "fest/icon";
-import { dynamicTheme } from "fest/lure";
+import { ensureStyleSheet } from "@fest-lib/icon";
+import "@fest-lib/icon";
+import { dynamicTheme } from "@fest-lib/lure";
 import { initBootShellWindowActivity } from "./shell-preference";
 import {
     type ShellElement,

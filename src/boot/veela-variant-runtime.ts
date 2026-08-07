@@ -5,7 +5,7 @@
  * `advanced` / `beercss` currently share that stack until a standalone advanced bundle exists with stable `@use` paths.
  */
 
-import { loadAsAdopted } from "fest/dom";
+import { loadAsAdopted } from "@fest-lib/dom";
 
 //@ts-expect-error vite inline
 import coreStyles from "../../../veela.css/src/scss/core/index.scss?inline";

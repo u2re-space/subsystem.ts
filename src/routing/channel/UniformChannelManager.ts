@@ -8,9 +8,9 @@ import {
     OptimizedWorkerChannel,
     detectExecutionContext,
     supportsDedicatedWorkers
-} from 'fest/uniform';
+} from '@fest-lib/uniform';
 
-import { globalChannelRegistry, globalChannelHealthMonitor, createDeferred } from 'fest/core';
+import { globalChannelRegistry, globalChannelHealthMonitor, createDeferred } from '@fest-lib/core';
 
 // Re-export types and functions from fest/uniform
 export { OptimizedWorkerChannel, detectExecutionContext, supportsDedicatedWorkers };

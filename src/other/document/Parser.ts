@@ -1,4 +1,4 @@
-import { H } from "fest/lure";
+import { H } from "@fest-lib/lure";
 import type { DocCollection, DocEntry, DocParser } from "../other/utils/Types";
 import { formatDateTime, sanitizeDocSnippet, truncateDocSnippet } from "core/text";
 

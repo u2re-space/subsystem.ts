@@ -2,7 +2,7 @@
  * HTTPS playground for packaged view modules (`mountViewModule` + dynamic import).
  * Open https://localhost/?suite=explorer (default dev port 443, or VIEW_DEV_PORT).
  */
-import "fest/icon";
+import "@fest-lib/icon";
 import { mountViewModule, type ShellContext, type ViewModule } from "../types";
 
 const MOUNT_ID = "fl-ui-playground";

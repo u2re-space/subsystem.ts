@@ -8,4 +8,4 @@ export {
     toText,
     writeHTML,
     writeText,
-} from "fest/lure";
+} from "@fest-lib/lure";

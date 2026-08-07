@@ -7,7 +7,7 @@
 import { initToastReceiver, showToast } from "../../boot/toast";
 import { unifiedMessaging } from "com/core/UnifiedMessaging";
 import { summarizeForLog } from "com/core/LogSanitizer";
-import { copy, initClipboardReceiver, listenForClipboardRequests, requestCopy } from "fest/lure";
+import { copy, initClipboardReceiver, listenForClipboardRequests, requestCopy } from "@fest-lib/lure";
 
 // Track initialization
 let _pwaClipboardInitialized = false;

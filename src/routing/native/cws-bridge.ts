@@ -10,8 +10,8 @@
  */
 import type { PluginListenerHandle } from "@capacitor/core";
 import { registerPlugin, WebPlugin } from "@capacitor/core";
-import { createProtocolEnvelope, isProtocolEnvelope, normalizeProtocolEnvelope, type UniformProtocolEnvelope } from "fest/uniform";
-import { withTimeout } from "fest/core";
+import { createProtocolEnvelope, isProtocolEnvelope, normalizeProtocolEnvelope, type UniformProtocolEnvelope } from "@fest-lib/uniform";
+import { withTimeout } from "@fest-lib/core";
 import {
     AIRPAD_REMOTE_CONFIG_STORAGE_KEY,
     CWSP_REMOTE_CONFIG_SYNC_CHANNEL,

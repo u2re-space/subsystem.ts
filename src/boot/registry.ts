@@ -1,6 +1,6 @@
-import { UUIDv4 } from "fest/core";
-import { UIElement } from "fest/fl-ui";
-import { defineElement, type CustomElementLifecycle, type GLitElementConstructor } from "fest/lure";
+import { UUIDv4 } from "@fest-lib/core";
+import { UIElement } from "@fest-lib/fl-ui";
+import { defineElement, type CustomElementLifecycle, type GLitElementConstructor } from "@fest-lib/lure";
 
 /** Registered custom element constructors produced through `createViewConstructor` / `extendViewConstructor`. */
 export const registeredViewConstructors = new Map<string, CustomElementConstructor>();

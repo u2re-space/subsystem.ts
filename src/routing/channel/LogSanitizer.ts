@@ -1,4 +1,4 @@
-import { isBase64Like, parseDataUrl } from "fest/lure";
+import { isBase64Like, parseDataUrl } from "@fest-lib/lure";
 
 export interface LogSanitizerOptions {
     maxStringLength?: number;

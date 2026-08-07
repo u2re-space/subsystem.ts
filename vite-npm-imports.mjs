@@ -7,20 +7,20 @@
 
 /** Subpath imports: prefix replacement only */
 const PREFIXES = [
-    ["fest/veela/", "@fest-lib/veela/"],
-    ["fest/fl-ui/", "@fest-lib/fl-ui/"],
+    ["@fest-lib/veela/", "@fest-lib/veela/"],
+    ["@fest-lib/fl-ui/", "@fest-lib/fl-ui/"],
 ];
 
 /** Package root imports: exact specifier replacement */
 const EXACT = [
-    ["fest/core", "@fest-lib/core"],
-    ["fest/dom", "@fest-lib/dom"],
-    ["fest/object", "@fest-lib/object"],
-    ["fest/lure", "@fest-lib/lure"],
-    ["fest/uniform", "@fest-lib/uniform"],
-    ["fest/icon", "@fest-lib/icon"],
-    ["fest/veela", "@fest-lib/veela"],
-    ["fest/fl-ui", "@fest-lib/fl-ui"],
+    ["@fest-lib/core", "@fest-lib/core"],
+    ["@fest-lib/dom", "@fest-lib/dom"],
+    ["@fest-lib/object", "@fest-lib/object"],
+    ["@fest-lib/lure", "@fest-lib/lure"],
+    ["@fest-lib/uniform", "@fest-lib/uniform"],
+    ["@fest-lib/icon", "@fest-lib/icon"],
+    ["@fest-lib/veela", "@fest-lib/veela"],
+    ["@fest-lib/fl-ui", "@fest-lib/fl-ui"],
 ];
 
 function rewritePrefixes(code) {
@@ -48,7 +48,7 @@ function rewriteExact(code) {
 }
 
 function rewriteAll(code) {
-    if (!code.includes("fest/")) return code;
+    if (!code.includes("@fest-lib/")) return code;
     let next = rewritePrefixes(code);
     next = rewriteExact(next);
     return next;
@@ -67,7 +67,7 @@ export function npmFestImportRewritePlugin() {
             if (process.env.FEST_NPM_IMPORTS !== "1") return;
             for (const item of Object.values(bundle)) {
                 if (item.type !== "chunk" || typeof item.code !== "string") continue;
-                if (!item.code.includes("fest/")) continue;
+                if (!item.code.includes("@fest-lib/")) continue;
                 const next = rewriteAll(item.code);
                 if (next !== item.code) item.code = next;
             }

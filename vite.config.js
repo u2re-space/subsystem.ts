@@ -73,16 +73,16 @@ export function importFromTSConfig(tsconfig, dir) {
 }
 
 export const projectMap = new Map([
-    ["fest/core", "core.ts"],
-    ["fest/icon", "icon.ts"],
-    ["fest/fl-ui", "fl.ui"],
-    ["fest/object", "object.ts"],
-    ["fest/uniform", "uniform.ts"],
-    ["fest/dom", "dom.ts"],
-    ["fest/veela", "veela.css"],
+    ["@fest-lib/core", "core.ts"],
+    ["@fest-lib/icon", "icon.ts"],
+    ["@fest-lib/fl-ui", "fl.ui"],
+    ["@fest-lib/object", "object.ts"],
+    ["@fest-lib/uniform", "uniform.ts"],
+    ["@fest-lib/dom", "dom.ts"],
+    ["@fest-lib/veela", "veela.css"],
     ["veela-lib", "veela.css"],
-    ["fest/lure", "lur.e"],
-    ["fest/image", "image.ts"]
+    ["@fest-lib/lure", "lur.e"],
+    ["@fest-lib/image", "image.ts"]
 ]);
 
 /**
@@ -216,7 +216,7 @@ export function initiate(name = "subsystem", tsconfig = {}, dir = resolve(import
         target: "esnext",
         modulePreload: {
             polyfill: true,
-            include: ["fest/core", "fest/dom", "fest/lure", "fest/object", "fest/uniform"]
+            include: ["@fest-lib/core", "@fest-lib/dom", "@fest-lib/lure", "@fest-lib/object", "@fest-lib/uniform"]
         },
         rollupOptions,
         name,

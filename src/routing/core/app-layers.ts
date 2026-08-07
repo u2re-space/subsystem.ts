@@ -8,7 +8,7 @@
  * Implemented here (under `shared/routing`) so PWA and CRX entries resolve one stable
  * module — avoids dev-server secondary fetches to `frontend/ai-slop/*` that could fail behind proxies.
  */
-import { fixOrientToScreen } from "fest/dom";
+import { fixOrientToScreen } from "@fest-lib/dom";
 import { initializeAppCanvasLayer } from "../../../../../../modules/projects/image.ts/src/canvas/Canvas-2";
 
 /** COMPAT: historical `fl-ui/speed-dial` orient hook; upstream module not present in this tree. */

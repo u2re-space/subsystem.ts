@@ -9,7 +9,7 @@
  * - runtime:reload-settings — soft-reconnect Java /ws
  */
 import { invokeCwsNative, isCapacitorCwsNativeShell } from "com/routing/native/cws-bridge";
-import { withTimeout } from "fest/core";
+import { withTimeout } from "@fest-lib/core";
 import {
     annotateCoordinatorPayload,
     shouldAnnotateCoordinatorPayload

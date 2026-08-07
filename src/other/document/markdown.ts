@@ -5,7 +5,7 @@
  * Uses marked for parsing and optionally highlight.js for code highlighting.
  */
 
-import { H } from "fest/lure";
+import { H } from "@fest-lib/lure";
 
 // ============================================================================
 // TYPES

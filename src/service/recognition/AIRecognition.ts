@@ -6,7 +6,7 @@
 
 import { CHANNEL_NAMES, postMessage, affected } from "../../workers/Broadcast";
 import { MAX_FILE_SIZE } from "../model/GPT-Responses";
-import { stringToBlob } from "fest/lure";
+import { stringToBlob } from "@fest-lib/lure";
 
 export type RecognitionMode = "recognize" | "analyze";
 

@@ -60,37 +60,37 @@
             "shells/*": [
                 "./shells/*"
             ],
-            "fest/core": [
+            "@fest-lib/core": [
                 "./fest/core/index.ts"
             ],
-            "fest/dom": [
+            "@fest-lib/dom": [
                 "./fest/dom/index.ts"
             ],
-            "fest/fl-ui": [
+            "@fest-lib/fl-ui": [
                 "./fest/fl-ui/index.ts"
             ],
-            "fest/lure": [
+            "@fest-lib/lure": [
                 "./fest/lure/index.ts"
             ],
-            "fest/object": [
+            "@fest-lib/object": [
                 "./fest/object/index.ts"
             ],
-            "fest/object/*": [
+            "@fest-lib/object/*": [
                 "./fest/object/*"
             ],
-            "fest/uniform": [
+            "@fest-lib/uniform": [
                 "./fest/uniform/index.ts"
             ],
-            "fest/theme": [
+            "@fest-lib/theme": [
                 "./fest/theme/index.ts"
             ],
-            "fest/icon": [
+            "@fest-lib/icon": [
                 "./fest/icon/index.ts"
             ],
-            "fest/veela": [
+            "@fest-lib/veela": [
                 "./fest/veela/index.ts"
             ],
-            "fest/veela/*": [
+            "@fest-lib/veela/*": [
                 "./fest/veela/*"
             ],
             "com/*": [

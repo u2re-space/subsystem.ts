@@ -1,4 +1,4 @@
-import { normalizeDataAsset } from "fest/lure";
+import { normalizeDataAsset } from "@fest-lib/lure";
 import { createProtocolEnvelope, sendProtocolMessage } from "com/core/UnifiedMessaging";
 
 export type ViewAttachmentInput =

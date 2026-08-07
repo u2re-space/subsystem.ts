@@ -33,7 +33,7 @@ import {
     VIEW_ENABLED_PRINT,
     VIEW_ENABLED_NETWORK
 } from "./views";
-import type { ChannelMessage } from "fest/uniform";
+import type { ChannelMessage } from "@fest-lib/uniform";
 import type { ServiceChannelId } from "../channel/ServiceChannels";
 
 /**

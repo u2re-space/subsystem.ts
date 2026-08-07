@@ -7,20 +7,20 @@
  */
 import { canParseURL } from "core/utils/index";
 import { BASE64_PREFIX, convertImageToJPEG, MAX_BASE64_SIZE } from "core/workers/ImageProcess";
-import { getJSONFromFile, getMarkDownFromFile, writeFileSmart } from "fest/lure";
+import { getJSONFromFile, getMarkDownFromFile, writeFileSmart } from "@fest-lib/lure";
 
 const viteEnv = (import.meta as unknown as { env?: { PROD?: boolean } }).env;
 const isViteProd = Boolean(viteEnv?.PROD);
 
 /** Dynamic-only: static `fest/lure` pulls `com-app` into the MV3 service worker graph. */
 type LureFs = Pick<
-    typeof import("fest/lure"),
+    typeof import("@fest-lib/lure"),
     "getDirectoryHandle" | "getFileHandle" | "decodeBase64ToBytes" | "stringToFile" | "parseDataUrl"
 >;
 let lureFsPromise: Promise<LureFs> | null = null;
 const getLureFs = (): Promise<LureFs> => {
     if (!lureFsPromise) {
-        lureFsPromise = import("fest/lure").then((m) => ({
+        lureFsPromise = import("@fest-lib/lure").then((m) => ({
             getDirectoryHandle: m.getDirectoryHandle,
             getFileHandle: m.getFileHandle,
             decodeBase64ToBytes: m.decodeBase64ToBytes,

@@ -22,7 +22,7 @@ import { validateIngressBeforeViewHandle } from "com/core/view-ingress-validatio
 import { affectedToChannel, sendToChannel, serviceChannels, type ChannelMessage, type ServiceChannelId } from "../channel/ServiceChannels";
 import { BROADCAST_CHANNELS, getDestinationAliases, matchesDestination, MESSAGE_TYPES, normalizeViewId } from "com/other/config/Names";
 import { fetchSwCachedEntries } from "../channel/ShareTargetGateway";
-import type { UnifiedMessage } from "fest/uniform";
+import type { UnifiedMessage } from "@fest-lib/uniform";
 import { initializeComponent, registerComponent, registerHandler, unregisterHandler } from "../channel/UnifiedMessaging";
 import { toUnifiedInteropMessage } from "../channel/UniformInterop";
 

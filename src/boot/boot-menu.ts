@@ -11,8 +11,8 @@
  * Default auto-boot: `environment` (Speed Dial / desktop); Minimal remains available.
  */
 
-import { H } from "fest/lure";
-import { loadAsAdopted } from "fest/dom";
+import { H } from "@fest-lib/lure";
+import { loadAsAdopted } from "@fest-lib/dom";
 //@ts-ignore
 import style from "./boot-menu.scss?inline";
 import type { ShellId } from "./types";

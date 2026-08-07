@@ -9,7 +9,7 @@ import {
     type ServiceChannelConfig,
     type ChannelMessage,
     type ChannelState
-} from 'fest/uniform';
+} from '@fest-lib/uniform';
 
 import { BROADCAST_CHANNELS, ROUTE_HASHES, COMPONENTS } from 'com/config/Names';
 
