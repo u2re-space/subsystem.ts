@@ -40,11 +40,11 @@
         "./package.json": "./package.json"
     },
     "peerDependencies": {
-        "@fest-lib/core": "^0.1.0",
-        "@fest-lib/dom": "^0.1.0",
-        "@fest-lib/lure": "^0.1.0",
-        "@fest-lib/object": "^0.1.0",
-        "@fest-lib/veela": "^0.1.0"
+        "@fest-lib/core": ">=0.1.0",
+        "@fest-lib/dom": ">=0.1.0",
+        "@fest-lib/lure": ">=0.1.0",
+        "@fest-lib/object": ">=0.1.0",
+        "@fest-lib/veela": ">=0.1.0"
     },
     "scripts": {
         "test": "vite --config vite.dev.config.js --host 0.0.0.0",
