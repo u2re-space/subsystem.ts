@@ -1,8 +1,8 @@
 /**
  * Filename: vite.config.js
- * FullPath: modules/projects/subsystem/vite.config.js
- * Change date and time: 21.41.00_07.08.2026
- * Reason for changes: Document that consumers must use named `initiate`, not `default`.
+ * FullPath: modules/projects/shared/vite.config.js
+ * Change date and time: 14.50.00_08.08.2026
+ * Reason for changes: Also emit dist/index.js (copy of dist/<name>.js) for stale consumer aliases.
  *
  * Library build config for `@fest-lib/subsystem` (also linked as modules/shared).
  *
@@ -13,7 +13,7 @@
  * Dev playground with HTTPS: npm run dev → vite.dev.config.js
  */
 import { resolve } from "node:path";
-import { readFile } from "node:fs/promises";
+import { copyFile, readFile } from "node:fs/promises";
 import { defineConfig, searchForWorkspaceRoot } from "vite";
 import pluginExternal from "vite-plugin-external";
 import deduplicate from "postcss-discard-duplicates";
@@ -110,7 +110,21 @@ export function initiate(name = "subsystem", tsconfig = {}, dir = resolve(import
 
     const plugins = [
         externalPlugin,
-        ...(process.env.FEST_NPM_IMPORTS === "1" ? [npmFestImportRewritePlugin()] : [])
+        ...(process.env.FEST_NPM_IMPORTS === "1" ? [npmFestImportRewritePlugin()] : []),
+        {
+            // WHY: older consumers / tsconfig paths expect dist/index.js; lib emits dist/<name>.js.
+            name: "fest-lib-dist-index-alias",
+            async writeBundle(outputOptions) {
+                const outDir = outputOptions.dir || resolve(dir, "dist");
+                const primary = resolve(outDir, `${name}.js`);
+                const index = resolve(outDir, "index.js");
+                try {
+                    await copyFile(primary, index);
+                } catch (err) {
+                    console.warn(`[fest-lib] could not copy ${name}.js → index.js`, err?.message || err);
+                }
+            }
+        }
     ];
 
     const rollupOptions = {
