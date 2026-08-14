@@ -1,8 +1,8 @@
 /**
  * Filename: vite.config.js
- * FullPath: modules/projects/shared/vite.config.js
- * Change date and time: 14.50.00_08.08.2026
- * Reason for changes: Also emit dist/index.js (copy of dist/<name>.js) for stale consumer aliases.
+ * FullPath: modules/projects/subsystem/vite.config.js
+ * Change date and time: 21.41.00_07.08.2026
+ * Reason for changes: Document that consumers must use named `initiate`, not `default`.
  *
  * Library build config for `@fest-lib/subsystem` (also linked as modules/shared).
  *
@@ -13,9 +13,9 @@
  * Dev playground with HTTPS: npm run dev → vite.dev.config.js
  */
 import { resolve } from "node:path";
-import { copyFile, readFile } from "node:fs/promises";
+import { readFile } from "node:fs/promises";
 import { defineConfig, searchForWorkspaceRoot } from "vite";
-import pluginExternal from "vite-plugin-external";
+//import pluginExternal from "vite-plugin-external";
 import deduplicate from "postcss-discard-duplicates";
 import autoprefixer from "autoprefixer";
 import cssnano from "cssnano";
@@ -72,6 +72,21 @@ export function importFromTSConfig(tsconfig, dir) {
     return out;
 }
 
+const festPackageRE = /^@fest-lib(?:\/|$)/;
+
+function isFestExternal(id, name) {
+    if (typeof id !== "string") return false;
+    if (!festPackageRE.test(id)) return false;
+
+    const currentPackage = `@fest-lib/${name}`;
+
+    // Не externalize сам пакет, который сейчас собирается
+    if (id === currentPackage) return false;
+    if (id.startsWith(`${currentPackage}/`)) return false;
+
+    return true;
+}
+
 export const projectMap = new Map([
     ["@fest-lib/core", "core.ts"],
     ["@fest-lib/icon", "icon.ts"],
@@ -91,13 +106,37 @@ export const projectMap = new Map([
  * @param {object} tsconfig - Parsed tsconfig for path→alias mapping.
  * @param {string} dir - Package root (usually import.meta.dirname of the caller).
  */
-export function initiate(name = "subsystem", tsconfig = {}, dir = resolve(import.meta.dirname, "./")) {
-    const $resolve = { alias: importFromTSConfig(tsconfig, dir) };
+export function initiate(
+    name = "subsystem",
+    tsconfig = {},
+    dir = resolve(import.meta.dirname, "./"),
+    command = "build"
+) {
+    const allAliases = importFromTSConfig(tsconfig, dir);
+
+    const aliases =
+        command === "serve"
+            ? allAliases
+            : allAliases.filter(({ find }) => {
+                return !festPackageRE.test(find);
+            });
+
+    const $resolve = {
+        alias: aliases
+    };
+
+    //
+    if (tsconfig?.compilerOptions) {
+        tsconfig.compilerOptions.declaration = true;
+        tsconfig.compilerOptions.declarationMap = true;
+        tsconfig.compilerOptions.inlineSourceMap = true;
+        tsconfig.compilerOptions.inlineSources = true;
+    }
 
     // WHY: vite-plugin-external injects esbuild optimizeDeps hooks that Vite 8/Rolldown
     // cannot load (`vite:dep-pre-bundle:external-conversion:fest/*` → UNLOADABLE_DEPENDENCY).
     // INVARIANT: externalize fest/* only for library `build`; `serve` must resolve via aliases.
-    const externalPlugin = pluginExternal({
+    /*const externalPlugin = pluginExternal({
         include: Array.from(projectMap.keys()).filter((n) => !n.endsWith(name)),
         exclude: [
             resolve(dir, "./src/index.ts"),
@@ -106,29 +145,16 @@ export function initiate(name = "subsystem", tsconfig = {}, dir = resolve(import
             `./dist/${name}.js`
         ]
     });
-    externalPlugin.apply = "build";
+    externalPlugin.apply = "build";*/
 
     const plugins = [
-        externalPlugin,
-        ...(process.env.FEST_NPM_IMPORTS === "1" ? [npmFestImportRewritePlugin()] : []),
-        {
-            // WHY: older consumers / tsconfig paths expect dist/index.js; lib emits dist/<name>.js.
-            name: "fest-lib-dist-index-alias",
-            async writeBundle(outputOptions) {
-                const outDir = outputOptions.dir || resolve(dir, "dist");
-                const primary = resolve(outDir, `${name}.js`);
-                const index = resolve(outDir, "index.js");
-                try {
-                    await copyFile(primary, index);
-                } catch (err) {
-                    console.warn(`[fest-lib] could not copy ${name}.js → index.js`, err?.message || err);
-                }
-            }
-        }
+        //externalPlugin,
+        ...(process.env.FEST_NPM_IMPORTS === "1" ? [npmFestImportRewritePlugin()] : [])
     ];
 
-    const rollupOptions = {
+    const rolldownOptions = {
         shimMissingExports: true,
+
         treeshake: {
             annotations: false,
             moduleSideEffects: true,
@@ -137,23 +163,17 @@ export function initiate(name = "subsystem", tsconfig = {}, dir = resolve(import
             correctVarValueBeforeDeclaration: true,
             propertyReadSideEffects: true
         },
-        input: "./src/index.ts",
-        external: (source) => {
-            if (source?.includes?.("node_modules/")) return false;
-            if (
-                source?.includes?.(`fest/${name}`) ||
-                source?.includes?.("./src/index.ts") ||
-                source?.includes?.(projectMap.get(`fest/${name}`)) ||
-                source?.includes?.("dist/")
-            )
-                return false;
-            if (Array.from(projectMap.keys()).some((n) => source.includes(n))) return true;
-            return false;
+
+        input: resolve(dir, "./src/index.ts"),
+
+        external: (id) => {
+            return isFestExternal(id, name);
         },
+
         output: {
             compact: true,
             name,
-            dir: "./dist",
+            dir: resolve(dir, "./dist"),
             exports: "auto",
             minifyInternalExports: true
         }
@@ -228,12 +248,22 @@ export function initiate(name = "subsystem", tsconfig = {}, dir = resolve(import
         minify: "esbuild",
         emptyOutDir: true,
         target: "esnext",
+
         modulePreload: {
             polyfill: true,
-            include: ["@fest-lib/core", "@fest-lib/dom", "@fest-lib/lure", "@fest-lib/object", "@fest-lib/uniform"]
+            include: [
+                "@fest-lib/core",
+                "@fest-lib/dom",
+                "@fest-lib/lure",
+                "@fest-lib/object",
+                "@fest-lib/uniform"
+            ]
         },
-        rollupOptions,
+
+        rolldownOptions,
+
         name,
+
         lib: {
             formats: ["es"],
             entry: resolve(dir, "./src/index.ts"),
@@ -247,10 +277,12 @@ export function initiate(name = "subsystem", tsconfig = {}, dir = resolve(import
         minify: true,
         minifySyntax: true,
         minifyIdentifiers: true,
-        minifyWhitespace: true
+        minifyWhitespace: true,
+        sourcemap: 'inline',
+        tsconfigRaw: JSON.stringify(tsconfig)
     };
 
-    return { esbuild, rollupOptions, plugins, resolve: $resolve, build, css, optimizeDeps, server };
+    return { esbuild, rolldownOptions, plugins, resolve: $resolve, build, css, optimizeDeps, server };
 }
 
 const pkgDir = resolve(import.meta.dirname, "./");
