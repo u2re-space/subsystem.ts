@@ -27,6 +27,7 @@
         "./src/**/*.jsx"
     ],
     "compilerOptions": {
+        "rootDir": "../",
         "skipLibCheck": true,
         "jsx": "preserve",
         "paths": {
