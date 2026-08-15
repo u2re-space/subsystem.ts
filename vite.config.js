@@ -12,6 +12,7 @@
  *
  * Dev playground with HTTPS: npm run dev → vite.dev.config.js
  */
+import { createRequire } from "node:module";
 import { resolve } from "node:path";
 import { readFile } from "node:fs/promises";
 import { defineConfig, searchForWorkspaceRoot } from "vite";
@@ -20,6 +21,17 @@ import deduplicate from "postcss-discard-duplicates";
 import autoprefixer from "autoprefixer";
 import cssnano from "cssnano";
 import { npmFestImportRewritePlugin } from "./vite-npm-imports.mjs";
+
+// WHY: This config lives in subsystem/, but consumers (lur.e) own @vitejs/plugin-react.
+// Resolve from process.cwd() first so library builds don't warn UNRESOLVED_IMPORT.
+const requireFromCwd = createRequire(resolve(process.cwd(), "package.json"));
+const requireHere = createRequire(import.meta.url);
+function loadReactPlugin() {
+    try { return requireFromCwd("@vitejs/plugin-react"); } catch {}
+    try { return requireHere("@vitejs/plugin-react"); } catch {}
+    return null;
+}
+const react = loadReactPlugin();
 
 //
 export const importConfig = (url, ...args)=>{ return import(url)?.then?.((m)=>m?.default?.(...args)); }
@@ -50,6 +62,23 @@ export function normalizeAliasPattern(pattern) {
     return pattern.replace(/\/\*+$/, "");
 }
 
+function escapeRegex(value) {
+    return String(value).replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+}
+
+/**
+ * WHY: Vite/rollup string aliases use prefix matching. Mapping `@fest-lib/lure` →
+ * `src/index.ts` would also rewrite `@fest-lib/lure/src/lure/node/jsx-runtime` to
+ * `src/index.ts/src/...`. File targets must be exact-match only.
+ */
+export function toViteAlias(find, replacement) {
+    const isFileTarget = /\.(m?[jt]sx?|cjs|mjs|json)$/i.test(replacement);
+    if (isFileTarget && typeof find === "string") {
+        return { find: new RegExp(`^${escapeRegex(find)}$`), replacement };
+    }
+    return { find, replacement };
+}
+
 export function importFromTSConfig(tsconfig, dir) {
     const paths = tsconfig?.compilerOptions?.paths || {};
     /** Longer `find` first so e.g. `com/config/Names` wins over `com` from `com/*`. */
@@ -64,10 +93,7 @@ export function importFromTSConfig(tsconfig, dir) {
         const normalizedKey = normalizeAliasPattern(key);
         const target = paths[key][0];
         const normalizedTarget = normalizeAliasPattern(target);
-        out.push({
-            find: normalizedKey,
-            replacement: resolve(dir, normalizedTarget)
-        });
+        out.push(toViteAlias(normalizedKey, resolve(dir, normalizedTarget)));
     }
     return out;
 }
@@ -105,6 +131,7 @@ export const projectMap = new Map([
  * @param {string} name - Output basename (`core` → dist/core.js). Must match package.json main.
  * @param {object} tsconfig - Parsed tsconfig for path→alias mapping.
  * @param {string} dir - Package root (usually import.meta.dirname of the caller).
+ * @param {"build"|"serve"|"test"} [command="build"] - Vite command; serve keeps @fest-lib aliases → src.
  */
 export function initiate(
     name = "subsystem",
@@ -113,16 +140,32 @@ export function initiate(
     command = "build"
 ) {
     const allAliases = importFromTSConfig(tsconfig, dir);
+    const selfId = `@fest-lib/${name}`;
+    const selfSrc = resolve(dir, "./src/index.ts");
 
-    const aliases =
+    // INVARIANT: library `build` externalizes sibling @fest-lib/* (no src aliases).
+    // WHY (serve): demos import `@fest-lib/<self>` and siblings; package.json points at
+    // dist/*.js which is often stale / missing named ESM exports (e.g. animatable).
+    let aliases =
         command === "serve"
             ? allAliases
             : allAliases.filter(({ find }) => {
-                return !festPackageRE.test(find);
+                const key = typeof find === "string" ? find : find?.source ?? "";
+                return !festPackageRE.test(key) && !festPackageRE.test(String(find));
             });
 
+    if (command === "serve") {
+        // Exact self entry only — must not prefix-match jsxImportSource subpaths.
+        const withoutSelf = aliases.filter(({ find }) => {
+            if (find instanceof RegExp) return find.source !== `^${escapeRegex(selfId)}$`;
+            return find !== selfId;
+        });
+        aliases = [toViteAlias(selfId, selfSrc), ...withoutSelf];
+    }
+
     const $resolve = {
-        alias: aliases
+        alias: aliases,
+        conditions: ['custom', 'import', 'module', 'browser', 'default']
     };
 
     //
@@ -149,19 +192,30 @@ export function initiate(
 
     const plugins = [
         //externalPlugin,
+        ...(react
+            ? [react({
+                jsx: 'preserve',
+                jsxImportSource: '@fest-lib/lure/src/lure/node',
+                jsxFactory: 'createElement',
+                jsxFragmentFactory: 'Fragment',
+                include: /\.(tsx)$/,
+                exclude: /node_modules/
+            })]
+            : []),
         ...(process.env.FEST_NPM_IMPORTS === "1" ? [npmFestImportRewritePlugin()] : [])
     ];
 
     const rolldownOptions = {
         shimMissingExports: true,
 
+        // WHY: Vite 8/Rolldown only accepts propertyReadSideEffects: false | "always".
         treeshake: {
             annotations: false,
             moduleSideEffects: true,
             tryCatchDeoptimization: false,
             unknownGlobalSideEffects: true,
             correctVarValueBeforeDeclaration: true,
-            propertyReadSideEffects: true
+            propertyReadSideEffects: "always"
         },
 
         input: resolve(dir, "./src/index.ts"),
@@ -171,7 +225,7 @@ export function initiate(
         },
 
         output: {
-            compact: true,
+            // NOTE: `compact` is not a Rolldown output option (Vite 8 warning).
             name,
             dir: resolve(dir, "./dist"),
             exports: "auto",
@@ -217,8 +271,20 @@ export function initiate(
             "./test/*.ts"
         ],
         entries: [resolve(dir, "./src/index.ts")],
-        force: true
+        force: true,
+        exclude: []
     };
+
+    if (command === "serve") {
+        // Playground HTML + source graph; do not prebundle workspace fest packages from dist.
+        optimizeDeps.force = false;
+        optimizeDeps.entries = [
+            resolve(dir, "./index.html"),
+            resolve(dir, "./src/index.ts"),
+            ...optimizeDeps.entries
+        ];
+        optimizeDeps.exclude = Array.from(projectMap.keys());
+    }
 
     const server = {
         port: 8434,
@@ -243,12 +309,18 @@ export function initiate(
     };
 
     const build = {
+        target: 'esnext',
         chunkSizeWarningLimit: 1600,
         assetsInlineLimit: 1024 * 1024,
         minify: "esbuild",
         emptyOutDir: true,
         target: "esnext",
-
+        loader: 'jsx',
+        jsx: 'preserve',
+        jsxImportSource: '@fest-lib/lure/src/lure/node',
+        jsxFactory: 'createElement',
+        jsxFragmentFactory: 'Fragment',
+        include: /\.(ts|tsx)$/,
         modulePreload: {
             polyfill: true,
             include: [

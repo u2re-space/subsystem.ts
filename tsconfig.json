@@ -29,7 +29,6 @@
     "compilerOptions": {
         "rootDir": "../",
         "skipLibCheck": true,
-        "jsx": "preserve",
         "paths": {
             "frontend/shared/*": [
                 "./src/frontend/shared/*"
@@ -72,6 +71,12 @@
             ],
             "@fest-lib/lure": [
                 "./fest/lure/index.ts"
+            ],
+            "@fest-lib/lure/src/lure/node": [
+                "./fest/lure/lure/node"
+            ],
+            "@fest-lib/lure/src/lure/node/*": [
+                "./fest/lure/lure/node/*"
             ],
             "@fest-lib/object": [
                 "./fest/object/index.ts"
@@ -122,9 +127,15 @@
             "DOM.Iterable",
             "WebWorker"
         ],
+        "jsx": "preserve",
+        "jsxImportSource": "@fest-lib/lure/src/lure/node",
+        "jsxFactory": "createElement",
+        "jsxFragmentFactory": "Fragment",
         "module": "ESNext",
         "target": "ESNext",
         "moduleDetection": "auto",
+        "isolatedModules": true,
+        "noEmit": true,
         "pretty": true,
         "allowArbitraryExtensions": true,
         "emitDeclarationOnly": true,
@@ -137,7 +148,6 @@
         "esModuleInterop": true,
         "verbatimModuleSyntax": true,
         "allowJs": true,
-        "noEmit": true,
         "strict": false,
         "strictNullChecks": false,
         "allowUnusedLabels": true,
