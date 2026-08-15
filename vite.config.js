@@ -1,8 +1,9 @@
 /**
  * Filename: vite.config.js
  * FullPath: modules/projects/subsystem/vite.config.js
- * Change date and time: 21.41.00_07.08.2026
- * Reason for changes: Document that consumers must use named `initiate`, not `default`.
+ * Change date and time: 21.00.00_15.08.2026
+ * Reason for changes: Serve demos must not hardcode origin/port 8434 (CWSP owns :8434;
+ * wrong origin breaks HMR so edits look like "sources not updating").
  *
  * Library build config for `@fest-lib/subsystem` (also linked as modules/shared).
  *
@@ -286,18 +287,41 @@ export function initiate(
         optimizeDeps.exclude = Array.from(projectMap.keys());
     }
 
+    // WHY: :8434 is the CWSP Control/gateway port on this fleet. Library demos that
+    // bind 8434 silently fall over to 8435 while `origin` still pointed at
+    // https://localhost:8434 — browser HMR/asset URLs hit CWSP, so src edits never show.
+    // INVARIANT: only set `origin` when VITE_DEV_ORIGIN is explicit (same as vite.dev.config.js).
+    const viteDevOrigin = String(process.env.VITE_DEV_ORIGIN || "").trim();
+    const demoPort = Number(process.env.VITE_PORT || process.env.VIEW_DEV_PORT || 5173);
+    const workspaceRoot = searchForWorkspaceRoot(process.cwd());
     const server = {
-        port: 8434,
+        port: Number.isFinite(demoPort) && demoPort > 0 ? demoPort : 5173,
         open: false,
         host: "0.0.0.0",
         strictPort: false,
-        origin: "https://localhost:8434",
+        ...(viteDevOrigin ? { origin: viteDevOrigin } : {}),
         allowedHosts: ["localhost", "127.0.0.1", "0.0.0.0", "192.168.0.200", "95.188.82.223"],
         appType: "spa",
+        // Sibling @fest-lib/* resolve to ../dom.ts etc.; watch those trees on serve.
+        ...(command === "serve"
+            ? {
+                watch: {
+                    ignored: [
+                        "**/node_modules/**",
+                        "**/dist/**",
+                        "**/.git/**",
+                        "**/.gradle/**"
+                    ]
+                }
+            }
+            : {}),
         fs: {
             strict: false,
             allow: [
-                searchForWorkspaceRoot(process.cwd()),
+                workspaceRoot,
+                resolve(dir, ".."),
+                resolve(dir, "../.."),
+                resolve(dir, "../../.."),
                 "../**/*",
                 "../*",
                 "..",
