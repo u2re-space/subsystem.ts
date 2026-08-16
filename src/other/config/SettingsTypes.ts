@@ -492,7 +492,7 @@ export const DEFAULT_SETTINGS: AppSettings = {
         userKey: "",
         encrypt: false,
         preferBackendSync: true,
-        ntpEnabled: false,
+        ntpEnabled: true,
         appClientId: "",
         useCoreIdentityForAirPad: true,
         allowInsecureTls: false,
