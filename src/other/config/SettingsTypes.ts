@@ -480,6 +480,10 @@ export type AppSettings = {
         columns?: number;
         rows?: number;
         shape?: GridShape;
+        /** Default click action for new speed-dial tiles (`open-link` / `open-view`). */
+        defaultAction?: string;
+        /** Default open destination for link tiles (`inline` / `native-window` / `new-tab`). */
+        defaultOpenLinkTarget?: "inline" | "native-window" | "new-tab";
     };
 };
 
@@ -652,7 +656,9 @@ export const DEFAULT_SETTINGS: AppSettings = {
     grid: {
         columns: 4,
         rows: 8,
-        shape: "square"
+        shape: "squircle",
+        defaultAction: "open-link",
+        defaultOpenLinkTarget: "inline"
     }
 };
 
