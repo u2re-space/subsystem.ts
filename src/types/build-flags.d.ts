@@ -15,3 +15,6 @@ declare const __RS_VIEW_SETTINGS__: boolean | undefined;
 declare const __RS_VIEW_HISTORY__: boolean | undefined;
 declare const __RS_VIEW_HOME__: boolean | undefined;
 declare const __RS_VIEW_PRINT__: boolean | undefined;
+declare const __RS_VIEW_NETWORK__: boolean | undefined;
+/** CWSP product SKU role injected by Vite (`capacitor-launcher` → `"launcher"`). */
+declare const __RS_SHELL_ROLE__: string | undefined;

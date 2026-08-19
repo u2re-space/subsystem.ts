@@ -689,6 +689,10 @@ export async function bootEnvironment(
     container: HTMLElement,
     view: ViewId = "home"
 ): Promise<Shell> {
+    if (typeof __RS_SHELL_ROLE__ !== "undefined" && __RS_SHELL_ROLE__ === "launcher") {
+        document.documentElement.dataset.cwspShellRole = "launcher";
+        document.documentElement.dataset.cwspDefaultView = "home";
+    }
     // WHY: environment launcher — no airpad channel; network is a first-class CWSP tile.
     const channels = [
         "home",
