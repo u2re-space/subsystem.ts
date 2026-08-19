@@ -26,6 +26,10 @@ export interface CwsShellInfo {
     bridge: string;
     native: boolean;
     platform?: string;
+    /** CSS px from Android status bar (Capacitor launcher). */
+    statusBarHeightCss?: number;
+    /** CSS px from Android navigation bar / gesture inset. */
+    navigationBarHeightCss?: number;
 }
 
 export interface CwsBridgeInvokeResult {
