@@ -27,10 +27,24 @@ export async function launcherLaunch(_pkg: string, _component?: string): Promise
     return false;
 }
 
-export async function launcherIcon(_cacheKey: string, _size = 64): Promise<string> {
+export async function launcherIcon(
+    _cacheKey: string,
+    _size = 64,
+    _variant = "default"
+): Promise<string> {
     return "";
 }
 
-export async function launcherIconBlobUrl(_cacheKey: string, _size = 64): Promise<string> {
+export async function launcherIconVariants(
+    _cacheKey: string
+): Promise<Array<{ id: string; label: string; available: boolean }>> {
+    return [];
+}
+
+export async function launcherIconBlobUrl(
+    _cacheKey: string,
+    _size = 64,
+    _variant = "default"
+): Promise<string> {
     return "";
 }
