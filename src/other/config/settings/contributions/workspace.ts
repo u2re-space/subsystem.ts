@@ -40,9 +40,18 @@ const OPEN_TARGET_OPTIONS: Array<[string, string]> = [
     ["new-tab", "New tab"]
 ];
 
+const ICON_SCALE_OPTIONS: Array<[string, string]> = [
+    ["compact", "Compact (0.78)"],
+    ["fit", "Fit (1.0 — no zoom)"],
+    ["fill", "Fill (1.28 — adaptive default)"],
+    ["zoom", "Zoom (1.5)"],
+    ["max", "Max (1.75)"]
+];
+
 const ALLOWED_SHAPES = new Set(SHAPE_OPTIONS.map(([value]) => value));
 const ALLOWED_ACTIONS = new Set(ACTION_OPTIONS.map(([value]) => value));
 const ALLOWED_TARGETS = new Set(OPEN_TARGET_OPTIONS.map(([value]) => value));
+const ALLOWED_ICON_SCALES = new Set(ICON_SCALE_OPTIONS.map(([value]) => value));
 
 type WorkspaceGrid = NonNullable<AppSettings["grid"]>;
 
@@ -60,6 +69,19 @@ const normalizeShape = (raw: unknown, fallback: GridShape = "squircle"): GridSha
 const normalizeAction = (raw: unknown, fallback = "open-link"): string => {
     const v = String(raw || "").trim().toLowerCase();
     return ALLOWED_ACTIONS.has(v) ? v : fallback;
+};
+
+const normalizeIconScale = (
+    raw: unknown,
+    fallback: NonNullable<WorkspaceGrid["iconScale"]> = "fill"
+): NonNullable<WorkspaceGrid["iconScale"]> => {
+    const v = String(raw || "").trim().toLowerCase();
+    if (v === "small" || v === "0.78") return "compact";
+    if (v === "1" || v === "contain") return "fit";
+    if (v === "adaptive" || v === "1.28") return "fill";
+    if (v === "1.5") return "zoom";
+    if (v === "large" || v === "1.75") return "max";
+    return (ALLOWED_ICON_SCALES.has(v) ? v : fallback) as NonNullable<WorkspaceGrid["iconScale"]>;
 };
 
 const normalizeOpenTarget = (
@@ -87,12 +109,14 @@ const parseStoredGrid = (raw: string | null): Partial<WorkspaceGrid> => {
     const shape = /shape["']?\s*:\s*["']?([a-z-]+)/i.exec(raw);
     const defaultAction = /defaultAction["']?\s*:\s*["']?([a-z-]+)/i.exec(raw);
     const defaultOpenLinkTarget = /defaultOpenLinkTarget["']?\s*:\s*["']?([a-z-]+)/i.exec(raw);
+    const iconScale = /iconScale["']?\s*:\s*["']?([a-z0-9.-]+)/i.exec(raw);
     const out: Partial<WorkspaceGrid> = {};
     if (columns) out.columns = Number(columns[1]);
     if (rows) out.rows = Number(rows[1]);
     if (shape) out.shape = normalizeShape(shape[1]);
     if (defaultAction) out.defaultAction = normalizeAction(defaultAction[1]);
     if (defaultOpenLinkTarget) out.defaultOpenLinkTarget = normalizeOpenTarget(defaultOpenLinkTarget[1]);
+    if (iconScale) out.iconScale = normalizeIconScale(iconScale[1]);
     return out;
 };
 
@@ -128,7 +152,8 @@ const readLiveGrid = (): WorkspaceGrid => {
         defaultOpenLinkTarget: normalizeOpenTarget(
             live?.defaultOpenLinkTarget ?? stored.defaultOpenLinkTarget ?? openTarget,
             "inline"
-        )
+        ),
+        iconScale: normalizeIconScale(live?.iconScale ?? stored.iconScale, "fill")
     };
 };
 
@@ -146,7 +171,8 @@ const persistGridFallback = (grid: WorkspaceGrid): void => {
                 columns: grid.columns,
                 rows: grid.rows,
                 shape: grid.shape,
-                defaultAction: grid.defaultAction
+                defaultAction: grid.defaultAction,
+                iconScale: grid.iconScale || "fill"
             })
         );
         if (grid.defaultOpenLinkTarget) {
@@ -189,6 +215,7 @@ export const registerWorkspaceSettingsContribution = (): (() => void) =>
             settingsPanel("workspace", "Workspace", [
                 settingsHint("Speed dial grid on the Home / NTP workspace."),
                 settingsSelectField("Default icon shape", "grid.shape", SHAPE_OPTIONS),
+                settingsSelectField("Icon bitmap scale", "grid.iconScale", ICON_SCALE_OPTIONS),
                 settingsNumberField("Columns", "grid.columns", {
                     min: "1",
                     max: "16",
@@ -209,6 +236,7 @@ export const registerWorkspaceSettingsContribution = (): (() => void) =>
             const live = readLiveGrid();
             const grid = settings.grid || {};
             setFieldValue(panel, "grid.shape", live.shape || grid.shape || "squircle");
+            setFieldValue(panel, "grid.iconScale", live.iconScale || grid.iconScale || "fill");
             setFieldValue(panel, "grid.columns", live.columns ?? grid.columns ?? 4);
             setFieldValue(panel, "grid.rows", live.rows ?? grid.rows ?? 8);
             setFieldValue(panel, "grid.defaultAction", live.defaultAction || grid.defaultAction || "open-link");
@@ -224,7 +252,8 @@ export const registerWorkspaceSettingsContribution = (): (() => void) =>
                 rows: clampGridCount(settings.grid?.rows, 8),
                 shape: normalizeShape(settings.grid?.shape, "squircle"),
                 defaultAction: normalizeAction(settings.grid?.defaultAction, "open-link"),
-                defaultOpenLinkTarget: normalizeOpenTarget(settings.grid?.defaultOpenLinkTarget, "inline")
+                defaultOpenLinkTarget: normalizeOpenTarget(settings.grid?.defaultOpenLinkTarget, "inline"),
+                iconScale: normalizeIconScale(settings.grid?.iconScale, "fill")
             };
             settings.grid = { ...(settings.grid || {}), ...next };
             applyLiveGrid(next);

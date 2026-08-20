@@ -484,6 +484,11 @@ export type AppSettings = {
         defaultAction?: string;
         /** Default open destination for link tiles (`inline` / `native-window` / `new-tab`). */
         defaultOpenLinkTarget?: "inline" | "native-window" | "new-tab";
+        /**
+         * Bitmap zoom inside icon plates.
+         * `compact` | `fit` | `fill` (adaptive ~1.28) | `zoom` | `max`
+         */
+        iconScale?: "compact" | "fit" | "fill" | "zoom" | "max";
     };
 };
 
@@ -658,7 +663,8 @@ export const DEFAULT_SETTINGS: AppSettings = {
         rows: 8,
         shape: "squircle",
         defaultAction: "open-link",
-        defaultOpenLinkTarget: "inline"
+        defaultOpenLinkTarget: "inline",
+        iconScale: "fill"
     }
 };
 
