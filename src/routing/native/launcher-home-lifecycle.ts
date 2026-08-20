@@ -6,6 +6,7 @@
 
 export type LauncherHomeLifecycleHooks = {
     navigateHome?: () => void;
+    openAppMenu?: () => void;
     closeAppMenu?: () => void;
     isAppMenuOpen?: () => boolean;
     focusSpeedDial?: () => void;

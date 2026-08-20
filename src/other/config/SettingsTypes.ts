@@ -483,7 +483,7 @@ export type AppSettings = {
         /** Default click action for new speed-dial tiles (`open-link` / `open-view`). */
         defaultAction?: string;
         /** Default open destination for link tiles (`inline` / `native-window` / `new-tab`). */
-        defaultOpenLinkTarget?: "inline" | "native-window" | "new-tab";
+        defaultOpenLinkTarget?: "inline" | "native-window" | "new-tab" | "external-app";
         /**
          * Bitmap zoom inside icon plates.
          * `compact` | `fit` | `fill` (adaptive ~1.28) | `zoom` | `max`

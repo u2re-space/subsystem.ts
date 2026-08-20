@@ -35,7 +35,8 @@ const ACTION_OPTIONS: Array<[string, string]> = [
 ];
 
 const OPEN_TARGET_OPTIONS: Array<[string, string]> = [
-    ["inline", "Inline (env window, same tab)"],
+    ["inline", "Inline (iframe / env window, same tab)"],
+    ["external-app", "External app (Android chooser)"],
     ["native-window", "Native window (new browser window)"],
     ["new-tab", "New tab"]
 ];
@@ -92,6 +93,9 @@ const normalizeOpenTarget = (
     if (v === "in-shell" || v === "env" || v === "shell") return "inline";
     if (v === "native" || v === "window" || v === "app-window") return "native-window";
     if (v === "tab" || v === "browser" || v === "browser-tab") return "new-tab";
+    if (v === "app" || v === "chooser" || v === "open-with" || v === "open-in-app" || v === "intent") {
+        return "external-app";
+    }
     return (ALLOWED_TARGETS.has(v) ? v : fallback) as NonNullable<WorkspaceGrid["defaultOpenLinkTarget"]>;
 };
 
