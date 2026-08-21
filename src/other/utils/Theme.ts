@@ -299,7 +299,22 @@ export const initTheme = async () => {
         // Listen for system changes if in auto mode?
         // CSS handles this mostly, but if we add listeners here we can be more reactive.
         globalThis.matchMedia?.('(prefers-color-scheme: dark)')?.addEventListener?.('change', async () => {
-            applyTheme(await loadSettings());
+            const next = await loadSettings();
+            applyTheme(next);
+            /* WHY: App Menu / Speed Dial chrome listen for u2-theme-change; MutationObserver alone can miss Cap WebView scheme flips. */
+            try {
+                document.documentElement.dispatchEvent(
+                    new CustomEvent("u2-theme-change", {
+                        bubbles: true,
+                        detail: {
+                            source: "system-prefers-color-scheme",
+                            theme: resolveColorScheme(next?.appearance?.theme || "auto")
+                        }
+                    })
+                );
+            } catch {
+                /* ignore */
+            }
         });
     } catch (e) {
         console.warn("Failed to init theme", e);

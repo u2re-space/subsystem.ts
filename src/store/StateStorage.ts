@@ -6,7 +6,7 @@
  * richer shortcut configuration separate from the compact visible item list.
  */
 import { makeObjectAssignable, observe, stringRef, safe } from "@fest-lib/object";
-import { makeUIState } from "@fest-lib/lure";
+import { makeUIState, saveUIState } from "@fest-lib/lure";
 import { JSOX } from "jsox";
 import { readText } from "../modules/Clipboard";
 import { scheduleFrame } from "../other/utils/Runtime";
@@ -76,23 +76,8 @@ const generateItemId = () => {
 const EXTERNAL_SHORTCUTS: SpeedDialPersistedItem[] = [
 ];
 
+/* WHY: Explorer / Settings live on Core Rail — not default Speed Dial grid tiles. */
 const DEFAULT_SPEED_DIAL_DATA: SpeedDialPersistedItem[] = [
-    {
-        id: "shortcut-explorer",
-        cell: observe([2, 0]),
-        icon: "books",
-        label: "Explorer",
-        action: "open-view",
-        meta: { view: "explorer" }
-    },
-    {
-        id: "shortcut-settings",
-        cell: observe([3, 0]),
-        icon: "gear-six",
-        label: "Settings",
-        action: "open-view",
-        meta: { view: "settings" }
-    },
     ...EXTERNAL_SHORTCUTS
 ];
 
@@ -112,6 +97,37 @@ const splitDefaultEntries = (entries: SpeedDialPersistedItem[]) => {
 
 const { records: DEFAULT_SPEED_DIAL_RECORDS, metaEntries: DEFAULT_META_ENTRIES } = splitDefaultEntries(DEFAULT_SPEED_DIAL_DATA);
 const legacyMetaBuffer: Array<[string, SpeedDialItemMeta]> = [];
+
+/** Same Core Rail filter as fl.ui launcher-state — CRX chrome.storage must never rehydrate these. */
+const CORE_RAIL_GRID_IDS = new Set([
+    "shortcut-explorer",
+    "shortcut-settings",
+    "shortcut-viewer",
+    "shortcut-markdown",
+    "explorer",
+    "settings",
+    "viewer",
+    "markdown"
+]);
+const CORE_RAIL_GRID_VIEWS = new Set(["explorer", "settings", "viewer", "markdown", "reader"]);
+const CORE_RAIL_GRID_LABELS = new Set(["explorer", "settings", "markdown", "viewer"]);
+
+const isCoreRailPersistedEntry = (entry: SpeedDialPersistedItem): boolean => {
+    const id = String(entry?.id || "").trim().toLowerCase();
+    if (CORE_RAIL_GRID_IDS.has(id)) return true;
+    const action = String(entry?.action || entry?.meta?.action || "open-view")
+        .trim()
+        .toLowerCase();
+    if (action && action !== "open-view") return false;
+    const view = String(entry?.meta?.view || "")
+        .trim()
+        .toLowerCase();
+    if (view && CORE_RAIL_GRID_VIEWS.has(view)) return true;
+    const label = String(entry?.label || "")
+        .trim()
+        .toLowerCase();
+    return Boolean(label) && CORE_RAIL_GRID_LABELS.has(label);
+};
 
 const ensureCell = (cell?: ReturnType<typeof observe<GridCell>>): ReturnType<typeof observe<GridCell>> => {
     if (cell && Array.isArray(cell) && cell.length >= 2) {
@@ -211,7 +227,13 @@ const createStatefulItem = (config: SpeedDialRecord): SpeedDialItem => {
 
 const createInitialState = () => observe(DEFAULT_SPEED_DIAL_RECORDS.map(createStatefulItem));
 const unpackState = (raw?: SpeedDialPersistedItem[]) => {
-    const source = Array.isArray(raw) && raw.length ? raw : DEFAULT_SPEED_DIAL_DATA;
+    /*
+     * WHY: CRX loads chrome.storage.local async; idle-save from this module used to
+     * rewrite Explorer/Settings/Markdown back onto the grid after launcher-state stripped them.
+     */
+    const source = (Array.isArray(raw) && raw.length ? raw : DEFAULT_SPEED_DIAL_DATA).filter(
+        (entry) => !isCoreRailPersistedEntry(entry)
+    );
     const records = source.map((entry) => {
         const { meta, ...record } = entry;
         if (meta) {
@@ -223,13 +245,73 @@ const unpackState = (raw?: SpeedDialPersistedItem[]) => {
     });
     return observe(records.map(createStatefulItem));
 };
-const packState = (collection: SpeedDialItem[]) => collection.map(serializeItemState);
+const packState = (collection: SpeedDialItem[]) =>
+    collection
+        .filter((item) => {
+            const id = String(item?.id || "").trim().toLowerCase();
+            if (CORE_RAIL_GRID_IDS.has(id)) return false;
+            const label =
+                item?.label && typeof item.label === "object" && "value" in item.label
+                    ? String((item.label as { value?: unknown }).value || "")
+                          .trim()
+                          .toLowerCase()
+                    : String(item?.label || "")
+                          .trim()
+                          .toLowerCase();
+            if (label && CORE_RAIL_GRID_LABELS.has(label)) {
+                const action = String(item?.action || "open-view")
+                    .trim()
+                    .toLowerCase();
+                if (!action || action === "open-view") return false;
+            }
+            return true;
+        })
+        .map(serializeItemState);
+
+/*
+ * WHY: Share one array with fl.ui launcher-state. Dual makeUIState(same key) in CRX
+ * caused chrome.storage ping-pong — StateStorage idle-save restored Core Rail tiles.
+ */
+const SPEED_DIAL_ITEMS_BOOT = "__CWSP_SPEED_DIAL_ITEMS_V1__";
+const SPEED_DIAL_META_BOOT = "__CWSP_SPEED_DIAL_META_V1__";
+
+const bootSpeedDialMeta = (): SpeedDialMetaRegistry => {
+    const g = globalThis as any;
+    if (g[SPEED_DIAL_META_BOOT]) return g[SPEED_DIAL_META_BOOT] as SpeedDialMetaRegistry;
+    const state = makeUIState(META_STORAGE_KEY, createInitialMetaRegistry, unpackMetaRegistry, packMetaRegistry) as unknown as SpeedDialMetaRegistry;
+    g[SPEED_DIAL_META_BOOT] = state;
+    return state;
+};
+
+const bootSpeedDialItems = (): SpeedDialItem[] => {
+    const g = globalThis as any;
+    if (g[SPEED_DIAL_ITEMS_BOOT]) return g[SPEED_DIAL_ITEMS_BOOT] as SpeedDialItem[];
+    const state = makeUIState(STORAGE_KEY, createInitialState, unpackState, packState) as unknown as SpeedDialItem[];
+    g[SPEED_DIAL_ITEMS_BOOT] = state;
+    return state;
+};
 
 //
-export const speedDialMeta = makeUIState(META_STORAGE_KEY, createInitialMetaRegistry, unpackMetaRegistry, packMetaRegistry) as unknown as SpeedDialMetaRegistry;
-export const speedDialItems = makeUIState(STORAGE_KEY, createInitialState, unpackState, packState) as unknown as SpeedDialItem[];
-export const persistSpeedDialItems = () => (speedDialItems as any)?.$save?.();
-export const persistSpeedDialMeta = () => (speedDialMeta as any)?.$save?.();
+export const speedDialMeta = bootSpeedDialMeta();
+export const speedDialItems = bootSpeedDialItems();
+export const persistSpeedDialItems = () => {
+    try {
+        saveUIState(STORAGE_KEY);
+        return;
+    } catch {
+        /* fall through */
+    }
+    (speedDialItems as any)?.$save?.();
+};
+export const persistSpeedDialMeta = () => {
+    try {
+        saveUIState(META_STORAGE_KEY);
+        return;
+    } catch {
+        /* fall through */
+    }
+    (speedDialMeta as any)?.$save?.();
+};
 
 //
 export const getSpeedDialMeta = (id?: string | null) => {
