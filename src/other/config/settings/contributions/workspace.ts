@@ -12,6 +12,8 @@
 import type { AppSettings, GridShape } from "../../SettingsTypes";
 import { registerSettingsContribution } from "../../SettingsContributions";
 import {
+    settingsButton,
+    settingsButtonRow,
     settingsHint,
     settingsNumberField,
     settingsPanel,
@@ -167,6 +169,92 @@ const setFieldValue = (panel: HTMLElement, path: string, value: unknown): void =
     el.value = String(value);
 };
 
+const CATALOG_KEY = "cw::workspace::pages";
+
+const paintWorkspacePages = (host: HTMLElement): void => {
+    let pages: Array<{ id: string; label: string }> = [];
+    let active = "side-a";
+    try {
+        const parsed = JSON.parse(localStorage.getItem(CATALOG_KEY) || "null");
+        if (parsed?.pages?.length) {
+            pages = parsed.pages;
+            active = String(parsed.activeId || pages[0].id);
+        }
+    } catch {
+        pages = [
+            { id: "side-a", label: "Side A" },
+            { id: "side-b", label: "Side B" },
+            { id: "side-c", label: "Side C" }
+        ];
+    }
+    if (!pages.length) {
+        pages = [
+            { id: "side-a", label: "Side A" },
+            { id: "side-b", label: "Side B" },
+            { id: "side-c", label: "Side C" }
+        ];
+    }
+    host.replaceChildren();
+    for (const page of pages) {
+        const row = document.createElement("div");
+        row.style.cssText = "display:flex;gap:.4rem;align-items:center;margin:.25rem 0;";
+        const btn = document.createElement("button");
+        btn.type = "button";
+        btn.className = "view-settings__btn";
+        btn.textContent = page.label + (page.id === active ? " · active" : "");
+        btn.addEventListener("click", () => {
+            window.dispatchEvent(new CustomEvent("cwsp:workspace-cmd", { detail: { cmd: "switch", id: page.id } }));
+            requestAnimationFrame(() => paintWorkspacePages(host));
+        });
+        const rename = document.createElement("button");
+        rename.type = "button";
+        rename.className = "view-settings__btn";
+        rename.textContent = "Rename";
+        rename.addEventListener("click", () => {
+            const next = window.prompt("Workspace name", page.label);
+            if (!next) return;
+            window.dispatchEvent(
+                new CustomEvent("cwsp:workspace-cmd", { detail: { cmd: "rename", id: page.id, label: next } })
+            );
+            requestAnimationFrame(() => paintWorkspacePages(host));
+        });
+        row.append(btn, rename);
+        if (pages.length > 1) {
+            const remove = document.createElement("button");
+            remove.type = "button";
+            remove.className = "view-settings__btn";
+            remove.textContent = "Remove";
+            remove.addEventListener("click", () => {
+                window.dispatchEvent(new CustomEvent("cwsp:workspace-cmd", { detail: { cmd: "remove", id: page.id } }));
+                requestAnimationFrame(() => paintWorkspacePages(host));
+            });
+            row.append(remove);
+        }
+        host.append(row);
+    }
+};
+
+const bindWorkspacePagesUi = (panel: HTMLElement): void => {
+    const host = panel.querySelector<HTMLElement>("[data-workspace-pages]");
+    if (host) paintWorkspacePages(host);
+    if (panel.dataset.workspacePagesBound === "1") return;
+    panel.dataset.workspacePagesBound = "1";
+    panel.addEventListener("click", (ev) => {
+        const btn = (ev.target as HTMLElement | null)?.closest?.("[data-action]") as HTMLElement | null;
+        const action = btn?.getAttribute("data-action") || "";
+        if (action === "add-workspace-page") {
+            window.dispatchEvent(new CustomEvent("cwsp:workspace-cmd", { detail: { cmd: "add" } }));
+        } else if (action === "workspace-page-prev") {
+            window.dispatchEvent(new CustomEvent("cwsp:workspace-cmd", { detail: { cmd: "prev" } }));
+        } else if (action === "workspace-page-next") {
+            window.dispatchEvent(new CustomEvent("cwsp:workspace-cmd", { detail: { cmd: "next" } }));
+        } else {
+            return;
+        }
+        if (host) requestAnimationFrame(() => paintWorkspacePages(host));
+    });
+};
+
 const persistGridFallback = (grid: WorkspaceGrid): void => {
     try {
         localStorage.setItem(
@@ -217,6 +305,21 @@ export const registerWorkspaceSettingsContribution = (): (() => void) =>
         excludeSurfaces: ["markdown"],
         render: () =>
             settingsPanel("workspace", "Workspace", [
+                settingsHint("Theme, workspaces, and the Speed Dial grid share this page."),
+                "Workspaces",
+                settingsHint("Pages of the Speed Dial. Explorer roots: /user/workspaces/side-a, side-b, …"),
+                (() => {
+                    const host = document.createElement("div");
+                    host.setAttribute("data-workspace-pages", "1");
+                    host.className = "field";
+                    return host;
+                })(),
+                settingsButtonRow(
+                    settingsButton("Add workspace", "add-workspace-page"),
+                    settingsButton("Previous page", "workspace-page-prev"),
+                    settingsButton("Next page", "workspace-page-next")
+                ),
+                "Grid",
                 settingsHint("Speed dial grid on the Home / NTP workspace."),
                 settingsSelectField("Default icon shape", "grid.shape", SHAPE_OPTIONS),
                 settingsSelectField("Icon bitmap scale", "grid.iconScale", ICON_SCALE_OPTIONS),
@@ -249,6 +352,7 @@ export const registerWorkspaceSettingsContribution = (): (() => void) =>
                 "grid.defaultOpenLinkTarget",
                 live.defaultOpenLinkTarget || grid.defaultOpenLinkTarget || "inline"
             );
+            bindWorkspacePagesUi(panel);
         },
         save: (settings) => {
             const next: WorkspaceGrid = {

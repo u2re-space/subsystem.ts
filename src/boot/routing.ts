@@ -137,11 +137,18 @@ export function parseCurrentRoute(config = DEFAULT_CONFIG): Route {
     const pathname = normalizePathname(location.pathname);
     const params = Object.fromEntries(new URLSearchParams(location.search));
 
-    // Map pathname to view
+    // Map pathname to view (`/markdown` is the document host alias for viewer)
     let view: ViewId = config.defaultView;
-    
-    if (pathname && config.views.includes(pathname as ViewId)) {
-        view = pathname as ViewId;
+    const aliases: Record<string, ViewId> = {
+        markdown: "viewer",
+        document: "viewer",
+        md: "viewer",
+        files: "explorer",
+        fm: "explorer"
+    };
+    const mapped = aliases[pathname] || pathname;
+    if (mapped && config.views.includes(mapped as ViewId)) {
+        view = mapped as ViewId;
     }
 
     return { view, params };

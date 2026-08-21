@@ -5,7 +5,7 @@
  * Reason for changes: Keep History API under VDS path mounts (/cwsp, /markdown) so reload ≠ 404.
  */
 
-const KNOWN_PATH_MOUNTS = ["cwsp", "markdown", "kvm"] as const;
+const KNOWN_PATH_MOUNTS = ["cwsp", "markdown", "explorer", "workcenter", "kvm"] as const;
 
 /**
  * Router base path without trailing slash ("" at domain root, "/cwsp" on IP path mount).
