@@ -1,8 +1,8 @@
 /*
  * Filename: cws-bridge.ts
  * FullPath: modules/projects/subsystem/src/routing/native/cws-bridge.ts
- * Change date and time: 14.45.00_19.07.2026
- * Reason for changes: Idempotent CwsBridge registerPlugin (CRX SW loads capacitor chunk + dynamic import).
+ * Change date and time: 18.05.00_22.08.2026
+ * Reason for changes: Allow a live getShellInfo refresh so Material You is not stuck on the first web stub.
  */
 /**
  * Unified CWSP bridge: Capacitor WebView / CWSAndroid (Kotlin) ↔ TypeScript.
@@ -195,9 +195,28 @@ const normalizeInvokeResultEnvelope = (
  * is one of the first places to inspect when networking works natively but not
  * through the web shell or vice versa.
  */
+/** Live `getShellInfo` — first init can cache the web stub before the Capacitor plugin is ready. */
+export async function fetchCwsShellInfo(options?: { force?: boolean }): Promise<CwsShellInfo | null> {
+    const existing =
+        typeof globalThis.window !== "undefined" ? globalThis.window.__CWS_SHELL_INFO__ ?? null : null;
+    if (!options?.force && existing?.accentColor) return existing;
+    try {
+        const info = await CwsBridge.getShellInfo();
+        if (info && typeof globalThis.window !== "undefined") {
+            globalThis.window.__CWS_SHELL_INFO__ = { ...(existing || {}), ...info };
+        }
+        return info ?? existing;
+    } catch {
+        return existing;
+    }
+}
+
 export async function initCwsNativeBridge(): Promise<CwsShellInfo | null> {
     if (bridgeInitDone) {
-        return typeof globalThis.window !== "undefined" ? globalThis.window.__CWS_SHELL_INFO__ ?? null : null;
+        const cached =
+            typeof globalThis.window !== "undefined" ? globalThis.window.__CWS_SHELL_INFO__ ?? null : null;
+        if (cached?.accentColor || cached?.native) return cached;
+        return fetchCwsShellInfo({ force: true });
     }
     bridgeInitDone = true;
     const electronInfoFn = globalThis.window?.electronBridge?.getShellInfo;

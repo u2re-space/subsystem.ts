@@ -1,8 +1,8 @@
 /*
  * Filename: appearance-base-color.ts
  * FullPath: modules/projects/subsystem/src/other/utils/appearance-base-color.ts
- * Change date and time: 16.20.00_22.08.2026
- * Reason for changes: Color-source picker — wallpaper / Material You / OS wallpaper / Speed Dial.
+ * Change date and time: 18.05.00_22.08.2026
+ * Reason for changes: Material You on Capacitor launcher — refetch shell accent, do not keep the first empty cache.
  */
 
 /**
@@ -201,8 +201,8 @@ const readBridgeColor = async (key: "accentColor" | "wallpaperColor"): Promise<s
         };
         const cached = normalizeHexColor(g.__CWS_SHELL_INFO__?.[key]);
         if (cached) return cached;
-        const { initCwsNativeBridge } = await import("com/routing/native/cws-bridge");
-        const info = await initCwsNativeBridge();
+        const { fetchCwsShellInfo } = await import("com/routing/native/cws-bridge");
+        const info = await fetchCwsShellInfo({ force: true });
         return normalizeHexColor(info?.[key]);
     } catch {
         return "";
