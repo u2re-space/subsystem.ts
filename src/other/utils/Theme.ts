@@ -1,6 +1,13 @@
+/*
+ * Filename: Theme.ts
+ * FullPath: modules/projects/subsystem/src/other/utils/Theme.ts
+ * Change date and time: 15.50.00_22.08.2026
+ * Reason for changes: Apply appearance base seed (Material You / Neutralino hue) onto veela tokens.
+ */
 import { loadSettings, saveSettings } from "com/config/Settings";
 import type { AppSettings } from "com/config/SettingsTypes";
 import { applyGridSettings } from "core/store/StateStorage";
+import { applyBaseColorSeed, resolveAppearanceBaseColor, resolveColorSource } from "./appearance-base-color";
 
 /**
  * WHY: fl.ui Quick Settings cannot import this module (layer cycle). It dispatches
@@ -94,6 +101,23 @@ export const samplePwaToolbarBackgroundColor = (): string | null => {
     }
 
     return null;
+};
+
+/** Paint `--color-surface` so Capacitor / PWA chrome follows Material You after seed apply. */
+export const sampleSurfaceBackgroundColor = (): string | null => {
+    if (typeof document === "undefined") return null;
+    const probe = document.createElement("div");
+    probe.style.cssText =
+        "position:fixed;left:-8px;top:-8px;inline-size:4px;block-size:4px;pointer-events:none;opacity:0;" +
+        "background:var(--color-surface)";
+    try {
+        document.documentElement.appendChild(probe);
+        return cssBackgroundToOpaqueHex(getComputedStyle(probe).backgroundColor);
+    } catch {
+        return null;
+    } finally {
+        probe.remove();
+    }
 };
 
 //
@@ -192,9 +216,9 @@ export const syncBrowserChromeTheme = (
             const meta = document.querySelector('meta[name="theme-color"]');
             if (!meta) return;
 
-            const sampled = samplePwaToolbarBackgroundColor();
-            /* WHY: #007acc painted a blue WCO control strip over warm Settings titlebars. */
-            const fallback = resolved === "dark" ? "#0f1419" : "#cbb8a4";
+            const sampled = samplePwaToolbarBackgroundColor() ?? sampleSurfaceBackgroundColor();
+            /* WHY: #0f1419 / #cbb8a4 forked Android status chrome from `--base-color`. */
+            const fallback = resolved === "dark" ? "#1a2420" : "#d5e4dc";
             meta.setAttribute("content", sampled ?? fallback);
         };
 
@@ -221,12 +245,13 @@ export const applyTheme = (settings: AppSettings | null | undefined) => {
 
     syncBrowserChromeTheme(resolvedScheme, theme);
     root.style.fontSize = resolveFontSize(settings.appearance?.fontSize);
-    if (settings.appearance?.color) {
-        document.body.style.setProperty("--current", settings.appearance.color);
-        document.body.style.setProperty("--primary", settings.appearance.color);
-        root.style.setProperty("--current", settings.appearance.color);
-        root.style.setProperty("--primary", settings.appearance.color);
-    }
+    /* WHY: gate WallpaperTheme before the async seed so a late KMeans cannot stomp Material You. */
+    root.dataset.colorSource = resolveColorSource(settings.appearance?.colorSource);
+    void resolveAppearanceBaseColor(settings.appearance).then(({ hex, source }) => {
+        applyBaseColorSeed(hex, source);
+        /* WHY: seed is async; first chrome pass still had the static #0f1419 fallback. */
+        syncBrowserChromeTheme(resolvedScheme, theme);
+    });
 
     // Apply grid settings
     if (settings.grid) {

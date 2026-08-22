@@ -454,6 +454,8 @@ export type AppSettings = {
         theme?: "light" | "dark" | "auto";
         fontSize?: "small" | "medium" | "large";
         color?: string;
+        /** Seed picker. Empty / `auto` → platform default (launcher wallpaper, transfer Material You / OS wallpaper, CRX Speed Dial). */
+        colorSource?: "auto" | "wallpaper" | "material-you" | "system-wallpaper" | "speed-dial" | "custom";
         markdown?: {
             customCss?: string;
             printCss?: string;
@@ -624,6 +626,7 @@ export const DEFAULT_SETTINGS: AppSettings = {
         theme: "auto",
         fontSize: "medium",
         color: "",
+        colorSource: "auto",
         markdown: {
             customCss: "",
             printCss: "",

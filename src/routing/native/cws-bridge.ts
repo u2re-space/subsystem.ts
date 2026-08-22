@@ -30,6 +30,10 @@ export interface CwsShellInfo {
     statusBarHeightCss?: number;
     /** CSS px from Android navigation bar / gesture inset. */
     navigationBarHeightCss?: number;
+    /** Material You `system_accent1_*` hex when the Android shell reports it. */
+    accentColor?: string;
+    /** Android `WallpaperColors` primary hex (home wallpaper, not accent). */
+    wallpaperColor?: string;
 }
 
 export interface CwsBridgeInvokeResult {

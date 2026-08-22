@@ -26,7 +26,7 @@ export const AdditionalSection: SectionConfig = {
                     label: "Accent Color",
                     type: "color-palette",
                     options: [
-                        { value: "#469", label: "Default", color: "#469" },
+                        { value: "#5a9ec8", label: "Default", color: "#5a9ec8" },
                         { value: "#71717a", label: "Neutral", color: "#71717a" },
                         { value: "#64748b", label: "Slate", color: "#64748b" },
                         { value: "#ef4444", label: "Red", color: "#ef4444" },
