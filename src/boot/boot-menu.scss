@@ -55,21 +55,27 @@
         padding: 0;
         border: none 0 transparent;
         outline: none 0 transparent;
-        background: var(--choice-bg);
+        //background: var(--choice-bg);
         color: var(--choice-fg);
         color: contrast-color(var(--choice-bg));
         font-family: var(--choice-font);
+        background: none !important;
+        background-color: transparent !important;
     }
 
     :where(body:has(.choice.container)) {
         display: flex;
         place-content: center;
         place-items: center;
+        /*
         background:
             radial-gradient(ellipse 1200px 800px at 50% 20%, rgba(139, 183, 255, 0.08) 0%, rgba(10, 13, 18, 0.85) 45%, var(--choice-bg) 100%),
             radial-gradient(circle at 25% 25%, rgba(255, 255, 255, 0.02) 0%, transparent 50%),
             radial-gradient(circle at 75% 75%, rgba(255, 255, 255, 0.01) 0%, transparent 50%);
         background-color: var(--choice-bg);
+        */
+        background: none !important;
+        background-color: transparent !important;
 
         & > :where(*),
         & :where(*) {
@@ -123,6 +129,10 @@
         display: flex !important;
         place-content: center !important;
         place-items: center !important;
+        background: none !important;
+        background-color: transparent !important;
+        border: none 0px transparent !important;
+        outline: none 0px transparent !important;
     }
 }
 
