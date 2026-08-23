@@ -1,8 +1,8 @@
 /*
  * Filename: cwsp.ts
  * FullPath: modules/projects/subsystem/src/other/config/settings/contributions/cwsp.ts
- * Change date and time: 17.05.00_21.07.2026
- * Reason for changes: Capacitor App update (dev) source picker + check/install actions.
+ * Change date and time: 23.09.20_23.08.2026
+ * Reason for changes: Launcher update hint — no ecosystem token; hub APK still gated.
  *   CRX: Control pairing UI (persistent session) on CWSP tab.
  *   2026-07-21: Files transfer section (W5) — destinations, allow-share-to-all,
  *   open-for-share / inbound modes, byte transport hint.
@@ -350,7 +350,7 @@ const mobileApkUpdateFields = (): SettingsPanelChild[] => {
             settingsButton("Download & install", "apk-update-install", { primary: true })
         ),
         settingsHint(
-            "Uses ecosystem token (X-API-Key) against /releases/android. Install requires the same APK signing certificate as the installed app. Each `npm run build:capacitor` auto-bumps VERSION_CODE and restages the gateway release."
+            "Launcher reads latest-launcher.json without a token. Hub APK (latest.json) still uses the ecosystem token. Install needs the same signing certificate as the installed app. Each `npm run build:capacitor` bumps VERSION_CODE and restages the gateway release."
         )
     ];
 };
