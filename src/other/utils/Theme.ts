@@ -1,8 +1,8 @@
 /*
  * Filename: Theme.ts
  * FullPath: modules/projects/subsystem/src/other/utils/Theme.ts
- * Change date and time: 15.50.00_22.08.2026
- * Reason for changes: Apply appearance base seed (Material You / Neutralino hue) onto veela tokens.
+ * Change date and time: 23.10.20_23.08.2026
+ * Reason for changes: Always write meta theme-color so Neutralino caption can follow the nav.
  */
 import { loadSettings, saveSettings } from "com/config/Settings";
 import type { AppSettings } from "com/config/SettingsTypes";
@@ -213,8 +213,12 @@ export const syncBrowserChromeTheme = (
                 return;
             }
 
-            const meta = document.querySelector('meta[name="theme-color"]');
-            if (!meta) return;
+            let meta = document.querySelector('meta[name="theme-color"]') as HTMLMetaElement | null;
+            if (!meta) {
+                meta = document.createElement("meta");
+                meta.setAttribute("name", "theme-color");
+                document.head?.appendChild(meta);
+            }
 
             const sampled = samplePwaToolbarBackgroundColor() ?? sampleSurfaceBackgroundColor();
             /* WHY: #0f1419 / #cbb8a4 forked Android status chrome from `--base-color`. */
