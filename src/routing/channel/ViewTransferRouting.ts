@@ -1,6 +1,12 @@
 import { sendProtocolMessage, enqueuePendingMessage, type UnifiedMessage } from "com/core/UnifiedMessaging";
 import { summarizeForLog } from "com/core/LogSanitizer";
 import { normalizeDestination, viewBroadcastChannelName } from "com/config/Names";
+import {
+    ECOSYSTEM_SKUS,
+    androidPackageForSku,
+    readCwspSku,
+    siblingSkuForView
+} from "../../other/config/ecosystem-skus";
 
 /**
  * Canonical classification for share-target / launch-queue files (extension often beats flaky MIME).
@@ -236,6 +242,35 @@ export const dispatchViewTransfer = async (
     payload: ViewTransferPayload
 ): Promise<{ delivered: boolean; resolved: ViewTransferResolved }> => {
     const resolved = resolveViewTransfer(payload);
+    // WHY: each Capacitor SKU is its own APK — do not open viewer inside process or workcenter inside document.
+    const currentSku = readCwspSku();
+    const sibling = siblingSkuForView(resolved.destination);
+    if (currentSku && currentSku !== "crx" && sibling && sibling !== currentSku) {
+        const pkg = androidPackageForSku(sibling);
+        let handedOff = false;
+        if (pkg) {
+            try {
+                const bridge = (await import("com/routing/native/launcher-bridge")) as {
+                    launcherLaunch?: (pkg: string) => Promise<boolean>;
+                };
+                handedOff = Boolean(await bridge.launcherLaunch?.(pkg));
+            } catch {
+                /* web / stub */
+            }
+        }
+        if (!handedOff) {
+            const scheme = ECOSYSTEM_SKUS[sibling]?.scheme;
+            if (scheme && typeof location !== "undefined") {
+                try {
+                    location.assign(`${scheme}://`);
+                    handedOff = true;
+                } catch {
+                    /* non-DOM */
+                }
+            }
+        }
+        if (handedOff) return { delivered: true, resolved };
+    }
     const files = Array.isArray(payload.files) ? payload.files : [];
     const hasBinaryPayload = resolved.contentType === "image" || resolved.contentType === "file";
     const message: UnifiedMessage = {

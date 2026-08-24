@@ -2,7 +2,7 @@
  * Filename: cwsp.ts
  * FullPath: modules/projects/subsystem/src/other/config/settings/contributions/cwsp.ts
  * Change date and time: 23.09.20_23.08.2026
- * Reason for changes: Launcher update hint — no ecosystem token; hub APK still gated.
+ * Reason for changes: APK update left this tab — each Capacitor SKU owns its own Updates panel.
  *   CRX: Control pairing UI (persistent session) on CWSP tab.
  *   2026-07-21: Files transfer section (W5) — destinations, allow-share-to-all,
  *   open-for-share / inbound modes, byte transport hint.
@@ -330,37 +330,12 @@ const mobileDeviceFields = (): SettingsPanelChild[] => [
     settingsHint("Save may request contacts / notifications when those toggles are on. SMS is not used.")
 ];
 
-/** Capacitor-only: sideload newer APK from gateway without SSH/SFTP File Manager. */
-const mobileApkUpdateFields = (): SettingsPanelChild[] => {
-    const versionHint = document.createElement("p");
-    versionHint.className = "field-hint";
-    versionHint.setAttribute("data-apk-local-version", "1");
-    versionHint.textContent = "Installed version: … (tap Check to refresh)";
-
-    return [
-        "App update (dev)",
-        versionHint,
-        settingsSelectField("Update source", "shell.apkUpdateSource", [
-            ["wan", "WAN — https://45.147.121.152:8434"],
-            ["lan", "LAN — https://192.168.0.200:8434"],
-            ["relay", "Current Relay (core.endpointUrl)"]
-        ]),
-        settingsButtonRow(
-            settingsButton("Check for update", "apk-update-check"),
-            settingsButton("Download & install", "apk-update-install", { primary: true })
-        ),
-        settingsHint(
-            "Launcher reads latest-launcher.json without a token. Hub APK (latest.json) still uses the ecosystem token. Install needs the same signing certificate as the installed app. Each `npm run build:capacitor` bumps VERSION_CODE and restages the gateway release."
-        )
-    ];
-};
-
 export const registerCwspSettingsContribution = (): (() => void) =>
     registerSettingsContribution({
         id: "cwsp",
         label: "CWSP",
         order: 55,
-        // WHY: document PWA + environment desktop must not expose Control endpoint/token UI.
+        // WHY: document PWA + environment/launcher must not expose Control endpoint/token UI.
         excludeSurfaces: ["markdown", "environment"],
         render: (ctx: SettingsContributionContext) => {
             const children: SettingsPanelChild[] = [
@@ -369,11 +344,7 @@ export const registerCwspSettingsContribution = (): (() => void) =>
                 ...filesTransferFields(ctx)
             ];
             if (ctx.surface === "capacitor" || ctx.surface === "native") {
-                children.push(
-                    ...nativeWireFields(),
-                    ...mobileDeviceFields(),
-                    ...mobileApkUpdateFields()
-                );
+                children.push(...nativeWireFields(), ...mobileDeviceFields());
             } else if (ctx.surface === "crx" || ctx.isExtension) {
                 // WHY: maintainHub / protocol / CRX id live under Extension tab;
                 // Control pairing for clipboard menus lives here (CWSP tab).
@@ -401,13 +372,6 @@ export const registerCwspSettingsContribution = (): (() => void) =>
                 );
                 clientInput.value = desk;
                 settings.shell = { ...(settings.shell || {}), clientId: desk };
-            }
-            const src = panel.querySelector(
-                '[data-field="shell.apkUpdateSource"]'
-            ) as HTMLSelectElement | null;
-            if (src) {
-                const v = String((settings.shell as any)?.apkUpdateSource || "wan").trim();
-                src.value = v === "lan" || v === "relay" ? v : "wan";
             }
             // WHY: show truncated SAF URI (Cap files storage section).
             const safEl = panel.querySelector("[data-files-saf-uri]") as HTMLElement | null;

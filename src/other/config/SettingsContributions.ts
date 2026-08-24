@@ -3,6 +3,7 @@
  * INVARIANT: register and read paths must resolve to this module (see `com/config/*` alias).
  */
 import type { AppSettings } from "./SettingsTypes";
+import type { CwspSku } from "./ecosystem-skus";
 
 /**
  * `markdown` = VDS md.u2re.space / /markdown/ (cw-markdown) — document SPA, not CWSP Control.
@@ -20,6 +21,8 @@ export type SettingsContributionSurface =
 export type SettingsContributionContext = {
     isExtension?: boolean;
     surface: SettingsContributionSurface;
+    /** Host APK / CRX SKU. Settings tabs resolve from this, not from enabled views. */
+    sku?: CwspSku | "";
 };
 
 export type SettingsContribution = {

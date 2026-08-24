@@ -29,6 +29,7 @@
             "com/config/RuntimeSettings": ["./src/other/config/RuntimeSettings.ts"],
             "com/config/settings/register-builtin-contributions": ["./src/other/config/settings/register-builtin-contributions.ts"],
             "com/config/settings/settings-shell-profile": ["./src/other/config/settings/settings-shell-profile.ts"],
+            "com/config/ecosystem-skus": ["./src/other/config/ecosystem-skus.ts"],
             "com/config/Names": ["./runtime/names.ts"],
             "com/config/admin-doors": ["./runtime/admin-doors.ts"],
             "com/core/UnifiedMessaging": ["./runtime/messaging.ts"],

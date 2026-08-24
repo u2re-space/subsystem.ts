@@ -4,7 +4,7 @@ import { BUILTIN_AI_MODELS, type SectionConfig } from "com/config/SettingsTypes"
 export const AISection: SectionConfig = {
     key: "ai",
     title: "AI Integration",
-    icon: "cpu",
+    icon: "magic-wand",
     description: "Manage credentials for your AI provider and optional bridge services.",
     groups: [
         {

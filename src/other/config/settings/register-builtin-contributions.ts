@@ -3,12 +3,14 @@
  * Views may also call individual `register*SettingsContribution()` exports
  * (idempotent by contribution id).
  */
+import { registerApkUpdateSettingsContribution } from "./contributions/apk-update";
 import { registerCwspSettingsContribution } from "./contributions/cwsp";
 import { registerDeviceSettingsContribution } from "./contributions/device";
 import { registerReaderSettingsContribution } from "./contributions/reader";
 import { registerWorkcenterSettingsContribution } from "./contributions/workcenter";
 import { registerWorkspaceSettingsContribution } from "./contributions/workspace";
 
+export { registerApkUpdateSettingsContribution } from "./contributions/apk-update";
 export { registerCwspSettingsContribution } from "./contributions/cwsp";
 export { registerDeviceSettingsContribution } from "./contributions/device";
 export { registerReaderSettingsContribution } from "./contributions/reader";
@@ -25,4 +27,5 @@ export const registerBuiltinSettingsContributions = (): void => {
     registerReaderSettingsContribution();
     registerWorkcenterSettingsContribution();
     registerDeviceSettingsContribution();
+    registerApkUpdateSettingsContribution();
 };
