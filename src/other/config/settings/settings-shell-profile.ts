@@ -83,7 +83,7 @@ const DOCUMENT_HIDDEN_BUILTIN_TABS = ["server", "extension", "cwsp", "ai", "mcp"
 const PROCESS_HIDDEN_BUILTIN_TABS = ["server", "extension", "cwsp", "markdown"] as const;
 
 /**
- * Launcher / environment desktop: Appearance + Workspace only.
+ * Launcher / environment desktop: Appearance + Workspace + self-APK Updates.
  * INVARIANT: print/read/edit live on document; AI/WorkCenter on process; Control on transfer.
  * NOTE: `cwsp` is contributed (not built-in); same DOM selectors still remove the tab/panel.
  */

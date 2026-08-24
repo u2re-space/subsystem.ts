@@ -3,8 +3,8 @@
  * FullPath: modules/projects/subsystem/src/other/config/settings/contributions/apk-update.ts
  * FIND:apk-update
  * TAG:sku,apk-update
- * Change date and time: 13.43.00_24.08.2026
- * Reason for changes: Per-SKU APK update tab — no longer nested under the CWSP Control panel.
+ * Change date and time: 15.10.00_24.08.2026
+ * Reason for changes: Launcher environment host also owns this self-APK Updates block.
  */
 
 import {
@@ -66,7 +66,7 @@ export const registerApkUpdateSettingsContribution = (): (() => void) =>
         id: "apk-update",
         label: "Updates",
         order: 90,
-        surfaces: ["capacitor", "native"],
+        surfaces: ["capacitor", "native", "environment"],
         render: (ctx: SettingsContributionContext) =>
             settingsPanel("apk-update", "Updates", apkUpdateFields(ctx)),
         load: (settings: AppSettings, panel: HTMLElement) => {
