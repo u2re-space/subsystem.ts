@@ -23,6 +23,8 @@ export type SettingsContributionContext = {
     surface: SettingsContributionSurface;
     /** Host APK / CRX SKU. Settings tabs resolve from this, not from enabled views. */
     sku?: CwspSku | "";
+    /** Hub `/settings/{area}` — explorer / transfer / document / process mirrors. */
+    hubSection?: "hub" | "explorer" | "transfer" | "document" | "process";
 };
 
 export type SettingsContribution = {

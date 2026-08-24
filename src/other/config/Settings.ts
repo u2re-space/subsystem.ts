@@ -1009,11 +1009,13 @@ const isControlSpaRelayUrl = (url: string): boolean => {
         return (
             host === "cwsp.u2re.space" ||
             host === "www.cwsp.u2re.space" ||
+            host === "transfer.u2re.space" ||
+            host === "www.transfer.u2re.space" ||
             host === "md.u2re.space" ||
             host === "www.md.u2re.space"
         );
     } catch {
-        return /cwsp\.u2re\.space|md\.u2re\.space/i.test(raw);
+            return /cwsp\.u2re\.space|transfer\.u2re\.space|md\.u2re\.space/i.test(raw);
     }
 };
 

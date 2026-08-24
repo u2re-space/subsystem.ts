@@ -16,6 +16,7 @@
  */
 
 import type { ShellId } from "./types";
+import { getHistoryBasePath } from "./history-base";
 
 export const LS_BOOT_SHELL_LAST_ACTIVE = "rs-boot-shell-last-active";
 /** Soft legacy default key — when absent or not remembered, prefer `environment`. */
@@ -30,7 +31,14 @@ const LAST_ACTIVE_MAX_MS = 30 * 24 * 60 * 60 * 1000;
  */
 export function isForcedEnvironmentBootSurface(): boolean {
     try {
-        return globalThis.document?.documentElement?.dataset?.cwspSurface === "vds-main";
+        if (globalThis.document?.documentElement?.dataset?.cwspSurface !== "vds-main") {
+            return false;
+        }
+        const host = String(globalThis.location?.hostname || "").toLowerCase();
+        const isHub = host === "u2re.space" || host === "www.u2re.space";
+        if (!isHub) return false;
+        // Sibling SKU mounts (/explorer, /markdown, …) are standalone modules, not the desktop hub.
+        return !getHistoryBasePath();
     } catch {
         return false;
     }

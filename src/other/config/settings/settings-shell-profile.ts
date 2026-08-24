@@ -3,8 +3,8 @@
  * FullPath: modules/projects/subsystem/src/other/config/settings/settings-shell-profile.ts
  * FIND:settings-profile
  * TAG:sku,settings-profile
- * Change date and time: 14.25.00_24.08.2026
- * Reason for changes: Document settings are print/read/edit; AI/MCP live on process.
+ * Change date and time: 22.20.00_24.08.2026
+ * Reason for changes: Hub `/settings/{area}` aliases + SKU override.
  */
 
 import { isEnabledView } from "../../../routing/core/views";
@@ -149,3 +149,124 @@ export const defaultSettingsTabForProfile = (profile: SettingsShellProfile): str
 
 export const hasBuiltInSettingsPanel = (root: HTMLElement, panelId: string): boolean =>
     Boolean(root.querySelector(`[data-tab-panel="${panelId}"]`));
+
+/**
+ * Hub (`u2re.space`) settings areas. Aliases collapse to one section.
+ * `/settings/cwsp` ≡ `/settings/transfer`, `/settings/viewer` ≡ `/settings/markdown`,
+ * `/settings/process` ≡ `/settings/workcenter`.
+ */
+export type HubSettingsSection = "hub" | "explorer" | "transfer" | "document" | "process";
+
+const HUB_SETTINGS_ALIASES: Record<string, HubSettingsSection> = {
+    "": "hub",
+    hub: "hub",
+    shell: "hub",
+    explorer: "explorer",
+    cwsp: "transfer",
+    transfer: "transfer",
+    viewer: "document",
+    markdown: "document",
+    document: "document",
+    md: "document",
+    process: "process",
+    workcenter: "process"
+};
+
+/** Canonical path segment for a hub settings section (`hub` → no extra segment). */
+export const hubSettingsSectionPath = (section: HubSettingsSection): string => {
+    if (section === "hub") return "";
+    if (section === "document") return "markdown";
+    return section;
+};
+
+export const canonicalHubSettingsSection = (raw: string | undefined | null): HubSettingsSection => {
+    const key = String(raw || "").trim().toLowerCase();
+    return HUB_SETTINGS_ALIASES[key] || "hub";
+};
+
+const isCentralHubHost = (): boolean => {
+    try {
+        const host = String(globalThis.location?.hostname || "").toLowerCase();
+        if (host === "u2re.space" || host === "www.u2re.space") return true;
+        if (host === "localhost" || host === "127.0.0.1" || host === "::1") return true;
+        if (/^\d{1,3}(\.\d{1,3}){3}$/.test(host)) return true;
+        const surface = String(document.documentElement?.dataset?.cwspSurface || "").toLowerCase();
+        return surface === "vds-main";
+    } catch {
+        return false;
+    }
+};
+
+/**
+ * Hub `/settings` and `/settings/{area}` only. `/explorer/settings` stays the explorer module.
+ * WHY: sibling path mounts set a history base; those are not the central settings tree.
+ */
+export const resolveEffectiveHubSettingsSection = (): HubSettingsSection | null => {
+    if (!isCentralHubHost()) return null;
+    try {
+        const base = String(document.documentElement?.dataset?.cwspRouterBase || "").replace(/\/+$/, "");
+        if (base && base !== "/") return null;
+        const path = String(globalThis.location?.pathname || "/").split("?")[0] || "/";
+        const segs = path.split("/").filter(Boolean);
+        if (segs[0]?.toLowerCase() !== "settings") return null;
+        return canonicalHubSettingsSection(segs[1] || "");
+    } catch {
+        return null;
+    }
+};
+
+export const skuForHubSettingsSection = (section: HubSettingsSection): CwspSku | "" => {
+    if (section === "explorer") return "explorer";
+    if (section === "transfer") return "transfer";
+    if (section === "document") return "document";
+    if (section === "process") return "process";
+    return "launcher";
+};
+
+export const SIBLING_HUB_SETTINGS_SECTIONS = [
+    "explorer",
+    "document",
+    "process",
+    "transfer"
+] as const satisfies readonly Exclude<HubSettingsSection, "hub">[];
+
+export const ALL_HUB_SETTINGS_SECTIONS: HubSettingsSection[] = [
+    "hub",
+    ...SIBLING_HUB_SETTINGS_SECTIONS
+];
+
+export type SettingsAreaNavMode = "hub" | "launcher" | "none";
+
+/**
+ * Hub shows every area. Launcher Android shows Shell plus installed sibling APKs only.
+ * Empty → hide the area nav (no extra tabs).
+ */
+export const visibleHubSettingsSections = (
+    mode: SettingsAreaNavMode,
+    installedSiblings?: readonly HubSettingsSection[] | null
+): HubSettingsSection[] => {
+    if (mode === "hub") return ALL_HUB_SETTINGS_SECTIONS.slice();
+    if (mode === "launcher") {
+        if (!installedSiblings) return [];
+        const sibs = SIBLING_HUB_SETTINGS_SECTIONS.filter((s) => installedSiblings.includes(s));
+        return sibs.length ? ["hub", ...sibs] : [];
+    }
+    return [];
+};
+
+export const rememberSettingsAreaSection = (section: HubSettingsSection): void => {
+    try {
+        document.documentElement.dataset.cwspSettingsSection = section;
+    } catch {
+        /* tests */
+    }
+};
+
+export const readSettingsAreaSection = (): HubSettingsSection | "" => {
+    try {
+        const raw = String(document.documentElement?.dataset?.cwspSettingsSection || "").trim();
+        return raw ? canonicalHubSettingsSection(raw) : "";
+    } catch {
+        return "";
+    }
+};

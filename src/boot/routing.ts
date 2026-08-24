@@ -10,7 +10,7 @@
  * - `/` → canonical app URL (home shell entry; boot-selected shell)
  * - `/viewer` → Viewer
  * - `/workcenter` → Work Center
- * - `/settings` → Settings
+ * - `/settings` → Settings (hub areas: `/settings/explorer`, `/settings/transfer` ≡ `/settings/cwsp`, `/settings/markdown` ≡ `/settings/viewer`, `/settings/process` ≡ `/settings/workcenter`)
  * - `/explorer` → Explorer
  * - `/history` → History
  * - `/editor` → Editor
@@ -37,7 +37,18 @@ import {
     readLastActiveBootShell,
     resolveForcedBootShell
 } from "./shell-preference";
-import { ensureHistoryBaseDataset, stripHistoryBase, withHistoryBase } from "./history-base";
+import {
+    ensureHistoryBaseDataset,
+    getHistoryBasePath,
+    isDedicatedSkuHost,
+    pathForSkuHostView,
+    stripHistoryBase,
+    withHistoryBase
+} from "./history-base";
+import {
+    canonicalHubSettingsSection,
+    hubSettingsSectionPath
+} from "../other/config/settings/settings-shell-profile";
 
 // ============================================================================
 // ROUTE TYPES
@@ -137,18 +148,76 @@ export function parseCurrentRoute(config = DEFAULT_CONFIG): Route {
     const pathname = normalizePathname(location.pathname);
     const params = Object.fromEntries(new URLSearchParams(location.search));
 
-    // Map pathname to view (`/markdown` is the document host alias for viewer)
+    // Map pathname to view (`/markdown` / `/document` are document aliases for viewer).
     let view: ViewId = config.defaultView;
     const aliases: Record<string, ViewId> = {
         markdown: "viewer",
         document: "viewer",
         md: "viewer",
         files: "explorer",
-        fm: "explorer"
+        fm: "explorer",
+        process: "workcenter",
+        transfer: "network",
+        admin: "settings"
     };
-    const mapped = aliases[pathname] || pathname;
-    if (mapped && config.views.includes(mapped as ViewId)) {
-        view = mapped as ViewId;
+    const segments = pathname.split("/").filter(Boolean);
+    const last = segments[segments.length - 1] || "";
+    const first = segments[0] || "";
+    if (last === "settings" || first === "settings") {
+        view = "settings";
+        if (first === "settings" && last && last !== "settings") {
+            const aliases: Record<string, string> = {
+                explorer: "explorer",
+                cwsp: "transfer",
+                transfer: "transfer",
+                viewer: "markdown",
+                markdown: "markdown",
+                document: "markdown",
+                md: "markdown",
+                process: "process",
+                workcenter: "process",
+                shell: "hub",
+                hub: "hub"
+            };
+            const section = aliases[last];
+            if (section) params.section = section;
+        }
+        if (last === "admin" || first === "admin") params.admin = "1";
+    } else if (last === "admin" || first === "admin") {
+        view = "settings";
+        params.admin = "1";
+    } else {
+        const mapped = aliases[pathname] || aliases[first] || first;
+        if (mapped && config.views.includes(mapped as ViewId)) {
+            view = mapped as ViewId;
+        } else {
+            const mount = getHistoryBasePath().replace(/^\/+/, "").toLowerCase();
+            const mountDefault: Record<string, ViewId> = {
+                markdown: "viewer",
+                document: "viewer",
+                viewer: "viewer",
+                explorer: "explorer",
+                workcenter: "workcenter",
+                process: "workcenter",
+                cwsp: "network",
+                transfer: "network"
+            };
+            const fromMount = mount ? mountDefault[mount] : null;
+            const host = String(location.hostname || "").toLowerCase();
+            const hostDefault: Record<string, ViewId> = {
+                "md.u2re.space": "viewer",
+                "www.md.u2re.space": "viewer",
+                "explorer.u2re.space": "explorer",
+                "www.explorer.u2re.space": "explorer",
+                "process.u2re.space": "workcenter",
+                "workcenter.u2re.space": "workcenter",
+                "cwsp.u2re.space": "network",
+                "transfer.u2re.space": "network"
+            };
+            const fromHost = hostDefault[host] || null;
+            const picked = fromMount || fromHost;
+            if (picked && config.views.includes(picked)) view = picked;
+        }
     }
 
     return { view, params };
@@ -170,14 +239,26 @@ export function isRootRoute(): boolean {
 export function buildUrl(route: Route): string {
     ensureHistoryBaseDataset();
     const view = String(route.view || "").trim().replace(/^\/+/, "").toLowerCase();
-    const path =
-        view && view !== "home"
-            ? withHistoryBase(`/${view}`)
-            : withHistoryBase("/");
+    const params = { ...(route.params || {}) };
+    let path: string;
+    if (view === "settings") {
+        const section = hubSettingsSectionPath(
+            canonicalHubSettingsSection(String(params.section || "").trim())
+        );
+        delete params.section;
+        path = section
+            ? withHistoryBase(`/settings/${section}`)
+            : withHistoryBase("/settings");
+    } else {
+        path =
+            view && view !== "home"
+                ? withHistoryBase(pathForSkuHostView(`/${view}`))
+                : withHistoryBase("/");
+    }
     let url = path;
 
-    if (route.params && Object.keys(route.params).length > 0) {
-        const search = new URLSearchParams(route.params).toString();
+    if (Object.keys(params).length > 0) {
+        const search = new URLSearchParams(params).toString();
         url += (url.includes("?") ? "&" : "?") + search;
     }
 
@@ -258,6 +339,8 @@ export function getViewFromPath(): ViewId | null {
     if (isValidView(pathname)) {
         return pathname;
     }
+    const first = pathname.split("/").filter(Boolean)[0] || "";
+    if (first === "settings") return "settings";
     
     return null;
 }
@@ -309,6 +392,15 @@ export function getSavedShellPreference(): ShellId | null {
             // Ignore storage issues
         }
         return forced;
+    }
+
+    // Dedicated SKU hosts + hub sibling mounts open as standalone modules.
+    try {
+        if (isDedicatedSkuHost() || getHistoryBasePath()) {
+            return getShellFromQuery() || "minimal";
+        }
+    } catch {
+        /* ignore */
     }
 
     const fromQuery = getShellFromQuery();

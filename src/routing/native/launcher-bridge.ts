@@ -27,6 +27,10 @@ export async function launcherLaunch(_pkg: string, _component?: string): Promise
     return false;
 }
 
+export async function launcherHasPackages(_pkgs: string[]): Promise<Record<string, boolean>> {
+    return {};
+}
+
 export async function launcherIcon(
     _cacheKey: string,
     _size = 64,

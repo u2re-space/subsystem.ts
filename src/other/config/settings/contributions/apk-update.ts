@@ -36,14 +36,19 @@ const apkUpdateFields = (ctx: SettingsContributionContext): SettingsPanelChild[]
     versionHint.setAttribute("data-apk-local-version", "1");
     versionHint.textContent = "Installed version: … (tap Check to refresh)";
 
-    const hint =
-        sku === "launcher"
-            ? "This launcher APK reads latest-launcher.json. Transfer / explorer / document each update themselves."
-            : sku === "transfer"
-              ? "This hub APK reads latest.json (ecosystem token). Other SKUs are not installed from here."
-              : manifest
-                ? `This app reads ${manifest} for its own APK only.`
-                : "Checks the gateway release that matches this installed package.";
+    const hostSku = readCwspSku();
+    const fromLauncher = hostSku === "launcher" && sku && sku !== "launcher";
+    const hint = fromLauncher
+        ? sku === "transfer"
+            ? "Updates CWSP-transfer (`latest.json` / space.u2re.cwsp). Needs ecosystem token."
+            : `Updates the installed ${sku} APK (${manifest || "channel"}).`
+        : sku === "launcher"
+          ? "This launcher APK reads latest-launcher.json. Sibling apps update from their own section when installed."
+          : sku === "transfer"
+            ? "This hub APK reads latest.json (ecosystem token). Other SKUs are not installed from here."
+            : manifest
+              ? `This app reads ${manifest} for its own APK only.`
+              : "Checks the gateway release that matches this installed package.";
 
     return [
         "App update (dev)",

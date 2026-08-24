@@ -22,7 +22,12 @@ import {
 export * from "./shell-slots";
 import { resolveOverlayMountPoint as resolveGlobalOverlayMount } from "./shell-slots";
 import { showToast } from "./toast";
-import { ensureHistoryBaseDataset, stripHistoryBase, withHistoryBase } from "./history-base";
+import { ensureHistoryBaseDataset, pathForSkuHostView, stripHistoryBase, withHistoryBase } from "./history-base";
+import {
+    canonicalHubSettingsSection,
+    hubSettingsSectionPath,
+    resolveEffectiveHubSettingsSection
+} from "com/config/settings/settings-shell-profile";
 
 //@ts-ignore
 import style from "./views.scss?inline";
@@ -379,12 +384,22 @@ export abstract class ShellBase implements Shell {
     async navigate(viewId: ViewId, params?: Record<string, string>, navOptions?: ShellNavigateOptions): Promise<void> {
         console.log(`[${this.id}] Navigating to: ${viewId}`, params);
         const navToken = ++this.navigationToken;
+        const mergedParams = { ...(params || {}) };
+        if (viewId === "settings") {
+            const section = hubSettingsSectionPath(
+                canonicalHubSettingsSection(
+                    mergedParams.section || resolveEffectiveHubSettingsSection() || ""
+                )
+            );
+            if (section) mergedParams.section = section;
+            else delete mergedParams.section;
+        }
 
         // No-op when already showing this view with the same query (avoids duplicate transitions).
         if (
             !navOptions?.force &&
             viewId === this.currentView.value &&
-            this.sameRouteParams(params, this.navigationState.params)
+            this.sameRouteParams(mergedParams, this.navigationState.params)
         ) {
             const entry = this.loadedViews.get(viewId);
             if (
@@ -403,7 +418,7 @@ export abstract class ShellBase implements Shell {
         // Update navigation state
         this.navigationState.previousView = previousView;
         this.navigationState.currentView = viewId;
-        this.navigationState.params = params;
+        this.navigationState.params = mergedParams;
 
         // Add to history (avoid duplicates)
         if (this.navigationState.viewHistory[this.navigationState.viewHistory.length - 1] !== viewId) {
@@ -424,9 +439,11 @@ export abstract class ShellBase implements Shell {
         // WHY: environment mono native must show `/settings?...`, not `/?view=settings`.
         if (typeof window !== "undefined" && typeof window != "undefined") {
             ensureHistoryBaseDataset();
-            const searchParams = new URLSearchParams(params || {});
+            const searchParams = new URLSearchParams(mergedParams);
             // Always stamp the mounted shell — stale `shell=` from another harness must not linger.
             searchParams.set("shell", this.id);
+            // WHY: hub settings areas live in the path (`/settings/explorer`), not `?section=`.
+            searchParams.delete("section");
             const isPathRoutedShell =
                 this.id === "minimal" ||
                 this.id === "immersive" ||
@@ -434,18 +451,20 @@ export abstract class ShellBase implements Shell {
             const search = searchParams.toString()
                 ? "?" + searchParams.toString()
                 : "";
-            const pathname = withHistoryBase(
-                isPathRoutedShell
-                    ? `/${String(viewId || "home").replace(/^\/+/, "")}`
-                    : "/"
-            );
+            const viewPath =
+                viewId === "settings"
+                    ? mergedParams.section
+                        ? `/settings/${mergedParams.section}`
+                        : "/settings"
+                    : `/${String(viewId || "home").replace(/^\/+/, "")}`;
+            const pathname = withHistoryBase(isPathRoutedShell ? pathForSkuHostView(viewPath) : "/");
             const newPathAndSearch = pathname + search;
             try {
                 const next = new URL(newPathAndSearch, globalThis.location.origin);
                 const cur = new URL(globalThis.location.href);
                 if (next.pathname !== cur.pathname || next.search !== cur.search) {
                     globalThis?.history?.pushState?.(
-                        { viewId, params },
+                        { viewId, params: mergedParams },
                         "",
                         next.pathname + next.search
                     );
@@ -455,14 +474,18 @@ export abstract class ShellBase implements Shell {
                     globalThis?.location?.pathname !== pathname ||
                     (globalThis?.location?.search || "") !== search
                 ) {
-                    globalThis?.history?.pushState?.({ viewId, params }, "", newPathAndSearch);
+                    globalThis?.history?.pushState?.(
+                        { viewId, params: mergedParams },
+                        "",
+                        newPathAndSearch
+                    );
                 }
             }
         }
 
         // Load and render view (load happens outside the transition to avoid blocking it)
         try {
-            const element = await this.loadView(viewId, params);
+            const element = await this.loadView(viewId, mergedParams);
             if (navToken !== this.navigationToken) {
                 this.hideShellLoadingPlaceholder();
                 return;
@@ -536,6 +559,18 @@ export abstract class ShellBase implements Shell {
             }
             // Singleton shell: connected cache hits skip `render()`. Viewer/print must re-merge route + repaint
             // or last-opened markdown can stick when navigating back to the view.
+            if (viewId === "settings") {
+                const refreshed = cached.view.render({
+                    shellContext: this.getContext(),
+                    params,
+                    initialData
+                });
+                this.loadedViews.set(viewId, { view: cached.view, element: refreshed });
+                if (cached.view.getToolbar && this.toolbarContainer) {
+                    this.setViewToolbar(cached.view.getToolbar());
+                }
+                return refreshed;
+            }
             if (viewId === "viewer" || viewId === "print") {
                 const v = cached.view as View & {
                     shellNavigateHydrate?: (o?: ViewOptions, initialData?: unknown) => void;
@@ -1078,6 +1113,8 @@ export abstract class ShellBase implements Shell {
             const stateView = (globalThis?.history?.state as { viewId?: ViewId } | null)?.viewId;
             return stateView && isEnabledView(String(stateView)) ? stateView : null;
         }
+        const first = stripped.split("/").filter(Boolean)[0] || "";
+        if (first === "settings" && isEnabledView("settings")) return "settings";
         return isEnabledView(stripped) ? (stripped as ViewId) : null;
     }
 }

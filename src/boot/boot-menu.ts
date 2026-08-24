@@ -17,7 +17,7 @@ import { loadAsAdopted } from "@fest-lib/dom";
 import style from "./boot-menu.scss?inline";
 import type { ShellId } from "./types";
 import { pickEnabledView } from "shared/routing/views";
-import { ensureHistoryBaseDataset, withHistoryBase } from "./history-base";
+import { ensureHistoryBaseDataset, pathForSkuHostView, withHistoryBase } from "./history-base";
 import { getDefaultBootShellId } from "./shell-preference";
 
 // ============================================================================
@@ -77,17 +77,20 @@ const navigateToDefaultView = (shell: ShellId, remember: boolean): void => {
                 : pickEnabledView("viewer");
     ensureHistoryBaseDataset();
     // Environment uses canonical `/` + shell state (not path-routed views).
-    const nextPath =
+    const dest =
         normalizedShell === "environment" || normalizedShell === "window" || normalizedShell === "tabbed"
-            ? withHistoryBase(`/?shell=${encodeURIComponent(normalizedShell)}`)
-            : withHistoryBase(`/${defaultView}?shell=${encodeURIComponent(normalizedShell)}`);
+            ? "/"
+            : pathForSkuHostView(`/${defaultView}`);
+    const nextPath = `${withHistoryBase(dest)}?shell=${encodeURIComponent(normalizedShell)}`;
     globalThis?.history?.pushState?.({ shell: normalizedShell, view: defaultView }, "", nextPath);
 
     globalThis?.dispatchEvent?.(new CustomEvent('route-change', {
         detail: { view: defaultView, shell: normalizedShell }
     }));
 
-    globalThis.location.href = nextPath;
+    // WHY: `location.href` after pushState reloads. On md.u2re.space `/viewer` → 302 `/` was a bootloop.
+    const cur = `${globalThis.location?.pathname || ""}${globalThis.location?.search || ""}`;
+    if (cur !== nextPath) globalThis.location.href = nextPath;
 };
 
 // ============================================================================

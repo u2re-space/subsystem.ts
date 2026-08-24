@@ -1,11 +1,65 @@
 /*
  * Filename: history-base.ts
  * FullPath: modules/projects/subsystem/src/boot/history-base.ts
- * Change date and time: 21.55.00_19.07.2026
- * Reason for changes: Keep History API under VDS path mounts (/cwsp, /markdown) so reload ≠ 404.
+ * FIND:history-base
+ * Change date and time: 23.20.00_24.08.2026
+ * Reason for changes: Named SKU hosts (md.u2re.space) must not treat /viewer as a History base — that + Fastify alias-strip is a bootloop.
  */
 
-const KNOWN_PATH_MOUNTS = ["cwsp", "markdown", "explorer", "workcenter", "kvm"] as const;
+const KNOWN_PATH_MOUNTS = [
+    "cwsp",
+    "transfer",
+    "markdown",
+    "document",
+    "viewer",
+    "explorer",
+    "workcenter",
+    "process",
+    "kvm"
+] as const;
+
+/** Dedicated PWA hosts — app lives at `/`. Hub/LAN keep `/markdown` `/viewer` path mounts. */
+const DEDICATED_SKU_HOSTS = [
+    "md.u2re.space",
+    "www.md.u2re.space",
+    "explorer.u2re.space",
+    "www.explorer.u2re.space",
+    "process.u2re.space",
+    "workcenter.u2re.space",
+    "cwsp.u2re.space",
+    "www.cwsp.u2re.space",
+    "transfer.u2re.space"
+] as const;
+
+export function isDedicatedSkuHost(hostname?: string): boolean {
+    try {
+        const host = String(
+            hostname ??
+                (globalThis as unknown as { location?: { hostname?: string } }).location?.hostname ??
+                ""
+        ).toLowerCase();
+        return (DEDICATED_SKU_HOSTS as readonly string[]).includes(host);
+    } catch {
+        return false;
+    }
+}
+
+export function isKnownPathMountSegment(segment: string): boolean {
+    return (KNOWN_PATH_MOUNTS as readonly string[]).includes(String(segment || "").toLowerCase());
+}
+
+/**
+ * On a named SKU host, `/viewer` `/markdown` `/explorer` … are Fastify aliases of `/`, not view routes.
+ * WHY: minimal path-routing wrote `/viewer?shell=minimal` → 302 `/viewer/` → 302 `/` → bootloop.
+ */
+export function pathForSkuHostView(viewPath: string): string {
+    let path = String(viewPath || "/").trim() || "/";
+    if (!path.startsWith("/")) path = `/${path}`;
+    if (!isDedicatedSkuHost()) return path;
+    const seg = path.replace(/^\/+/, "").split("/")[0] || "";
+    if (seg && isKnownPathMountSegment(seg)) return "/";
+    return path;
+}
 
 /**
  * Router base path without trailing slash ("" at domain root, "/cwsp" on IP path mount).
@@ -31,6 +85,9 @@ export function getHistoryBasePath(): string {
             const u = new URL(baseHref, origin);
             return u.pathname.replace(/\/+$/, "") || "";
         }
+
+        // INVARIANT: md.u2re.space `/viewer` is the document view path, not a `/viewer` mount.
+        if (isDedicatedSkuHost()) return "";
 
         const pathname = String(
             (globalThis as unknown as { location?: { pathname?: string } }).location?.pathname || "/"
