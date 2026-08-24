@@ -9,6 +9,7 @@ import { initPWAClipboard } from "./pwa-copy";
 import { showToast } from "../../boot/toast";
 import { ensureServiceWorkerRegistered } from "./sw-url";
 import { classifyIngressFile, classifyIngressFromBasename, dispatchViewTransfer, type ViewTransferHint } from "../channel/ViewTransferRouting";
+import { bindDirectoryForLaunchedFiles } from "@fest-lib/lure";
 import {
     buildShareDataFromCachedPayload,
     consumeCachedShareTargetPayload,
@@ -1348,10 +1349,35 @@ export const setupLaunchQueueConsumer = async () => {
 
                 if (files.length > 0) {
                     // Single textual document → viewer first (parity with share-target inferred hints).
-                    const hint: ViewTransferHint | undefined =
+                    const mdForBind = files.find((file) => isTextLikeFile(file)) || files[0];
+                    let hint: ViewTransferHint | undefined =
                         files.length === 1 && isTextLikeFile(files[0])
                             ? { destination: "viewer", action: "open", filename: files[0]?.name }
                             : undefined;
+
+                    /**
+                     * WHY: Launch Queue drops the parent folder. Same user-activation can still
+                     * open showDirectoryPicker({ startIn: fileHandle }) so relative images resolve.
+                     * Abort / missing API is fine — sidecar files + viewer Assets button remain.
+                     */
+                    const startHandle = $files.find(
+                        (handle) => handle && typeof (handle as FileSystemFileHandle).getFile === "function"
+                    ) as FileSystemFileHandle | undefined;
+                    try {
+                        const bound = await bindDirectoryForLaunchedFiles({
+                            startIn: startHandle,
+                            files,
+                            filename: hint?.filename || mdForBind?.name
+                        });
+                        if (bound) {
+                            hint = {
+                                ...(hint || { destination: "viewer", action: "open", filename: mdForBind?.name }),
+                                source: bound.virtualPath
+                            };
+                        }
+                    } catch (error) {
+                        console.warn("[LaunchQueue] Asset directory bind skipped:", error);
+                    }
                     const timestamp = Date.now();
                     const imageCount = files?.filter?.(f => f.type.startsWith('image/')).length;
 

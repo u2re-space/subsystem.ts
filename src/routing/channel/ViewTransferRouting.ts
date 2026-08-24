@@ -82,6 +82,11 @@ export interface ViewTransferHint {
     action?: ViewTransferActionHint;
     contentType?: string;
     filename?: string;
+    /**
+     * Virtual FS path of the opened markdown (`/mounts/md-…/note.md`).
+     * WHY: `data.source` is the transfer enum (`launch-queue`); relative assets need a real path.
+     */
+    source?: string;
 }
 
 export interface ViewTransferPayload {
@@ -197,6 +202,20 @@ export const resolveViewTransfer = (payload: ViewTransferPayload): ViewTransferR
         route: payload.route,
         hint: payload.hint
     };
+
+    /** INVARIANT: do not overwrite `data.source` (transfer enum). Path goes on src/path/virtualPath. */
+    const virtualSource = String(payload.hint?.source || "").trim();
+    if (
+        virtualSource &&
+        virtualSource !== "share-target" &&
+        virtualSource !== "launch-queue" &&
+        virtualSource !== "clipboard" &&
+        virtualSource !== "pending"
+    ) {
+        data.path = virtualSource;
+        data.src = virtualSource;
+        data.virtualPath = virtualSource;
+    }
 
     const resolved: ViewTransferResolved = {
         destination: normalizeDestination(destination) as ViewTransferDestination,
