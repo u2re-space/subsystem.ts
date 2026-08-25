@@ -7,6 +7,7 @@
  */
 import { initPWAClipboard } from "./pwa-copy";
 import { showToast } from "../../boot/toast";
+import { pathForSkuHostView } from "../../boot/history-base";
 import { ensureServiceWorkerRegistered } from "./sw-url";
 import { classifyIngressFile, classifyIngressFromBasename, dispatchViewTransfer, type ViewTransferHint } from "../channel/ViewTransferRouting";
 import { bindDirectoryForLaunchedFiles } from "@fest-lib/lure";
@@ -605,6 +606,9 @@ const routeToTransferView = async (
     });
 
     const currentPath = (globalThis?.location?.pathname || "").replace(/\/+$/, "") || "/";
+    // WHY: md.u2re.space / dedicated SKU hosts live at `/`. Hard-nav to `/viewer` + SPA writing `/` is a bootloop.
+    const destPath = pathForSkuHostView(resolved.routePath);
+    const destNorm = destPath.replace(/\/+$/, "") || "/";
     let silentRoute = false;
     try {
         const sp = new URLSearchParams(globalThis?.location?.search || "");
@@ -657,19 +661,19 @@ const routeToTransferView = async (
     };
 
     if (silentRoute) {
-        if (currentPath !== resolved.routePath) {
-            console.log("[ViewTransfer] Silent mode: skipping navigation; delivery via channels only:", resolved.routePath);
+        if (currentPath !== destNorm) {
+            console.log("[ViewTransfer] Silent mode: skipping navigation; delivery via channels only:", destNorm);
         } else {
             await tryNavigateLiveShell();
         }
         return delivered;
     }
 
-    if (currentPath !== resolved.routePath) {
+    if (currentPath !== destNorm) {
         const liveOk = await tryNavigateLiveShell();
         if (!liveOk) {
             const nextUrl = new URL(globalThis?.location?.href);
-            nextUrl.pathname = resolved.routePath;
+            nextUrl.pathname = destPath;
             nextUrl.search = "";
             nextUrl.hash = "";
             if (pending) {
@@ -682,7 +686,7 @@ const routeToTransferView = async (
     }
 
     await tryNavigateLiveShell();
-    console.log("[ViewTransfer] Already on resolved route:", resolved.routePath);
+    console.log("[ViewTransfer] Already on resolved route:", destNorm);
     return delivered;
 };
 
@@ -1426,7 +1430,7 @@ export const setupLaunchQueueConsumer = async () => {
 
                         if (!delivered) {
                             const url = new URL(globalThis?.location?.href);
-                            url.pathname = '/share-target';
+                            url.pathname = pathForSkuHostView("/share-target");
                             url.searchParams.set('shared', '1');
                             url.hash = '';
                             globalThis.location.href = url.toString();
