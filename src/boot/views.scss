@@ -45,6 +45,24 @@
         max-block-size: none;
     }
 
+    @media print {
+        :where([data-cw-view-host="true"]),
+        .cw-view-viewer-shell,
+        .view-viewer,
+        .view-viewer__content {
+            overflow: visible !important;
+            contain: none !important;
+            container-type: normal !important;
+            position: static !important;
+            inset: auto !important;
+            display: block !important;
+            block-size: auto !important;
+            min-block-size: 0 !important;
+            max-block-size: none !important;
+            height: auto !important;
+        }
+    }
+
     .view-viewer {
         display: grid;
         grid-template-rows: [toolbar-row] max-content [content-row] minmax(0, 1fr);
