@@ -188,6 +188,13 @@ export const isHubPublicHost = (hostname?: string): boolean => {
     return (HUB_PUBLIC_HOSTS as readonly string[]).includes(host);
 };
 
+/** Web `u2re.space` / LAN hub — not a Capacitor APK and not a dedicated SKU host. */
+export const isWebHubSurface = (): boolean => {
+    if (isCwspNativeHost()) return false;
+    const host = currentHostname();
+    return isHubPublicHost(host) || isLanOrLoopbackHost(host);
+};
+
 export const skuForHubPathSegment = (segment: string): Exclude<CwspSku, "launcher" | "crx"> | "" => {
     const seg = String(segment || "").trim().toLowerCase();
     if (!seg) return "";
