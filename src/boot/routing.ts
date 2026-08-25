@@ -30,6 +30,14 @@ import type { FrontendChoice } from "./boot-menu";
 import { bootMinimal, bootBase, bootWindow, bootTabbed, bootEnvironment, bootContent, bootImmersive, type BootConfig, type StyleSystem } from "./BootLoader";
 import { ENABLED_VIEW_IDS, DEFAULT_VIEW_ID, isEnabledView, pickEnabledView } from "shared/routing/views";
 import {
+    ensureCwspSkuFromLocation,
+    inferCwspSkuFromLocation,
+    publicHrefForSku,
+    publicHrefForView,
+    shouldHandoffViewToSibling,
+    skuForHubPathSegment
+} from "com/config/ecosystem-skus";
+import {
     coerceShellForBootViewport,
     getDefaultBootShellId,
     normalizeBootShellId,
@@ -56,8 +64,21 @@ import {
 
 /** Default view when URL/localStorage do not specify one (Capacitor: Network home). */
 const resolveShellDefaultView = (shell: ShellId): ViewId => {
+    const skuDefault = inferCwspSkuFromLocation();
+    const preferred = skuDefault === "explorer"
+        ? "explorer"
+        : skuDefault === "process"
+            ? "workcenter"
+            : skuDefault === "transfer"
+                ? "network"
+                : skuDefault === "document"
+                    ? "viewer"
+                    : "";
+    if (shell === "minimal" && preferred) return pickEnabledView(preferred, "settings");
     if (shell === "minimal" && isEnabledView("network")) return "network";
-    if (shell === "base" || shell === "immersive" || shell === "minimal") return "viewer";
+    if (shell === "base" || shell === "immersive" || shell === "minimal") {
+        return pickEnabledView(preferred || "viewer", "settings");
+    }
     return "home";
 };
 
@@ -145,8 +166,29 @@ function normalizePathname(pathname: string): string {
  * Parse current URL into route
  */
 export function parseCurrentRoute(config = DEFAULT_CONFIG): Route {
+    ensureCwspSkuFromLocation();
     const pathname = normalizePathname(location.pathname);
     const params = Object.fromEntries(new URLSearchParams(location.search));
+    const segs = pathname.split("/").filter(Boolean);
+    const here = inferCwspSkuFromLocation();
+    if (here && here !== "launcher" && here !== "crx" && segs[0]) {
+        const firstSku = skuForHubPathSegment(segs[0] || "");
+        if (firstSku && firstSku !== here) {
+            try {
+                globalThis.location.replace(publicHrefForSku(firstSku));
+            } catch { /* keep parsing */ }
+        }
+    }
+    if (segs.length >= 2) {
+        const parentSku = skuForHubPathSegment(segs[0] || "");
+        const childHref = publicHrefForView(segs[1] || "");
+        const childSku = skuForHubPathSegment(segs[1] || "");
+        if (parentSku && childHref && childSku && parentSku !== childSku) {
+            try {
+                globalThis.location.replace(childHref);
+            } catch { /* keep parsing */ }
+        }
+    }
 
     // Map pathname to view (`/markdown` / `/document` are document aliases for viewer).
     let view: ViewId = config.defaultView;
@@ -239,6 +281,9 @@ export function isRootRoute(): boolean {
 export function buildUrl(route: Route): string {
     ensureHistoryBaseDataset();
     const view = String(route.view || "").trim().replace(/^\/+/, "").toLowerCase();
+    if (shouldHandoffViewToSibling(view)) {
+        return publicHrefForView(view) || `/${view}`;
+    }
     const params = { ...(route.params || {}) };
     let path: string;
     if (view === "settings") {
@@ -282,6 +327,10 @@ export function buildRootUrl(): string {
  */
 export function navigate(route: Route, options: NavigateOptions = {}): void {
     const url = buildUrl(route);
+    if (shouldHandoffViewToSibling(route.view) || /^https?:\/\//i.test(url)) {
+        globalThis.location.assign(url);
+        return;
+    }
 
     if (options.replace) {
         history.replaceState(options.state ?? route, "", url);

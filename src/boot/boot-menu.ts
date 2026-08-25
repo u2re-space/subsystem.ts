@@ -72,9 +72,7 @@ const navigateToDefaultView = (shell: ShellId, remember: boolean): void => {
     const defaultView =
         normalizedShell === "environment" || normalizedShell === "window" || normalizedShell === "tabbed"
             ? pickEnabledView("home", "viewer")
-            : normalizedShell === "minimal"
-                ? pickEnabledView("network", "viewer")
-                : pickEnabledView("viewer");
+            : pickEnabledView("network", "viewer");
     ensureHistoryBaseDataset();
     // Environment uses canonical `/` + shell state (not path-routed views).
     const dest =

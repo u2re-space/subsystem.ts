@@ -6,6 +6,8 @@
  * Reason for changes: Named SKU hosts (md.u2re.space) must not treat /viewer as a History base — that + Fastify alias-strip is a bootloop.
  */
 
+import { inferCwspSkuFromLocation, SKU_HUB_PATHS } from "com/config/ecosystem-skus";
+
 const KNOWN_PATH_MOUNTS = [
     "cwsp",
     "transfer",
@@ -56,9 +58,14 @@ export function pathForSkuHostView(viewPath: string): string {
     let path = String(viewPath || "/").trim() || "/";
     if (!path.startsWith("/")) path = `/${path}`;
     if (!isDedicatedSkuHost()) return path;
-    const seg = path.replace(/^\/+/, "").split("/")[0] || "";
-    if (seg && isKnownPathMountSegment(seg)) return "/";
-    return path;
+    const seg = path.replace(/^\/+/, "").split("/")[0]?.toLowerCase() || "";
+    if (!seg || !isKnownPathMountSegment(seg)) return path;
+    const sku = inferCwspSkuFromLocation();
+    if (sku && sku !== "launcher" && sku !== "crx") {
+        const own = SKU_HUB_PATHS[sku];
+        return own?.includes(seg) ? "/" : path;
+    }
+    return "/";
 }
 
 /**
@@ -108,6 +115,18 @@ export function withHistoryBase(pathname: string): string {
     if (!path.startsWith("/")) path = `/${path}`;
     if (!base) return path;
     if (path === base || path.startsWith(`${base}/`)) return path;
+    const pathSeg = path.replace(/^\/+/, "").split("/")[0]?.toLowerCase() || "";
+    const baseSeg = base.replace(/^\/+/, "").split("/")[0]?.toLowerCase() || "";
+    // INVARIANT: never write `/viewer/explorer` — sibling mounts are peer prefixes.
+    if (
+        baseSeg &&
+        pathSeg &&
+        isKnownPathMountSegment(baseSeg) &&
+        isKnownPathMountSegment(pathSeg) &&
+        pathSeg !== baseSeg
+    ) {
+        return path;
+    }
     if (path === "/") return `${base}/`;
     return `${base}${path}`;
 }

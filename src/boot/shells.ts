@@ -9,6 +9,7 @@ import {
     syncBrowserChromeTheme
 } from "core/utils/Theme";
 import { isEnabledView } from "com/routing/core/views";
+import { publicHrefForView, shouldHandoffViewToSibling } from "com/config/ecosystem-skus";
 import { scheduleViewModulePrefetch } from "com/routing/core/view-prefetch";
 import { serviceChannels, type ServiceChannelId } from "com/routing/channel/ServiceChannels";
 import { ensureStyleSheet } from "@fest-lib/icon";
@@ -308,7 +309,13 @@ export abstract class ShellBase implements Shell {
             }>;
             const d = ce.detail || {};
             const vid = typeof d.viewId === "string" ? d.viewId.trim().toLowerCase() : "";
-            if (!vid || !isEnabledView(vid)) return;
+            if (!vid) return;
+            if (shouldHandoffViewToSibling(vid)) {
+                const href = publicHrefForView(vid);
+                if (href) globalThis.location.assign(href);
+                return;
+            }
+            if (!isEnabledView(vid)) return;
 
             const target = String(d.target ?? "window").toLowerCase();
             const windowLike = ["window", "tabbed", "environment", "frame"];
@@ -383,6 +390,13 @@ export abstract class ShellBase implements Shell {
 
     async navigate(viewId: ViewId, params?: Record<string, string>, navOptions?: ShellNavigateOptions): Promise<void> {
         console.log(`[${this.id}] Navigating to: ${viewId}`, params);
+        if (shouldHandoffViewToSibling(viewId)) {
+            const href = publicHrefForView(viewId);
+            if (href && typeof globalThis.location !== "undefined") {
+                globalThis.location.assign(href);
+                return;
+            }
+        }
         const navToken = ++this.navigationToken;
         const mergedParams = { ...(params || {}) };
         if (viewId === "settings") {

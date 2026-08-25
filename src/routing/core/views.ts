@@ -1,4 +1,5 @@
 import type { ViewId } from "shells/types";
+import { isViewLocalToSurface } from "../../other/config/ecosystem-skus";
 
 export const VIEW_ENABLED_VIEWER = "viewer";
 export const VIEW_ENABLED_EDITOR = "editor";
@@ -112,11 +113,11 @@ const runtimeAllows = (viewId: string): boolean =>
 const isViewAllowed = (viewId: string): boolean => buildAllows(viewId) && runtimeAllows(viewId);
 
 export const ENABLED_VIEW_IDS = Object.entries(VIEW_FLAGS)
-    .filter(([viewId, enabled]) => Boolean(enabled) && isViewAllowed(viewId))
+    .filter(([viewId, enabled]) => Boolean(enabled) && isViewAllowed(viewId) && isViewLocalToSurface(viewId))
     .map(([viewId]) => viewId as ViewId);
 
 export const isEnabledView = (viewId: string): viewId is ViewId => {
-    return Boolean(VIEW_FLAGS[viewId]) && isViewAllowed(viewId);
+    return Boolean(VIEW_FLAGS[viewId]) && isViewAllowed(viewId) && isViewLocalToSurface(viewId);
 };
 
 export const pickEnabledView = (

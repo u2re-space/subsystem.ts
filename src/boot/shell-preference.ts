@@ -16,6 +16,7 @@
  */
 
 import type { ShellId } from "./types";
+import { inferCwspSkuFromLocation } from "com/config/ecosystem-skus";
 import { getHistoryBasePath } from "./history-base";
 
 export const LS_BOOT_SHELL_LAST_ACTIVE = "rs-boot-shell-last-active";
@@ -46,7 +47,14 @@ export function isForcedEnvironmentBootSurface(): boolean {
 
 /** Returns `environment` when the current document is the VDS hub; otherwise `null`. */
 export function resolveForcedBootShell(): ShellId | null {
-    return isForcedEnvironmentBootSurface() ? "environment" : null;
+    if (isForcedEnvironmentBootSurface()) return "environment";
+    try {
+        const sku = inferCwspSkuFromLocation();
+        if (sku && sku !== "launcher" && sku !== "crx") return "minimal";
+    } catch {
+        /* ignore */
+    }
+    return null;
 }
 
 export function normalizeBootShellId(shell: ShellId | null | undefined): ShellId {

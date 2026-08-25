@@ -8,7 +8,7 @@
  */
 
 import { isEnabledView } from "../../../routing/core/views";
-import { readCwspSku, type CwspSku } from "../ecosystem-skus";
+import { inferCwspSkuFromLocation, readCwspSku, type CwspSku } from "../ecosystem-skus";
 import type { SettingsContributionContext } from "../SettingsContributions";
 
 /** Which built-in settings host variant to render. */
@@ -24,7 +24,7 @@ export type SettingsShellProfile =
 
 const skuFromCtx = (ctx: SettingsContributionContext): CwspSku | "" => {
     if (ctx.sku) return ctx.sku;
-    return readCwspSku();
+    return inferCwspSkuFromLocation() || readCwspSku();
 };
 
 /**
@@ -186,6 +186,8 @@ export const canonicalHubSettingsSection = (raw: string | undefined | null): Hub
 
 const isCentralHubHost = (): boolean => {
     try {
+        const sku = inferCwspSkuFromLocation();
+        if (sku && sku !== "launcher" && sku !== "crx") return false;
         const host = String(globalThis.location?.hostname || "").toLowerCase();
         if (host === "u2re.space" || host === "www.u2re.space") return true;
         if (host === "localhost" || host === "127.0.0.1" || host === "::1") return true;

@@ -4,7 +4,9 @@ import { normalizeDestination, viewBroadcastChannelName } from "com/config/Names
 import {
     ECOSYSTEM_SKUS,
     androidPackageForSku,
-    readCwspSku,
+    ensureCwspSkuFromLocation,
+    publicHrefForSku,
+    shouldHandoffViewToSibling,
     siblingSkuForView
 } from "../../other/config/ecosystem-skus";
 
@@ -262,9 +264,9 @@ export const dispatchViewTransfer = async (
 ): Promise<{ delivered: boolean; resolved: ViewTransferResolved }> => {
     const resolved = resolveViewTransfer(payload);
     // WHY: each Capacitor SKU is its own APK — do not open viewer inside process or workcenter inside document.
-    const currentSku = readCwspSku();
+    ensureCwspSkuFromLocation();
     const sibling = siblingSkuForView(resolved.destination);
-    if (currentSku && currentSku !== "crx" && sibling && sibling !== currentSku) {
+    if (shouldHandoffViewToSibling(resolved.destination) && sibling) {
         const pkg = androidPackageForSku(sibling);
         let handedOff = false;
         if (pkg) {
@@ -277,14 +279,19 @@ export const dispatchViewTransfer = async (
                 /* web / stub */
             }
         }
-        if (!handedOff) {
-            const scheme = ECOSYSTEM_SKUS[sibling]?.scheme;
-            if (scheme && typeof location !== "undefined") {
-                try {
-                    location.assign(`${scheme}://`);
-                    handedOff = true;
-                } catch {
-                    /* non-DOM */
+        if (!handedOff && typeof location !== "undefined") {
+            try {
+                location.assign(publicHrefForSku(sibling));
+                handedOff = true;
+            } catch {
+                const scheme = ECOSYSTEM_SKUS[sibling]?.scheme;
+                if (scheme) {
+                    try {
+                        location.assign(`${scheme}://`);
+                        handedOff = true;
+                    } catch {
+                        /* non-DOM */
+                    }
                 }
             }
         }
