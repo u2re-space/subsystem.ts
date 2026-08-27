@@ -10,6 +10,8 @@ import { showToast } from "../../boot/toast";
 import { pathForSkuHostView } from "../../boot/history-base";
 import { ensureServiceWorkerRegistered } from "./sw-url";
 import { classifyIngressFile, classifyIngressFromBasename, dispatchViewTransfer, type ViewTransferHint } from "../channel/ViewTransferRouting";
+import { applyLauncherIngress, skuIngressHint } from "../channel/sku-ingress";
+import { inferCwspSkuFromLocation } from "../../other/config/ecosystem-skus";
 import { bindDirectoryForLaunchedFiles } from "@fest-lib/lure";
 import {
     buildShareDataFromCachedPayload,
@@ -557,12 +559,23 @@ const routeToTransferView = async (
         timestamp: preparedData.timestamp
     }));
 
-    const forceAttachToWorkCenter = await shouldForceWorkCenterAttachment(preparedData);
+    let autoProcessShared = true;
+    try {
+        const settings = await loadSettings().catch(() => null);
+        autoProcessShared = (settings?.ai?.autoProcessShared ?? true) !== false;
+    } catch {
+        autoProcessShared = true;
+    }
+
+    const sku = inferCwspSkuFromLocation();
+    const skuHint = skuIngressHint(preparedData, { sku, autoProcessShared });
+    const forceAttachToWorkCenter =
+        !skuHint && (await shouldForceWorkCenterAttachment(preparedData));
     const textLike =
         inferShareContentType(preparedData) === "markdown" || inferShareContentType(preparedData) === "text";
 
     const mergedViewerHint: ViewTransferHint | undefined =
-        textLike && !forceAttachToWorkCenter
+        !skuHint && textLike && !forceAttachToWorkCenter
             ? {
                   ...hint,
                   destination: "viewer",
@@ -571,9 +584,11 @@ const routeToTransferView = async (
               }
             : undefined;
 
-    const resolvedHint: ViewTransferHint | undefined = forceAttachToWorkCenter
-        ? { destination: "workcenter", action: "attach", ...(hint || {}) }
-        : mergedViewerHint ?? hint;
+    const resolvedHint: ViewTransferHint | undefined = skuHint
+        ? { ...hint, ...skuHint }
+        : forceAttachToWorkCenter
+          ? { destination: "workcenter", action: "attach", ...(hint || {}) }
+          : mergedViewerHint ?? hint;
 
     console.log("[ViewTransfer] Hint resolution:", {
         forceAttachToWorkCenter,
@@ -605,6 +620,45 @@ const routeToTransferView = async (
         messageType: resolved.messageType,
         contentType: resolved.contentType
     });
+
+    if (sku === "process" && resolvedHint?.action === "process") {
+        try {
+            await processShareTargetData(preparedData, true);
+        } catch (error) {
+            console.warn("[ViewTransfer] Process SKU auto-AI failed:", error);
+        }
+    }
+    if (sku === "launcher" || resolved.destination === "home") {
+        const capacitorNative = (() => {
+            try {
+                const c = (globalThis as { Capacitor?: { isNativePlatform?: () => boolean } }).Capacitor;
+                return typeof c?.isNativePlatform === "function" && Boolean(c.isNativePlatform());
+            } catch {
+                return false;
+            }
+        })();
+        // WHY: Capacitor http(s) SEND already pins via MainActivity; JS must not add a second tile.
+        const urlish = String(preparedData.url || preparedData.sharedUrl || "").trim()
+            || /^(https?:\/\/|www\.)/i.test(String(preparedData.text || "").trim());
+        if (capacitorNative && files.length === 0 && urlish) {
+            /* native pin path owns URL shares */
+        } else try {
+            const kind = await applyLauncherIngress({
+                files,
+                title: preparedData.title,
+                text: preparedData.text,
+                url: preparedData.url || preparedData.sharedUrl,
+                action: resolvedHint?.action
+            });
+            if (kind === "wallpaper") {
+                showToast({ message: "Wallpaper updated", kind: "success" });
+            } else if (kind === "shortcut") {
+                showToast({ message: "Shortcut added", kind: "success" });
+            }
+        } catch (error) {
+            console.warn("[ViewTransfer] Launcher share apply failed:", error);
+        }
+    }
 
     const currentPath = (globalThis?.location?.pathname || "").replace(/\/+$/, "") || "/";
     // WHY: md.u2re.space / dedicated SKU hosts live at `/`. Hard-nav to `/viewer` + SPA writing `/` is a bootloop.
@@ -670,6 +724,11 @@ const routeToTransferView = async (
         return delivered;
     }
 
+    if (resolved.destination === "home" || sku === "launcher") {
+        await tryNavigateLiveShell();
+        return delivered;
+    }
+
     if (currentPath !== destNorm) {
         const liveOk = await tryNavigateLiveShell();
         if (!liveOk) {
@@ -689,6 +748,35 @@ const routeToTransferView = async (
     await tryNavigateLiveShell();
     console.log("[ViewTransfer] Already on resolved route:", destNorm);
     return delivered;
+};
+
+/** Capacitor / sku-boot entry: stage files then run the same share pipeline as PWA. */
+export const ingestSharePayload = async (
+    shareData: ShareDataInput,
+    source: "share-target" | "launch-queue" = "share-target"
+): Promise<boolean> => {
+    const files = Array.isArray(shareData.files)
+        ? shareData.files.filter((f): f is File => f instanceof File)
+        : [];
+    try {
+        await storeShareTargetPayloadToCache({
+            files,
+            meta: {
+                title: shareData.title,
+                text: shareData.text,
+                url: shareData.url || shareData.sharedUrl,
+                source,
+                route: source,
+                timestamp: shareData.timestamp || Date.now(),
+                fileCount: files.length || shareData.fileCount,
+                imageCount: shareData.imageCount,
+                hint: shareData.hint
+            }
+        });
+    } catch {
+        /* cache optional */
+    }
+    return routeToTransferView(shareData, source, extractTransferHint(shareData), false);
 };
 
 /**
@@ -815,7 +903,9 @@ export const processShareTargetData = async (shareData: ShareDataInput, skipIfEm
             body: JSON.stringify({
                 content: processingContent,
                 contentType,
-                processingType: 'general-processing',
+                processingType: (await loadSettings().catch(() => null))?.ai?.shareTargetMode === "analyze"
+                    ? "general-processing"
+                    : "recognize-content",
                 metadata: {
                     source: 'share-target',
                     title: shareData.title || 'Shared Content',
@@ -1017,8 +1107,10 @@ export const handleShareTarget = () => {
             url: params.get("url") || undefined,
             sharedUrl: params.get("sharedUrl") || undefined,
             timestamp: Date.now(),
-            source: "url-params"
+            source: "url-params",
+            hint: params.get("filename") ? { filename: params.get("filename") || undefined } : undefined
         };
+        const shareId = String(params.get("shareId") || "").trim();
 
         console.log("[ShareTarget] Share data from URL params:", summarizeForLog({
             title: shareFromParams.title,
@@ -1029,10 +1121,45 @@ export const handleShareTarget = () => {
 
         // Clean up URL
         const cleanUrl = new URL(globalThis?.location?.href);
-        ["shared", "action", "title", "text", "url", "sharedUrl"].forEach((p) => cleanUrl.searchParams.delete(p));
+        ["shared", "action", "title", "text", "url", "sharedUrl", "shareId", "filename", "sku"].forEach((p) =>
+            cleanUrl.searchParams.delete(p)
+        );
         globalThis?.history?.replaceState?.({}, "", cleanUrl.pathname + cleanUrl.hash);
 
         void (async () => {
+            if (shareId) {
+                try {
+                    const res = await fetch(`/api/vds/share/${encodeURIComponent(shareId)}`);
+                    if (res.ok) {
+                        const row = (await res.json()) as {
+                            title?: string;
+                            text?: string;
+                            url?: string;
+                            files?: Array<{ name?: string; type?: string; data?: string }>;
+                        };
+                        const { dataUrlToFile } = await import("../channel/sku-ingress");
+                        const files: File[] = [];
+                        for (const item of row.files || []) {
+                            if (!item?.data) continue;
+                            const file = await dataUrlToFile(
+                                item.data,
+                                String(item.name || "shared.bin"),
+                                String(item.type || "application/octet-stream")
+                            );
+                            if (file) files.push(file);
+                        }
+                        if (row.title && !shareFromParams.title) shareFromParams.title = row.title;
+                        if (row.text && !shareFromParams.text) shareFromParams.text = row.text;
+                        if (row.url && !shareFromParams.sharedUrl) shareFromParams.sharedUrl = row.url;
+                        if (files.length) {
+                            shareFromParams.files = files;
+                            shareFromParams.fileCount = files.length;
+                        }
+                    }
+                } catch (error) {
+                    console.warn("[ShareTarget] VDS share stash missed:", error);
+                }
+            }
             const transferPayload = await mergeUrlParamsShareWithCache(shareFromParams);
             const { content, type } = extractShareContent(transferPayload);
             const pendingFiles = Number(transferPayload.fileCount ?? 0) > 0;
@@ -1353,12 +1480,13 @@ export const setupLaunchQueueConsumer = async () => {
                 }
 
                 if (files.length > 0) {
-                    // Single textual document → viewer first (parity with share-target inferred hints).
+                    // Single textual document → viewer first on hub; specialized SKUs keep their own sink.
                     const mdForBind = files.find((file) => isTextLikeFile(file)) || files[0];
+                    const launchSku = inferCwspSkuFromLocation();
                     let hint: ViewTransferHint | undefined =
-                        files.length === 1 && isTextLikeFile(files[0])
+                        files.length === 1 && isTextLikeFile(files[0]) && (!launchSku || launchSku === "crx")
                             ? { destination: "viewer", action: "open", filename: files[0]?.name }
-                            : undefined;
+                            : { filename: files[0]?.name };
 
                     /**
                      * WHY: Launch Queue drops the parent folder. Same user-activation can still

@@ -9,6 +9,7 @@ import {
     shouldHandoffViewToSibling,
     siblingSkuForView
 } from "../../other/config/ecosystem-skus";
+import { skuIngressHint } from "./sku-ingress";
 
 /**
  * Canonical classification for share-target / launch-queue files (extension often beats flaky MIME).
@@ -77,7 +78,7 @@ export type ViewTransferDestination =
     | "home"
     | "print";
 
-export type ViewTransferActionHint = "open" | "attach" | "save" | "process";
+export type ViewTransferActionHint = "open" | "attach" | "save" | "process" | "ask" | "shortcut" | "wallpaper";
 
 export interface ViewTransferHint {
     destination?: ViewTransferDestination;
@@ -166,6 +167,10 @@ const getContentType = (payload: ViewTransferPayload): string => {
 };
 
 const pickDestination = (payload: ViewTransferPayload, contentType: string): ViewTransferDestination => {
+    ensureCwspSkuFromLocation();
+    const skuHint = skuIngressHint(payload);
+    if (skuHint?.destination) return skuHint.destination;
+
     if (payload.hint?.action === "save") return "explorer";
     /** Readable docs should win over stale `hint.destination` from cached/share envelopes. */
     if (contentType === "markdown" || contentType === "text") return "viewer";
@@ -181,16 +186,23 @@ const pickDestination = (payload: ViewTransferPayload, contentType: string): Vie
 
 const toMessageType = (destination: ViewTransferDestination, hint?: ViewTransferHint): string => {
     if (destination === "viewer") return hint?.action === "open" ? "content-load" : "content-view";
-    if (destination === "explorer") return "file-save";
+    if (destination === "explorer") {
+        if (hint?.action === "ask") return "file-ask";
+        if (hint?.action === "open") return "navigate-path";
+        return "file-save";
+    }
     if (destination === "workcenter") return "content-attach";
     if (destination === "editor") return "content-load";
+    if (destination === "home") return hint?.action === "wallpaper" ? "content-share" : "content-share";
     return "content-share";
 };
 
 export const resolveViewTransfer = (payload: ViewTransferPayload): ViewTransferResolved => {
     const contentType = getContentType(payload);
+    const skuHint = skuIngressHint(payload);
     const destination = pickDestination(payload, contentType);
-    const messageType = toMessageType(destination, payload.hint);
+    const hint = skuHint ? { ...payload.hint, ...skuHint } : payload.hint;
+    const messageType = toMessageType(destination, hint);
     const files = Array.isArray(payload.files) ? payload.files : [];
 
     const data: Record<string, unknown> = {
@@ -199,14 +211,14 @@ export const resolveViewTransfer = (payload: ViewTransferPayload): ViewTransferR
         content: payload.text,
         url: payload.url,
         files,
-        filename: payload.hint?.filename || files[0]?.name,
+        filename: hint?.filename || files[0]?.name,
         source: payload.source,
         route: payload.route,
-        hint: payload.hint
+        hint
     };
 
     /** INVARIANT: do not overwrite `data.source` (transfer enum). Path goes on src/path/virtualPath. */
-    const virtualSource = String(payload.hint?.source || "").trim();
+    const virtualSource = String(hint?.source || payload.url || "").trim();
     if (
         virtualSource &&
         virtualSource !== "share-target" &&
@@ -229,7 +241,7 @@ export const resolveViewTransfer = (payload: ViewTransferPayload): ViewTransferR
             source: payload.source,
             route: payload.route,
             pending: Boolean(payload.pending),
-            hint: payload.hint,
+            hint,
             ...(payload.metadata || {})
         }
     };
@@ -238,7 +250,7 @@ export const resolveViewTransfer = (payload: ViewTransferPayload): ViewTransferR
         source: payload.source,
         route: payload.route,
         pending: payload.pending,
-        hint: payload.hint,
+        hint,
         contentType,
         destination,
         messageType,

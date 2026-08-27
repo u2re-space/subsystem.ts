@@ -27,6 +27,8 @@ export const ExplorerChannelAction = {
     GetPath: "get-path",
     /** Payload: `{ file: File, path?: string }` — OPFS save via operative. */
     FileSave: "file-save",
+    /** Shared file: ask open-parent vs save-to-workspace. */
+    FileAsk: "file-ask",
     RequestUpload: "explorer-request-upload",
     RequestPaste: "explorer-request-paste",
     RequestUse: "explorer-request-use",

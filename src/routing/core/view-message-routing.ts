@@ -5,11 +5,11 @@ import { normalizeViewId } from "com/config/Names";
 const VIEW_MESSAGE_FALLBACKS: Record<string, string[]> = {
     viewer: ["content-view", "content-load", "markdown-content"],
     workcenter: ["content-attach", "file-attach", "share-target-input", "content-share"],
-    explorer: ["file-save", "navigate-path", "content-explorer"],
+    explorer: ["file-ask", "file-save", "navigate-path", "content-explorer"],
+    home: ["home-update", "content-share"],
     editor: ["content-load", "content-edit"],
     settings: ["settings-update"],
     history: ["history-update"],
-    home: ["home-update"],
     print: ["content-view"]
 };
 

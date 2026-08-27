@@ -3,8 +3,8 @@
  * FullPath: modules/projects/subsystem/src/other/config/settings/contributions/apk-update.ts
  * FIND:apk-update
  * TAG:sku,apk-update
- * Change date and time: 15.15.00_27.08.2026
- * Reason for changes: Fleet rows sideload even when sibling versionCode stays 1.
+ * Change date and time: 18.05.00_27.08.2026
+ * Reason for changes: Fleet rows show gateway vs installed; newer code or name is an update.
  */
 
 import {
@@ -66,8 +66,8 @@ const fleetRow = (sku: Exclude<CwspSku, "crx">, label: string): HTMLElement => {
         skuButtons(sku),
         settingsHint(
             sku === "transfer"
-                ? `Reads ${manifest} (ecosystem token). Same versionCode still sideloads.`
-                : `Reads ${manifest}. Same versionCode still sideloads.`
+                ? `Reads ${manifest} (ecosystem token). Newer versionCode or versionName is an update.`
+                : `Reads ${manifest}. Newer versionCode or versionName is an update.`
         )
     );
     return wrap;

@@ -30,6 +30,7 @@ export {
     setupLaunchQueueConsumer,
     checkPendingShareData,
     processShareTargetData,
+    ingestSharePayload,
     storeShareTargetPayloadToCache,
     CHANNELS,
 } from "./sw-handling";
