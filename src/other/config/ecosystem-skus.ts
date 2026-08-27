@@ -145,7 +145,7 @@ export const SKU_PUBLIC_HOSTS: Record<Exclude<CwspSku, "launcher" | "crx">, read
 /** Hub/LAN Fastify prefixes — never nest (`/viewer/explorer`). */
 export const SKU_HUB_PATHS: Record<Exclude<CwspSku, "launcher" | "crx">, readonly string[]> = {
     document: ["markdown", "document", "viewer"],
-    explorer: ["explorer"],
+    explorer: ["explorer", "files", "fm"],
     process: ["workcenter", "process"],
     transfer: ["cwsp", "transfer"]
 };

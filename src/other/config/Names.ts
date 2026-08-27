@@ -3,6 +3,8 @@
  * Consolidates component names, channel names, route names, etc.
  */
 
+import { resolveProcessApiUrl } from "../../routing/api/process-api";
+
 // ============================================================================
 // BROADCAST CHANNELS
 // ============================================================================
@@ -144,10 +146,14 @@ export const STYLE_SYSTEMS = {
 
 /**
  * API endpoint paths
+ * INVARIANT: PROCESSING resolves at call time so CRX / Capacitor hit process.u2re.space.
+ * COMPAT: :443 still accepts POST /api/processing.
  */
 export const API_ENDPOINTS = {
     // Processing APIs
-    PROCESSING: '/api/processing',
+    get PROCESSING() {
+        return resolveProcessApiUrl("processing");
+    },
     ANALYZE: '/api/analyze',
     TEST: '/api/test',
     HEALTH: '/health',

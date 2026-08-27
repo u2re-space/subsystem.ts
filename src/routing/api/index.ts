@@ -5,6 +5,10 @@
  * Used for backend API calls and processing requests.
  */
 
+import { resolveProcessApiUrl } from "./process-api";
+
+export { resolveProcessApiUrl, processApiPath, needsRemoteProcessApi } from "./process-api";
+
 // ============================================================================
 // TYPES
 // ============================================================================
@@ -43,12 +47,19 @@ export interface AnalyzeOptions {
 // ============================================================================
 
 /**
- * API endpoint paths
+ * API endpoint paths.
+ * INVARIANT: PROCESSING / ANALYZE / HEALTH resolve at call time for CRX and Capacitor.
  */
 export const API_PATHS = {
-    PROCESSING: "/api/processing",
-    ANALYZE: "/api/analyze",
-    HEALTH: "/api/health",
+    get PROCESSING() {
+        return resolveProcessApiUrl("processing");
+    },
+    get ANALYZE() {
+        return resolveProcessApiUrl("analyze");
+    },
+    get HEALTH() {
+        return resolveProcessApiUrl("health");
+    },
     TEST: "/api/test",
     ICONS: "/assets/icons",
     DUOTONE_ICONS: "/assets/icons/duotone",

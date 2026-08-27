@@ -24,6 +24,7 @@ import { summarizeForLog } from "../channel/LogSanitizer";
 import { unifiedMessaging } from "../channel/UnifiedMessaging";
 import { loadSettings } from "com/config/Settings";
 import { BROADCAST_CHANNELS } from "com/config/Names";
+import { resolveProcessApiUrl } from "../api/process-api";
 
 // ============================================================================
 // EXTENSION VS PWA
@@ -806,7 +807,7 @@ export const processShareTargetData = async (shareData: ShareDataInput, skipIfEm
 
         // Call unified processing endpoint
         console.log("[ShareTarget] Calling unified processing API");
-        const response = await fetch('/api/processing', {
+        const response = await fetch(resolveProcessApiUrl("processing"), {
             method: 'POST',
             headers: {
                 'Content-Type': 'application/json',

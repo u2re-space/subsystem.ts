@@ -7,6 +7,7 @@
 
 import type { RecognizeByInstructionsOptions } from '../service/service/ProcessingData';
 
+import { resolveProcessApiUrl } from "../api/process-api";
 import { getProcessingRules, type AIProcessingType, type ProcessingRule } from "./processingRules";
 
 export type { AIProcessingType, ProcessingRule };
@@ -70,9 +71,11 @@ export interface UnifiedProcessingConfig {
 }
 
 // Unified Processing Rules for different entry points
+const processApiUrl = (): string => resolveProcessApiUrl("processing");
+
 export const UNIFIED_PROCESSING_RULES: Record<string, UnifiedProcessingConfig> = {
     "share-target": {
-        processingUrl: "/api/processing",
+        processingUrl: processApiUrl(),
         contentAction: {
             onResult: "write-clipboard",
             onAccept: "attach-to-associated",
@@ -83,7 +86,7 @@ export const UNIFIED_PROCESSING_RULES: Record<string, UnifiedProcessingConfig> =
         defaultOverrideFactors: [] // Use default associations
     },
     "launch-queue": {
-        processingUrl: "/api/processing",
+        processingUrl: processApiUrl(),
         contentAction: {
             onResult: "none",
             onAccept: "attach-to-associated",
@@ -94,7 +97,7 @@ export const UNIFIED_PROCESSING_RULES: Record<string, UnifiedProcessingConfig> =
         defaultOverrideFactors: [] // Use default associations
     },
     "crx-snip": {
-        processingUrl: "/api/processing",
+        processingUrl: processApiUrl(),
         contentAction: {
             onResult: "write-clipboard",
             onAccept: "attach-to-associated",
@@ -105,7 +108,7 @@ export const UNIFIED_PROCESSING_RULES: Record<string, UnifiedProcessingConfig> =
         defaultOverrideFactors: ["force-processing"] // Force processing for CRX snips
     },
     "paste": {
-        processingUrl: "/api/processing",
+        processingUrl: processApiUrl(),
         contentAction: {
             onResult: "none",
             onAccept: "attach-to-associated",
@@ -121,7 +124,7 @@ export const UNIFIED_PROCESSING_RULES: Record<string, UnifiedProcessingConfig> =
         }
     },
     "drop": {
-        processingUrl: "/api/processing",
+        processingUrl: processApiUrl(),
         contentAction: {
             onResult: "none",
             onAccept: "attach-to-associated",
@@ -137,7 +140,7 @@ export const UNIFIED_PROCESSING_RULES: Record<string, UnifiedProcessingConfig> =
         }
     },
     "button-attach-workcenter": {
-        processingUrl: "/api/processing",
+        processingUrl: processApiUrl(),
         contentAction: {
             onResult: "none",
             onAccept: "attach-to-workcenter",
