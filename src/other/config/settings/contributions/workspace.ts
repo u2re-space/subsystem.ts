@@ -36,9 +36,28 @@ const ACTION_OPTIONS: Array<[string, string]> = [
     ["open-view", "Open view"]
 ];
 
+const APP_MENU_SORT_OPTIONS: Array<[string, string]> = [
+    ["name", "Name"],
+    ["installed", "Date installed"],
+    ["updated", "Date updated"],
+    ["color", "Color (including mask)"],
+    ["category", "Category"],
+    ["package", "Package"]
+];
+
+const SORT_DIR_OPTIONS: Array<[string, string]> = [
+    ["asc", "Ascending"],
+    ["desc", "Descending"]
+];
+
 const OPEN_TARGET_OPTIONS: Array<[string, string]> = [
     ["inline", "Inline (iframe / env window, same tab)"],
     ["external-app", "External app (Android chooser)"],
+    ["viewer", "Markdown (in this app)"],
+    ["document", "CWSP-document"],
+    ["explorer", "CWSP-explorer"],
+    ["workcenter", "CWSP-process"],
+    ["transfer", "CWSP-transfer"],
     ["native-window", "Native window (new browser window)"],
     ["new-tab", "New tab"]
 ];
@@ -98,6 +117,11 @@ const normalizeOpenTarget = (
     if (v === "app" || v === "chooser" || v === "open-with" || v === "open-in-app" || v === "intent") {
         return "external-app";
     }
+    if (v === "markdown") return "viewer";
+    if (v === "document" || v === "cwsp-document") return "document";
+    if (v === "files") return "explorer";
+    if (v === "process" || v === "cwsp-process") return "workcenter";
+    if (v === "transfer" || v === "cwsp" || v === "network") return "transfer";
     return (ALLOWED_TARGETS.has(v) ? v : fallback) as NonNullable<WorkspaceGrid["defaultOpenLinkTarget"]>;
 };
 
@@ -337,7 +361,11 @@ export const registerWorkspaceSettingsContribution = (): (() => void) =>
                 }),
                 "Default actions",
                 settingsSelectField("New tile action", "grid.defaultAction", ACTION_OPTIONS),
-                settingsSelectField("Open links in", "grid.defaultOpenLinkTarget", OPEN_TARGET_OPTIONS)
+                settingsSelectField("Open links in", "grid.defaultOpenLinkTarget", OPEN_TARGET_OPTIONS),
+                "App menu",
+                settingsHint("Installed-app icons in the App Menu. Color uses the painted icon, including mask."),
+                settingsSelectField("Sort icons by", "appMenu.sortBy", APP_MENU_SORT_OPTIONS),
+                settingsSelectField("Icon order", "appMenu.sortDir", SORT_DIR_OPTIONS)
             ]),
         load: (settings, panel) => {
             const live = readLiveGrid();
@@ -352,6 +380,24 @@ export const registerWorkspaceSettingsContribution = (): (() => void) =>
                 "grid.defaultOpenLinkTarget",
                 live.defaultOpenLinkTarget || grid.defaultOpenLinkTarget || "inline"
             );
+            let liveAppMenu: { sortBy?: string; sortDir?: string } = {};
+            try {
+                const raw = localStorage.getItem("cwsp-app-menu-sort");
+                if (raw) liveAppMenu = JSON.parse(raw) as { sortBy?: string; sortDir?: string };
+            } catch {
+                /* ignore */
+            }
+            settings.appMenu = {
+                ...(settings.appMenu || {}),
+                sortBy: (liveAppMenu.sortBy || settings.appMenu?.sortBy || "name") as NonNullable<
+                    typeof settings.appMenu
+                >["sortBy"],
+                sortDir: (liveAppMenu.sortDir || settings.appMenu?.sortDir || "asc") as NonNullable<
+                    typeof settings.appMenu
+                >["sortDir"]
+            };
+            setFieldValue(panel, "appMenu.sortBy", settings.appMenu.sortBy || "name");
+            setFieldValue(panel, "appMenu.sortDir", settings.appMenu.sortDir || "asc");
             bindWorkspacePagesUi(panel);
         },
         save: (settings) => {
@@ -365,5 +411,17 @@ export const registerWorkspaceSettingsContribution = (): (() => void) =>
             };
             settings.grid = { ...(settings.grid || {}), ...next };
             applyLiveGrid(next);
+            try {
+                localStorage.setItem(
+                    "cwsp-app-menu-sort",
+                    JSON.stringify({
+                        sortBy: settings.appMenu?.sortBy || "name",
+                        sortDir: settings.appMenu?.sortDir || "asc"
+                    })
+                );
+                window.dispatchEvent(new CustomEvent("cwsp:app-menu-sort-change"));
+            } catch {
+                /* private mode */
+            }
         }
     });

@@ -2,7 +2,7 @@
 // SERVICE WORKER AND ASSET UPDATE HANDLING
 // ============================================================================
 
-import { ensureServiceWorkerRegistered } from "./sw-url";
+import { dropStaleServiceWorkerRegistrations, ensureServiceWorkerRegistered } from "./sw-url";
 
 const IS_DEV = Boolean((import.meta as any)?.env?.DEV);
 const AUTO_RELOAD_COOLDOWN_MS = 2 * 60 * 1000;
@@ -560,6 +560,7 @@ export const checkForUpdates = async (): Promise<void> => {
     try {
         // Check service worker for updates
         if ('serviceWorker' in navigator && navigator.serviceWorker.controller) {
+            await dropStaleServiceWorkerRegistrations();
             const registration = await navigator.serviceWorker.getRegistration();
             if (registration) {
                 console.log('[PWA] Checking service worker for updates...');

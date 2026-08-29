@@ -217,6 +217,24 @@ export const installCapacitorShareIntentBridge = (): void => {
 
     window.addEventListener("cws:shareIntent", handler);
     enqueueShareIngest(async () => {
+        /* WHY: consume after viewer mount — otherwise content-view has no handler. */
+        await new Promise<void>((resolve) => {
+            const done = () => resolve();
+            try {
+                if (document.documentElement?.dataset?.cwspBoot === "ready") {
+                    done();
+                    return;
+                }
+            } catch {
+                /* ignore */
+            }
+            const onReady = () => {
+                window.removeEventListener("cwsp:boot-ready", onReady);
+                done();
+            };
+            window.addEventListener("cwsp:boot-ready", onReady);
+            window.setTimeout(done, 4000);
+        });
         const native = await consumeNativePendingShare().catch(() => null);
         if (native) await ingestParsedShare(native);
     });

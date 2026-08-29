@@ -8,7 +8,7 @@ import {
     createChromeExtensionRuntimeChannel,
     type ChromeExtensionRuntimeChannel,
 } from "./crx-extension-channels";
-import { createInteropEnvelope, type InteropEnvelope } from "./UniformInterop";
+import { createInteropEnvelope, type InteropEnvelope, type InteropMessageInput } from "./UniformInterop";
 
 /** Subset of fest/uniform OptimizedWorkerChannel used by CrxRuntimeChannel */
 interface CrxOptimizedWorkerChannelLike {
@@ -327,7 +327,8 @@ export class CrxUnifiedMessaging {
     /**
      * Send message via Chrome runtime
      */
-    async sendRuntimeMessage(message: Omit<CrxMessage, 'id' | 'source'>): Promise<any> {
+    // WHY: createInteropEnvelope fills uuid/sender/protocol; callers send type + data.
+    async sendRuntimeMessage(message: InteropMessageInput): Promise<any> {
         const fullMessage = createInteropEnvelope({
             id: `crx_${Date.now()}_${Math.random().toString(36).slice(2, 11)}`,
             source: this.context,
@@ -350,7 +351,7 @@ export class CrxUnifiedMessaging {
     /**
      * Send message to specific tab
      */
-    async sendToTab(tabId: number, message: Omit<CrxMessage, 'id' | 'source'>): Promise<any> {
+    async sendToTab(tabId: number, message: InteropMessageInput): Promise<any> {
         if (!this.isCrxEnv) {
             console.warn('CrxUnifiedMessaging: Tab messaging not available - not in Chrome extension context');
             return Promise.reject(new Error('Tab messaging is not available in this context'));
@@ -381,7 +382,7 @@ export class CrxUnifiedMessaging {
     /**
      * Broadcast message to all tabs
      */
-    async broadcastToTabs(message: Omit<CrxMessage, 'id' | 'source'>): Promise<any[]> {
+    async broadcastToTabs(message: InteropMessageInput): Promise<any[]> {
         if (!this.isCrxEnv) {
             console.warn('CrxUnifiedMessaging: Tab broadcasting not available - not in Chrome extension context');
             return Promise.resolve([]);
@@ -424,7 +425,7 @@ export class CrxUnifiedMessaging {
 export const crxMessaging = CrxUnifiedMessaging.getInstance();
 
 // Convenience functions
-export function sendCrxMessage(message: Omit<CrxMessage, 'id' | 'source'>): Promise<any> {
+export function sendCrxMessage(message: InteropMessageInput): Promise<any> {
     return crxMessaging.sendRuntimeMessage(message);
 }
 
@@ -432,10 +433,10 @@ export function registerCrxHandler(type: string, handler: (data: any) => Promise
     crxMessaging.registerRuntimeHandler(type, handler);
 }
 
-export function sendToCrxTab(tabId: number, message: Omit<CrxMessage, 'id' | 'source'>): Promise<any> {
+export function sendToCrxTab(tabId: number, message: InteropMessageInput): Promise<any> {
     return crxMessaging.sendToTab(tabId, message);
 }
 
-export function broadcastToCrxTabs(message: Omit<CrxMessage, 'id' | 'source'>): Promise<any[]> {
+export function broadcastToCrxTabs(message: InteropMessageInput): Promise<any[]> {
     return crxMessaging.broadcastToTabs(message);
 }

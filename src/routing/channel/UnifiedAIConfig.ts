@@ -5,7 +5,7 @@
  * for consistent behavior across different entry points and modules.
  */
 
-import type { RecognizeByInstructionsOptions } from '../service/service/ProcessingData';
+import type { RecognizeByInstructionsOptions } from "../../service/service/ProcessingData";
 
 import { resolveProcessApiUrl } from "../api/process-api";
 import { getProcessingRules, type AIProcessingType, type ProcessingRule } from "./processingRules";

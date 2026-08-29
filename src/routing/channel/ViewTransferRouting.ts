@@ -5,11 +5,26 @@ import {
     ECOSYSTEM_SKUS,
     androidPackageForSku,
     ensureCwspSkuFromLocation,
+    inferCwspSkuFromLocation,
+    isCwspNativeHost,
+    readCwspSku,
     publicHrefForSku,
     shouldHandoffViewToSibling,
-    siblingSkuForView
+    siblingSkuForView,
+    stashSkuHandoff
 } from "../../other/config/ecosystem-skus";
 import { skuIngressHint } from "./sku-ingress";
+import {
+    classifyOpenKindFromPayload,
+    inferIngressChannels,
+    normalizeOpenSink,
+    peekOpenPolicy,
+    resolveOpenPolicy,
+    skuForOpenSink,
+    sinkToDestination,
+    surfaceForSku,
+    type OpenSink
+} from "../../other/config/open-policy";
 
 /**
  * Canonical classification for share-target / launch-queue files (extension often beats flaky MIME).
@@ -76,7 +91,8 @@ export type ViewTransferDestination =
     | "history"
     | "settings"
     | "home"
-    | "print";
+    | "print"
+    | "network";
 
 export type ViewTransferActionHint = "open" | "attach" | "save" | "process" | "ask" | "shortcut" | "wallpaper";
 
@@ -90,6 +106,8 @@ export interface ViewTransferHint {
      * WHY: `data.source` is the transfer enum (`launch-queue`); relative assets need a real path.
      */
     source?: string;
+    /** Open-policy sink when it must stay distinct from `destination` (`document` vs `viewer`). */
+    sink?: OpenSink | string;
 }
 
 export interface ViewTransferPayload {
@@ -166,10 +184,33 @@ const getContentType = (payload: ViewTransferPayload): string => {
     return "other";
 };
 
+const isNativeCapacitor = (): boolean => {
+    try {
+        const g = globalThis as { Capacitor?: { isNativePlatform?: () => boolean } };
+        return Boolean(g.Capacitor?.isNativePlatform?.());
+    } catch {
+        return false;
+    }
+};
+
 const pickDestination = (payload: ViewTransferPayload, contentType: string): ViewTransferDestination => {
     ensureCwspSkuFromLocation();
     const skuHint = skuIngressHint(payload);
     if (skuHint?.destination) return skuHint.destination;
+
+    /* Hub / CRX / transfer: no SKU lock — still honor a concrete openPolicy sink. */
+    const sku = inferCwspSkuFromLocation();
+    const surface = surfaceForSku(sku) || "shell";
+    const kind = classifyOpenKindFromPayload(payload);
+    const channels = inferIngressChannels(payload.source || payload.route, isNativeCapacitor());
+    const sink = resolveOpenPolicy(peekOpenPolicy(), surface, kind, channels);
+    if (sink !== "ask") {
+        const fallback =
+            contentType === "markdown" || contentType === "text"
+                ? "viewer"
+                : ("workcenter" as const);
+        return sinkToDestination(sink, fallback);
+    }
 
     if (payload.hint?.action === "save") return "explorer";
     /** Readable docs should win over stale `hint.destination` from cached/share envelopes. */
@@ -271,14 +312,112 @@ const mirrorTransferToViewChannel = (resolved: ViewTransferResolved, message: Un
     }
 };
 
+const payloadSink = (payload: ViewTransferPayload, resolved: ViewTransferResolved): OpenSink => {
+    const hinted = payload.hint?.sink ?? (resolved.metadata?.hint as ViewTransferHint | undefined)?.sink;
+    return normalizeOpenSink(hinted, "ask");
+};
+
+const openResolvedWithSystem = async (
+    payload: ViewTransferPayload,
+    chooser: boolean
+): Promise<boolean> => {
+    const file = Array.isArray(payload.files) ? payload.files[0] : undefined;
+    const uri = String(payload.url || payload.hint?.source || "").trim();
+    try {
+        const { launcherOpenUri } = await import("com/routing/native/launcher-bridge");
+        if (typeof launcherOpenUri === "function") {
+            const openable = /^(file|content|https?):/i.test(uri) ? uri : uri.startsWith("/") ? uri : "";
+            if (openable && (await launcherOpenUri(openable, { chooser, mimeType: file?.type, title: "Open with" }))) {
+                return true;
+            }
+        }
+    } catch {
+        /* web / no bridge */
+    }
+    if (!file) return false;
+    try {
+        const url = URL.createObjectURL(file);
+        globalThis.open?.(url, "_blank", "noopener,noreferrer");
+        return true;
+    } catch {
+        return false;
+    }
+};
+
+const launchSinkSku = async (
+    sink: OpenSink,
+    payload: ViewTransferPayload,
+    resolved: ViewTransferResolved
+): Promise<boolean> => {
+    const sku = skuForOpenSink(sink);
+    if (!sku) return false;
+    const file = Array.isArray(payload.files) ? payload.files[0] : undefined;
+    try {
+        stashSkuHandoff({
+            dest: resolved.destination,
+            filename: String(payload.hint?.filename || file?.name || ""),
+            src: String(payload.url || payload.hint?.source || ""),
+            content: String(payload.text || "")
+        });
+    } catch {
+        /* sessionStorage optional */
+    }
+    const pkg = androidPackageForSku(sku);
+    const src = String(payload.url || payload.hint?.source || "");
+    if (pkg && /^(content|file|https?):/i.test(src)) {
+        try {
+            const { launcherOpenUri } = await import("com/routing/native/launcher-bridge");
+            if (await launcherOpenUri(src, {
+                packageName: pkg,
+                chooser: false,
+                mimeType: file?.type || undefined
+            })) {
+                return true;
+            }
+        } catch {
+            /* fall through to launch */
+        }
+    }
+    if (pkg) {
+        try {
+            const bridge = (await import("com/routing/native/launcher-bridge")) as {
+                launcherLaunch?: (pkg: string) => Promise<boolean>;
+            };
+            if (await bridge.launcherLaunch?.(pkg)) return true;
+        } catch {
+            /* web / stub */
+        }
+    }
+    try {
+        if (isCwspNativeHost()) return false;
+        location.assign(publicHrefForSku(sku));
+        return true;
+    } catch {
+        return false;
+    }
+};
+
 export const dispatchViewTransfer = async (
     payload: ViewTransferPayload
 ): Promise<{ delivered: boolean; resolved: ViewTransferResolved }> => {
     const resolved = resolveViewTransfer(payload);
     // WHY: each Capacitor SKU is its own APK — do not open viewer inside process or workcenter inside document.
     ensureCwspSkuFromLocation();
+    const sink = payloadSink(payload, resolved);
+    if (sink === "system" || sink === "external") {
+        if (await openResolvedWithSystem(payload, sink === "system")) return { delivered: true, resolved };
+    }
+    if (sink === "document") {
+        const current = inferCwspSkuFromLocation() || readCwspSku();
+        /* WHY: Document receiving a share must paint it — not ACTION_VIEW itself. */
+        if (current !== "document") {
+            if (await launchSinkSku(sink, payload, resolved)) return { delivered: true, resolved };
+        }
+    }
+    /* WHY: “Markdown (in this app)” must not jump to CWSP-document. */
+    const stayInApp = sink === "viewer" || sink === "display";
     const sibling = siblingSkuForView(resolved.destination);
-    if (shouldHandoffViewToSibling(resolved.destination) && sibling) {
+    if (!stayInApp && shouldHandoffViewToSibling(resolved.destination) && sibling) {
         const pkg = androidPackageForSku(sibling);
         let handedOff = false;
         if (pkg) {
@@ -330,11 +469,18 @@ export const dispatchViewTransfer = async (
 
     mirrorTransferToViewChannel(resolved, message);
 
+    const deliveredNow = await sendProtocolMessage({
+        ...message,
+        purpose: ["deliver", "mail"],
+        protocol: "window",
+        op: payload.hint?.action === "open" ? "invoke" : "deliver",
+        srcChannel: message.source,
+        dstChannel: normalizeDestination(resolved.destination),
+    });
+
     let queuedAsPending = false;
-    if (payload.pending && !hasBinaryPayload) {
+    if (!deliveredNow && !hasBinaryPayload) {
         try {
-            // Keep pending transport JSON-safe: markdown/text/url flows can be replayed
-            // without binary `File[]` payload because text/url is already hydrated.
             const pendingMessage: UnifiedMessage = {
                 ...message,
                 data: {
@@ -348,15 +494,6 @@ export const dispatchViewTransfer = async (
             console.warn("[ViewTransfer] Failed to enqueue pending message:", error);
         }
     }
-
-    const deliveredNow = await sendProtocolMessage({
-        ...message,
-        purpose: ["deliver", "mail"],
-        protocol: "window",
-        op: payload.hint?.action === "open" ? "invoke" : "deliver",
-        srcChannel: message.source,
-        dstChannel: normalizeDestination(resolved.destination),
-    });
     const delivered = deliveredNow || queuedAsPending;
     console.log("[ViewTransfer] Message delivery status:", {
         deliveredNow,

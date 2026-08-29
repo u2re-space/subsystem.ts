@@ -1,3 +1,6 @@
+import type { OpenPolicy } from "./open-policy";
+import { DEFAULT_OPEN_POLICY } from "./open-policy";
+
 export type FieldType = "text" | "password" | "select" | "color-palette" | "shape-palette" | "number-select" | "textarea";
 
 export type FieldOption = {
@@ -484,13 +487,38 @@ export type AppSettings = {
         shape?: GridShape;
         /** Default click action for new speed-dial tiles (`open-link` / `open-view`). */
         defaultAction?: string;
-        /** Default open destination for link tiles (`inline` / `native-window` / `new-tab`). */
-        defaultOpenLinkTarget?: "inline" | "native-window" | "new-tab" | "external-app";
+        /** Default open destination for link tiles (`inline` / `native-window` / `new-tab` / view sinks). */
+        defaultOpenLinkTarget?:
+            | "inline"
+            | "native-window"
+            | "new-tab"
+            | "external-app"
+            | "viewer"
+            | "document"
+            | "explorer"
+            | "workcenter"
+            | "transfer";
         /**
          * Bitmap zoom inside icon plates.
          * `compact` | `fit` | `fill` (adaptive ~1.28) | `zoom` | `max`
          */
         iconScale?: "compact" | "fit" | "fill" | "zoom" | "max";
+    };
+    /**
+     * Where files go on open / share / launch-queue, per surface and kind.
+     * @see open-policy.ts
+     */
+    openPolicy?: OpenPolicy;
+    /** App Menu icon list (CWSP-shell). */
+    appMenu?: {
+        sortBy?: "name" | "installed" | "updated" | "color" | "category" | "package";
+        sortDir?: "asc" | "desc";
+    };
+    /** Explorer file list. */
+    explorer?: {
+        sortBy?: "name" | "date" | "type" | "size" | "kind";
+        sortDir?: "asc" | "desc";
+        foldersFirst?: boolean;
     };
 };
 
@@ -668,6 +696,16 @@ export const DEFAULT_SETTINGS: AppSettings = {
         defaultAction: "open-link",
         defaultOpenLinkTarget: "inline",
         iconScale: "fill"
+    },
+    openPolicy: DEFAULT_OPEN_POLICY,
+    appMenu: {
+        sortBy: "name",
+        sortDir: "asc"
+    },
+    explorer: {
+        sortBy: "name",
+        sortDir: "asc",
+        foldersFirst: true
     }
 };
 

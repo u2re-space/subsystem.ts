@@ -4,7 +4,7 @@
  * FIND:sku
  * TAG:sku,settings-profile
  * Change date and time: 09.20.00_25.08.2026
- * Reason for changes: Specialized hosts hide sibling chrome; attach/open hands off to SKU URLs. Only u2re.space keeps /viewer /explorer /process in-process.
+ * Reason for changes: Explorer SKU has no local viewer; markdown/open hands off to document. Only u2re.space keeps /viewer /explorer /process in-process.
  */
 
 /**

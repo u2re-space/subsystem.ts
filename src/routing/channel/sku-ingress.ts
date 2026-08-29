@@ -2,21 +2,35 @@
  * Filename: sku-ingress.ts
  * FullPath: modules/projects/subsystem/src/routing/channel/sku-ingress.ts
  * FIND:sku
- * TAG:sku,share-target
+ * TAG:sku,share-target,open-policy
  * Change date and time: 17.40.00_27.08.2026
  * Reason for changes: Share-target / launch-queue stay on the receiving SKU (process/document/explorer/shell).
  */
 
 import { inferCwspSkuFromLocation, type CwspSku } from "../../other/config/ecosystem-skus";
+import {
+    classifyOpenKindFromPayload,
+    inferIngressChannels,
+    peekOpenPolicy,
+    resolveOpenPolicy,
+    sinkToAction,
+    sinkToDestination,
+    surfaceForSku,
+    type OpenPolicy,
+    type OpenPolicyDestination,
+    type OpenSink
+} from "../../other/config/open-policy";
 
 export type SkuIngressAction = "open" | "attach" | "process" | "ask" | "shortcut" | "wallpaper";
 
 export type SkuIngressHint = {
-    destination: "viewer" | "workcenter" | "explorer" | "home";
+    destination: "viewer" | "workcenter" | "explorer" | "home" | "network";
     action: SkuIngressAction;
     filename?: string;
     source?: string;
     contentType?: string;
+    /** Concrete open-policy sink — `document` vs `viewer`, `system` vs in-app. */
+    sink?: OpenSink;
 };
 
 type IngressProbe = {
@@ -25,8 +39,12 @@ type IngressProbe = {
     url?: string;
     title?: string;
     fileCount?: number;
+    source?: string;
+    route?: string;
     hint?: { filename?: string; source?: string; destination?: string; action?: string };
 };
+
+const loadLauncherState = () => import("fl-ui/speed-dial/launcher-state");
 
 const WALLPAPER_EXT = new Set(["png", "jpg", "jpeg", "webp", "gif", "bmp", "avif"]);
 const MIN_WALLPAPER_BYTES = 20 * 1024;
@@ -106,18 +124,62 @@ const pathProbe = (payload: IngressProbe): string => {
  * Receiving SKU owns the share. Hub/CRX fall through to content-based routing.
  * WHY: otherwise process hands text to document, and document hands images to process.
  */
+const isNativeCapacitor = (): boolean => {
+    try {
+        const g = globalThis as { Capacitor?: { isNativePlatform?: () => boolean } };
+        return Boolean(g.Capacitor?.isNativePlatform?.());
+    } catch {
+        return false;
+    }
+};
+
+const skuDefaultDestination = (sku: CwspSku | ""): OpenPolicyDestination | undefined => {
+    if (sku === "process") return "workcenter";
+    if (sku === "document") return "viewer";
+    if (sku === "explorer") return "explorer";
+    if (sku === "launcher") return "home";
+    return undefined;
+};
+
 export const skuIngressHint = (
     payload: IngressProbe,
-    opts?: { sku?: CwspSku | ""; autoProcessShared?: boolean }
+    opts?: { sku?: CwspSku | ""; autoProcessShared?: boolean; openPolicy?: OpenPolicy }
 ): SkuIngressHint | undefined => {
     const sku = opts?.sku || inferCwspSkuFromLocation();
-    if (!sku || sku === "crx" || sku === "transfer") return undefined;
-
     const file = firstFile(payload);
     const path = pathProbe(payload);
     const filename = payload.hint?.filename || file?.name || "";
-    const mime = String(file?.type || "").toLowerCase();
-    const kind = mime.startsWith("image/") ? "image" : mime.startsWith("text/") ? "text" : file ? "file" : undefined;
+    const kind = classifyOpenKindFromPayload(payload);
+    const sourceToken = String(payload.source || payload.route || payload.hint?.source || "").toLowerCase();
+    const ingressSource =
+        sourceToken.includes("launch")
+            ? "launch-queue"
+            : sourceToken.includes("share")
+              ? "share-target"
+              : sourceToken.includes("snip")
+                ? "snip"
+                : sourceToken.includes("capacitor")
+                  ? "capacitor"
+                  : "";
+    const surface = surfaceForSku(sku);
+    const channels = inferIngressChannels(ingressSource || undefined, isNativeCapacitor());
+    const sink = resolveOpenPolicy(opts?.openPolicy || peekOpenPolicy(), surface, kind, channels);
+    const skuDest = skuDefaultDestination(sku);
+
+    /* User-set sink wins over SKU lock. `ask` keeps the receiving SKU. */
+    if (surface && sink !== "ask") {
+        const destination = sinkToDestination(sink, skuDest || "workcenter");
+        return {
+            destination,
+            action: sinkToAction(sink, sku === "process" ? "process" : "open"),
+            filename,
+            source: path || payload.hint?.source,
+            contentType: kind,
+            sink
+        };
+    }
+
+    if (!sku || sku === "crx" || sku === "transfer") return undefined;
 
     if (sku === "process") {
         const hinted = payload.hint?.action;
@@ -147,9 +209,19 @@ export const skuIngressHint = (
     if (sku === "explorer") {
         const dir = looksLikeDirectoryPath(path) && !file;
         const hasFile = Boolean(file) || Number(payload.fileCount || 0) > 0;
+        if (hasFile && !dir) {
+            return {
+                destination: "viewer",
+                action: "open",
+                filename,
+                source: path || payload.hint?.source,
+                contentType: kind,
+                sink: "document"
+            };
+        }
         return {
             destination: "explorer",
-            action: dir || (path && !hasFile) ? "open" : hasFile ? "ask" : "open",
+            action: "open",
             filename,
             source: path || payload.hint?.source,
             contentType: kind
@@ -170,6 +242,27 @@ export const skuIngressHint = (
     }
 
     return undefined;
+};
+
+/**
+ * Wallpaper sink: keep home only when the photo passes size/aspect.
+ * WHY: icons and strips must not become wallpaper — send those to the viewer.
+ */
+export const refineLauncherImageIngress = async (
+    hint: SkuIngressHint | undefined,
+    files?: File[]
+): Promise<SkuIngressHint | undefined> => {
+    if (!hint || hint.action !== "wallpaper") return hint;
+    if (!files?.length) return hint;
+    const image = files.find((f) => looksLikeWallpaperFile(f));
+    if (image && (await isWallpaperCompatible(image))) return hint;
+    return {
+        ...hint,
+        destination: "viewer",
+        action: "open",
+        contentType: "image",
+        sink: "viewer"
+    };
 };
 
 export const dataUrlToFile = async (
@@ -204,15 +297,17 @@ export const applyLauncherIngress = async (payload: {
     const image = files.find((f) => looksLikeWallpaperFile(f));
     if ((payload.action === "wallpaper" || !payload.action) && image && (await isWallpaperCompatible(image))) {
         const { setAppWallpaperFromBlob, getWallpaperStoragePointer, WALLPAPER_IDB_MARKER } = await import("@fest-lib/image");
-        const { wallpaperState, persistWallpaper } = await import("fl-ui/speed-dial/launcher-state");
+        const { wallpaperState, persistWallpaper } = await loadLauncherState();
         await setAppWallpaperFromBlob(image);
         wallpaperState.src = getWallpaperStoragePointer() || WALLPAPER_IDB_MARKER;
         persistWallpaper();
         return "wallpaper";
     }
+    /* WHY: wallpaper sink failed the fit check — do not pin a shortcut for a photo. */
+    if (payload.action === "wallpaper") return "none";
 
     const { pinSpeedDialLinkFromIntent, parseSpeedDialItemFromURL, parseSpeedDialItemFromSmartText, addSpeedDialItem, persistSpeedDialItems, persistSpeedDialMeta, findNextFreeSpeedDialCell } =
-        await import("fl-ui/speed-dial/launcher-state");
+        await loadLauncherState();
     const cell = findNextFreeSpeedDialCell();
     const url = String(payload.url || "").trim();
     const text = String(payload.text || "").trim();
@@ -253,4 +348,101 @@ export const applyLauncherIngress = async (payload: {
         }
     }
     return "none";
+};
+
+const SHELL_IMAGE_OPEN_EVENT = "cwsp:shell-image-open";
+
+let shellImageOpenInstalled = false;
+
+const openShellImageInViewer = async (file: File): Promise<void> => {
+    const { dispatchViewTransfer } = await import("./ViewTransferRouting");
+    await dispatchViewTransfer({
+        source: "clipboard",
+        route: "clipboard",
+        files: [file],
+        fileCount: 1,
+        hint: { destination: "viewer", action: "open", filename: file.name, contentType: "image", sink: "viewer" }
+    });
+};
+
+const applyShellWallpaper = async (file: File): Promise<boolean> => {
+    if (!(await isWallpaperCompatible(file))) return false;
+    const { setAppWallpaperFromBlob, getWallpaperStoragePointer, WALLPAPER_IDB_MARKER } = await import("@fest-lib/image");
+    const { wallpaperState, persistWallpaper } = await loadLauncherState();
+    await setAppWallpaperFromBlob(file);
+    wallpaperState.src = getWallpaperStoragePointer() || WALLPAPER_IDB_MARKER;
+    persistWallpaper();
+    return true;
+};
+
+/**
+ * Home drop/paste: SpeedDial fires `cwsp:shell-image-open`. Policy picks wallpaper vs viewer.
+ */
+export const installShellImageOpenListener = (): void => {
+    if (shellImageOpenInstalled || typeof window === "undefined") return;
+    shellImageOpenInstalled = true;
+    window.addEventListener(SHELL_IMAGE_OPEN_EVENT, (raw) => {
+        const ev = raw as CustomEvent<{ file?: File }>;
+        const file = ev.detail?.file;
+        if (!(file instanceof File)) return;
+        ev.preventDefault();
+        void (async () => {
+            try {
+                const { loadSettings } = await import("../../other/config/Settings");
+                const { peekOpenPolicy, rememberOpenPolicyFromSettings, resolveOpenPolicy } = await import(
+                    "../../other/config/open-policy"
+                );
+                const settings = await loadSettings().catch(() => null);
+                rememberOpenPolicyFromSettings(settings);
+                const sink = resolveOpenPolicy(
+                    settings?.openPolicy ?? peekOpenPolicy(),
+                    "shell",
+                    "image",
+                    "open"
+                );
+                if (sink === "viewer" || sink === "display") {
+                    await openShellImageInViewer(file);
+                    return;
+                }
+                if (sink === "document" || sink === "transfer" || sink === "system" || sink === "external") {
+                    const { dispatchViewTransfer } = await import("./ViewTransferRouting");
+                    await dispatchViewTransfer({
+                        source: "clipboard",
+                        route: "clipboard",
+                        files: [file],
+                        fileCount: 1,
+                        hint: {
+                            destination: sink === "transfer" ? "network" : "viewer",
+                            action: "open",
+                            filename: file.name,
+                            contentType: "image",
+                            sink
+                        }
+                    });
+                    return;
+                }
+                if (sink === "workcenter") {
+                    const { dispatchViewTransfer } = await import("./ViewTransferRouting");
+                    await dispatchViewTransfer({
+                        source: "clipboard",
+                        route: "clipboard",
+                        files: [file],
+                        fileCount: 1,
+                        hint: { destination: "workcenter", action: "attach", filename: file.name, contentType: "image" }
+                    });
+                    return;
+                }
+                if (sink === "wallpaper" || sink === "ask") {
+                    if (await applyShellWallpaper(file)) return;
+                    if (sink === "wallpaper") {
+                        await openShellImageInViewer(file);
+                    }
+                    return;
+                }
+                if (!(await applyShellWallpaper(file))) await openShellImageInViewer(file);
+            } catch (error) {
+                console.warn("[sku-ingress] shell image open failed", error);
+            }
+        })();
+    });
 };

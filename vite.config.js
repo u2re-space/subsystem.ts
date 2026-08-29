@@ -170,11 +170,12 @@ export function initiate(
     };
 
     //
+    const webLibs = process.env.FEST_WEB_IMPORTS === "1";
     if (tsconfig?.compilerOptions) {
-        tsconfig.compilerOptions.declaration = true;
-        tsconfig.compilerOptions.declarationMap = true;
-        tsconfig.compilerOptions.inlineSourceMap = true;
-        tsconfig.compilerOptions.inlineSources = true;
+        tsconfig.compilerOptions.declaration = !webLibs;
+        tsconfig.compilerOptions.declarationMap = !webLibs;
+        tsconfig.compilerOptions.inlineSourceMap = !webLibs;
+        tsconfig.compilerOptions.inlineSources = !webLibs;
     }
 
     // WHY: vite-plugin-external injects esbuild optimizeDeps hooks that Vite 8/Rolldown
@@ -203,7 +204,7 @@ export function initiate(
                 exclude: /node_modules/
             })]
             : []),
-        ...(process.env.FEST_NPM_IMPORTS === "1" ? [npmFestImportRewritePlugin()] : [])
+        ...(process.env.FEST_NPM_IMPORTS === "1" ? [npmFestImportRewritePlugin()] : []),
     ];
 
     const rolldownOptions = {
@@ -338,6 +339,7 @@ export function initiate(
         assetsInlineLimit: 1024 * 1024,
         minify: "esbuild",
         emptyOutDir: true,
+        sourcemap: process.env.FEST_WEB_IMPORTS === "1" ? false : undefined,
         target: "esnext",
         loader: 'jsx',
         jsx: 'preserve',
@@ -374,7 +376,7 @@ export function initiate(
         minifySyntax: true,
         minifyIdentifiers: true,
         minifyWhitespace: true,
-        sourcemap: 'inline',
+        sourcemap: process.env.FEST_WEB_IMPORTS === "1" ? false : "inline",
         tsconfigRaw: JSON.stringify(tsconfig)
     };
 

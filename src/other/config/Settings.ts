@@ -9,8 +9,9 @@
 import { JSOX } from "jsox";
 
 //
-import type { AppSettings } from "com/config/SettingsTypes";
-import { DEFAULT_SETTINGS, normalizeEcosystemToken } from "com/config/SettingsTypes";
+import type { AppSettings } from "./SettingsTypes";
+import { DEFAULT_SETTINGS, normalizeEcosystemToken } from "./SettingsTypes";
+import { mergeOpenPolicy, rememberOpenPolicyFromSettings } from "./open-policy";
 import { writeFileSmart } from "@fest-lib/lure";
 import { migrateLegacyCwspPublicPort } from "cwsp-shared/cwsp-endpoint-resolve";
 import {
@@ -365,7 +366,7 @@ const readControlSessionToken = (): string => {
 const readCrxControlSessionTokenAsync = async (): Promise<string> => {
     if (!isChromeExtensionPage()) return "";
     try {
-        const m = await import("com/config/settings/crx-control-session");
+        const m = await import("./settings/crx-control-session");
         return (await m.getCrxControlSessionToken()) || "";
     } catch {
         return "";
@@ -488,7 +489,7 @@ const webnativeControl = async <T = unknown>(path: string, init?: RequestInit): 
                 g.__CWSP_CONTROL_BRIDGE_LIVE__ = false;
                 g.__CWS_NODE_CLIPBOARD_HUB__ = false;
                 if (pageIsChromeExtension) {
-                    void import("com/config/settings/crx-control-session")
+                    void import("./settings/crx-control-session")
                         .then((m) => m.clearCrxControlSession())
                         .catch(() => undefined);
                 }
@@ -859,7 +860,13 @@ export const ensureCapacitorCwspSettingsSeeded = async (): Promise<AppSettings |
     let nativeUserId = "";
     try {
         if (isCwsNativeIpcAvailable()) {
-            nativeUserId = trimSetting((await getNativeUnifiedSettings())?.core?.userId);
+            const native = await getNativeUnifiedSettings();
+            const core = native?.core;
+            nativeUserId = trimSetting(
+                core && typeof core === "object" && core !== null && "userId" in core
+                    ? (core as { userId?: unknown }).userId
+                    : ""
+            );
         }
     } catch {
         /* bridge optional during early boot */
@@ -1219,7 +1226,8 @@ const mergeAppSettingsShape = (base: AppSettings, patch: Partial<AppSettings> | 
         shell: {
             ...(base.shell || {}),
             ...(patch.shell || {})
-        }
+        },
+        openPolicy: mergeOpenPolicy(base.openPolicy, patch.openPolicy)
     };
 };
 
@@ -1435,6 +1443,13 @@ const applyLegacyCwspPortMigration = (settings: AppSettings): AppSettings => {
     if (!core) return settings;
     const migrateList = (items: string[] | undefined): string[] | undefined =>
         items?.map((entry) => migrateLegacyCwspPublicPort(entry));
+    const migrateTargets = (
+        items: NonNullable<NonNullable<AppSettings["core"]>["ops"]>["httpTargets"]
+    ): NonNullable<NonNullable<AppSettings["core"]>["ops"]>["httpTargets"] =>
+        items?.map((entry) => ({
+            ...entry,
+            url: migrateLegacyCwspPublicPort(entry.url ?? "")
+        }));
     const listenPortHttps =
         core.network?.listenPortHttps === 8443 || core.network?.listenPortHttps === 8343
             ? 8434
@@ -1448,9 +1463,9 @@ const applyLegacyCwspPortMigration = (settings: AppSettings): AppSettings => {
                 ? {
                       ...core.ops,
                       directUrl: migrateLegacyCwspPublicPort(core.ops.directUrl ?? ""),
-                      httpTargets: migrateList(core.ops.httpTargets),
-                      wsTargets: migrateList(core.ops.wsTargets),
-                      syncTargets: migrateList(core.ops.syncTargets)
+                      httpTargets: migrateTargets(core.ops.httpTargets),
+                      wsTargets: migrateTargets(core.ops.wsTargets),
+                      syncTargets: migrateTargets(core.ops.syncTargets)
                   }
                 : core.ops,
             admin: core.admin
@@ -1694,7 +1709,10 @@ export const loadSettings = async (opts?: LoadSettingsOptions): Promise<AppSetti
                 shell: {
                     ...(DEFAULT_SETTINGS.shell || {}),
                     ...((stored as any)?.shell || {})
-                }
+                },
+                appMenu: { ...DEFAULT_SETTINGS.appMenu, ...(stored as any)?.appMenu },
+                explorer: { ...DEFAULT_SETTINGS.explorer, ...(stored as any)?.explorer },
+                openPolicy: mergeOpenPolicy(DEFAULT_SETTINGS.openPolicy, (stored as any)?.openPolicy)
             };
 
             // CWSAndroid bridge may expose canonical native settings projection.
@@ -1742,10 +1760,10 @@ export const loadSettings = async (opts?: LoadSettingsOptions): Promise<AppSetti
                         const shellOverlay = mapWebnativeBundleToShell(bundle);
                         if (coreOverlay || shellOverlay) {
                             result = {
-                                ...result,
+                                ...(result || { core: {} }),
                                 core: coreOverlay
                                     ? {
-                                          ...result.core,
+                                          ...(result.core || {}),
                                           ...coreOverlay,
                                           socket: {
                                               ...(result.core?.socket || {}),
@@ -1777,14 +1795,18 @@ export const loadSettings = async (opts?: LoadSettingsOptions): Promise<AppSetti
                 activeInstructionId: result.ai?.activeInstructionId || "(none)"
             });
 
-            return applyLegacyCwspPortMigration(result as AppSettings);
+            const migrated = applyLegacyCwspPortMigration(result as AppSettings);
+            rememberOpenPolicyFromSettings(migrated);
+            return migrated;
         }
 
         console.log("[Settings] loadSettings - no stored data, returning defaults");
     } catch (e) {
         console.warn("[Settings] loadSettings error:", e);
     }
-    return JSOX.parse(JSOX.stringify(DEFAULT_SETTINGS as any) as string) as unknown as AppSettings;
+    const fallback = JSOX.parse(JSOX.stringify(DEFAULT_SETTINGS as any) as string) as unknown as AppSettings;
+    rememberOpenPolicyFromSettings(fallback);
+    return fallback;
 };
 
 //
@@ -1906,7 +1928,18 @@ export const saveSettings = async (settings: AppSettings) => {
             ...(DEFAULT_SETTINGS.shell || {}),
             ...(current.shell || {}),
             ...(settings.shell || {})
-        }
+        },
+        appMenu: {
+            ...(DEFAULT_SETTINGS.appMenu || {}),
+            ...(current.appMenu || {}),
+            ...(settings.appMenu || {})
+        },
+        explorer: {
+            ...(DEFAULT_SETTINGS.explorer || {}),
+            ...(current.explorer || {}),
+            ...(settings.explorer || {})
+        },
+        openPolicy: mergeOpenPolicy(DEFAULT_SETTINGS.openPolicy, current.openPolicy, settings.openPolicy)
     };
     // WHY: Settings UI uses short Client-IDs (L-196). Persist short form; do not expand to full LAN id.
     if (merged.core) {
@@ -1927,6 +1960,7 @@ export const saveSettings = async (settings: AppSettings) => {
             }
         }
     }
+    rememberOpenPolicyFromSettings(merged);
     await idbPutSettings(merged);
     lastSettingsSaveReport = { nativeSynced: null };
     try {
@@ -2114,7 +2148,7 @@ const uploadOPFSToWebDav = async (
         if (opts.pruneRemote && entries?.length >= 0) {
             const remoteItems = await webDavClient
                 .getDirectoryContents(path || '/')
-                .catch((e) => { console.warn(e); return []; }) as FileStat[];
+                .catch((e) => { console.warn(e); return []; }) as unknown as any[];
 
             // Локальные имена (в текущем каталоге)
             const localSet = new Set(

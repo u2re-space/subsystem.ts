@@ -399,7 +399,7 @@ export const registerCwspSettingsContribution = (): (() => void) =>
                 "[data-crx-control-status]"
             ) as HTMLElement | null;
             if (crxStatus) {
-                void import("com/config/settings/crx-control-session")
+                void import("../crx-control-session")
                     .then((m) => m.formatCrxControlSessionStatus())
                     .then((text) => {
                         if (crxStatus.isConnected) crxStatus.textContent = text;

@@ -317,12 +317,10 @@ export abstract class ShellBase implements Shell {
             }
             if (!isEnabledView(vid)) return;
 
-            const target = String(d.target ?? "window").toLowerCase();
-            const windowLike = ["window", "tabbed", "environment", "frame"];
-            if (windowLike.includes(target)) return;
-
             const windowShellIds: ShellId[] = ["window", "tabbed", "environment"];
             if (windowShellIds.includes(this.id)) return;
+            /* WHY: explorer/document Capacitor use minimal shell. `target: "window"`
+             * used to return here, so dbl-tap never navigated to viewer. */
 
             let params: Record<string, string> | undefined;
             if (d.params && typeof d.params === "object" && !Array.isArray(d.params)) {

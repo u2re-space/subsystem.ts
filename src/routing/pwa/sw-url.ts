@@ -6,6 +6,11 @@
  *
  * Reverse proxies must serve real JS for `sw.js` (not SPA index.html); otherwise the probe fails and
  * registration is skipped (no MIME SecurityError spam).
+ *
+ * INVARIANT: never register another SKU’s `sw.js` on this origin. Fastify sends
+ * `Service-Worker-Allowed: /`, so `/apps/cw/sw.js` can take over `https://u2re.space/`.
+ * FIND:sw-url
+ * TAG:sw-url,sw-warmup
  */
 
 type ProbeResult = {
@@ -95,6 +100,61 @@ const probeScriptUrl = async (url: string): Promise<ProbeResult> => {
     }
 };
 
+/** Legacy markdown path-mount (not `md.u2re.space`). */
+const isCwMarkdownMount = (): boolean => {
+    try {
+        const p = String(globalThis?.location?.pathname || "");
+        return p === "/apps/cw" || p.startsWith("/apps/cw/");
+    } catch {
+        return false;
+    }
+};
+
+const scriptPathname = (scriptURL: string): string => {
+    try {
+        const origin =
+            typeof globalThis !== "undefined" && (globalThis as { location?: { origin?: string } }).location?.origin
+                ? String((globalThis as { location: { origin: string } }).location.origin)
+                : "https://invalid.invalid";
+        return new URL(scriptURL, `${origin}/`).pathname;
+    } catch {
+        return "";
+    }
+};
+
+/** `/apps/cw/sw.js` on `u2re.space/` is a leftover from the old path SKU. */
+const isForeignSkuWorkerScript = (scriptURL: string): boolean => {
+    const path = scriptPathname(scriptURL);
+    const isCwScript = path === "/apps/cw/sw.js" || path.startsWith("/apps/cw/");
+    return isCwScript && !isCwMarkdownMount();
+};
+
+/**
+ * Drop workers whose script 404s or belongs to another SKU.
+ * WHY: `getRegistration()` returns a zombie `/apps/cw/sw.js` after markdown moved hosts.
+ */
+export const dropStaleServiceWorkerRegistrations = async (): Promise<void> => {
+    if (typeof navigator === "undefined" || !("serviceWorker" in navigator)) return;
+    let regs: readonly ServiceWorkerRegistration[] = [];
+    try {
+        regs = await navigator.serviceWorker.getRegistrations();
+    } catch {
+        return;
+    }
+    for (const reg of regs) {
+        const src = reg.active?.scriptURL || reg.waiting?.scriptURL || reg.installing?.scriptURL || "";
+        if (!src || isForeignSkuWorkerScript(src)) {
+            if (src) console.warn("[SW] Unregistering foreign SKU worker:", src);
+            await reg.unregister().catch(() => {});
+            continue;
+        }
+        const probe = await probeScriptUrl(src);
+        if (probe.ok) continue;
+        console.warn("[SW] Unregistering worker with dead script:", src, probe.status);
+        await reg.unregister().catch(() => {});
+    }
+};
+
 /** Vite base (e.g. `/` or `/apps/cw/`) — normalized with trailing slash. */
 const viteBasePrefix = (): string => {
     const raw = String((import.meta as any)?.env?.BASE_URL ?? "/");
@@ -168,15 +228,10 @@ export const getServiceWorkerCandidates = (): string[] => {
 
     const devFallbacks = ["/dev-sw.js?dev-sw", "/sw.js"];
 
-    // Prod: prefer BASE_URL first, then paths that match where the shell is served.
-    let prod = ["/sw.js", "/apps/cw/sw.js"];
-    try {
-        const p = String(globalThis?.location?.pathname || "");
-        if (p === "/apps/cw" || p.startsWith("/apps/cw/")) {
-            prod = ["/apps/cw/sw.js", "/sw.js"];
-        }
-    } catch {
-        /* ignore */
+    // Prod: only this SKU’s script. `/apps/cw/sw.js` is not a fallback on `/`.
+    let prod = ["/sw.js"];
+    if (isCwMarkdownMount()) {
+        prod = ["/apps/cw/sw.js", "/sw.js"];
     }
 
     const merged = isDev
@@ -195,6 +250,8 @@ export const ensureServiceWorkerRegistered = async (): Promise<ServiceWorkerRegi
     if (protocol !== "https:" && protocol !== "http:") {
         return null;
     }
+
+    await dropStaleServiceWorkerRegistrations();
 
     // Prefer existing registration for *this* document (subpath deployments: not scope `/`).
     const tryGet = async (clientUrl: string | undefined): Promise<ServiceWorkerRegistration | undefined> => {

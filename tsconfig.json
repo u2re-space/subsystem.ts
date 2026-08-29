@@ -29,6 +29,7 @@
     "compilerOptions": {
         "rootDir": "../",
         "skipLibCheck": true,
+        "baseUrl": ".",
         "paths": {
             "frontend/shared/*": [
                 "./src/frontend/shared/*"
@@ -69,6 +70,12 @@
             "@fest-lib/fl-ui": [
                 "./fest/fl-ui/index.ts"
             ],
+            "fl-ui": [
+                "../fl.ui/src/ui"
+            ],
+            "fl-ui/*": [
+                "../fl.ui/src/ui/*"
+            ],
             "@fest-lib/lure": [
                 "./fest/lure/index.ts"
             ],
@@ -99,6 +106,12 @@
             "@fest-lib/veela/*": [
                 "./fest/veela/*"
             ],
+            "com/config/Settings": [
+                "./src/other/config/Settings.ts"
+            ],
+            "com/config/SettingsTypes": [
+                "./src/other/config/SettingsTypes.ts"
+            ],
             "com/*": [
                 "./src/*"
             ],
@@ -110,6 +123,15 @@
             ],
             "@shared/*": [
                 "./*"
+            ],
+            "cwsp-shared/*": [
+                "../cwsp-shared/src/*"
+            ],
+            "@fest-lib/cwsp-shared": [
+                "../cwsp-shared/src/index.ts"
+            ],
+            "@fest-lib/cwsp-shared/*": [
+                "../cwsp-shared/src/*"
             ],
             "veela-lib": [
                 "./fest/veela/scss/index.scss"

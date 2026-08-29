@@ -6,7 +6,7 @@
  * Reason for changes: Named SKU hosts (md.u2re.space) must not treat /viewer as a History base — that + Fastify alias-strip is a bootloop.
  */
 
-import { inferCwspSkuFromLocation, SKU_HUB_PATHS } from "com/config/ecosystem-skus";
+import { inferCwspSkuFromLocation, isCwspNativeHost, SKU_HUB_PATHS } from "com/config/ecosystem-skus";
 
 const KNOWN_PATH_MOUNTS = [
     "cwsp",
@@ -57,10 +57,12 @@ export function isKnownPathMountSegment(segment: string): boolean {
 export function pathForSkuHostView(viewPath: string): string {
     let path = String(viewPath || "/").trim() || "/";
     if (!path.startsWith("/")) path = `/${path}`;
-    if (!isDedicatedSkuHost()) return path;
+    const sku = inferCwspSkuFromLocation();
+    /* WHY: Capacitor SKU APKs live at `/`. Hard-nav to `/viewer` 404s the WebView. */
+    const nativeSku = isCwspNativeHost() && !!sku && sku !== "launcher" && sku !== "crx";
+    if (!isDedicatedSkuHost() && !nativeSku) return path;
     const seg = path.replace(/^\/+/, "").split("/")[0]?.toLowerCase() || "";
     if (!seg || !isKnownPathMountSegment(seg)) return path;
-    const sku = inferCwspSkuFromLocation();
     if (sku && sku !== "launcher" && sku !== "crx") {
         const own = SKU_HUB_PATHS[sku];
         return own?.includes(seg) ? "/" : path;

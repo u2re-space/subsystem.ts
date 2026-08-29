@@ -8,10 +8,10 @@
 import { initPWAClipboard } from "./pwa-copy";
 import { showToast } from "../../boot/toast";
 import { pathForSkuHostView } from "../../boot/history-base";
-import { ensureServiceWorkerRegistered } from "./sw-url";
+import { dropStaleServiceWorkerRegistrations, ensureServiceWorkerRegistered } from "./sw-url";
 import { classifyIngressFile, classifyIngressFromBasename, dispatchViewTransfer, type ViewTransferHint } from "../channel/ViewTransferRouting";
-import { applyLauncherIngress, skuIngressHint } from "../channel/sku-ingress";
-import { inferCwspSkuFromLocation } from "../../other/config/ecosystem-skus";
+import { applyLauncherIngress, installShellImageOpenListener, refineLauncherImageIngress, skuIngressHint } from "../channel/sku-ingress";
+import { inferCwspSkuFromLocation, stashSkuHandoff } from "../../other/config/ecosystem-skus";
 import { bindDirectoryForLaunchedFiles } from "@fest-lib/lure";
 import {
     buildShareDataFromCachedPayload,
@@ -172,8 +172,17 @@ const activateWaitingWorker = (registration: ServiceWorkerRegistration, reason: 
 
 /** Re-fetch `sw.js` from network; helps when CDN/proxy cache or long-lived tabs hide updates. */
 const probeServiceWorkerUpdate = async (registration: ServiceWorkerRegistration | null): Promise<void> => {
-    if (!registration?.update) return;
-    await registration.update().catch((e) => console.warn('[PWA] registration.update failed:', e));
+    await dropStaleServiceWorkerRegistrations();
+    let live = registration;
+    try {
+        live = (await navigator.serviceWorker.getRegistration()) ?? registration;
+    } catch {
+        /* keep caller’s registration */
+    }
+    if (!live?.update) return;
+    const src = live.active?.scriptURL || live.waiting?.scriptURL || live.installing?.scriptURL || "";
+    if (!src) return;
+    await live.update().catch((e) => console.warn('[PWA] registration.update failed:', e));
 };
 
 const bindServiceWorkerLifecycleUpdateChecks = (registration: ServiceWorkerRegistration): void => {
@@ -478,7 +487,8 @@ const mergeUrlParamsShareWithCache = async (fromUrl: ShareDataInput): Promise<Sh
     }
     try {
         const cache = await caches.open("share-target-data");
-        const response = await cache.match("/share-target-data");
+        const shareKey = new URL("/share-target-data", globalThis.location.origin).href;
+        const response = await cache.match(shareKey);
         if (!response) {
             return { ...fromUrl, source: "share-target" };
         }
@@ -563,12 +573,17 @@ const routeToTransferView = async (
     try {
         const settings = await loadSettings().catch(() => null);
         autoProcessShared = (settings?.ai?.autoProcessShared ?? true) !== false;
+        const { rememberOpenPolicyFromSettings } = await import("../../other/config/open-policy");
+        rememberOpenPolicyFromSettings(settings);
     } catch {
         autoProcessShared = true;
     }
 
     const sku = inferCwspSkuFromLocation();
-    const skuHint = skuIngressHint(preparedData, { sku, autoProcessShared });
+    const skuHint = await refineLauncherImageIngress(
+        skuIngressHint(preparedData, { sku, autoProcessShared }),
+        files
+    );
     const forceAttachToWorkCenter =
         !skuHint && (await shouldForceWorkCenterAttachment(preparedData));
     const textLike =
@@ -628,7 +643,7 @@ const routeToTransferView = async (
             console.warn("[ViewTransfer] Process SKU auto-AI failed:", error);
         }
     }
-    if (sku === "launcher" || resolved.destination === "home") {
+    if (resolved.destination === "home") {
         const capacitorNative = (() => {
             try {
                 const c = (globalThis as { Capacitor?: { isNativePlatform?: () => boolean } }).Capacitor;
@@ -732,6 +747,19 @@ const routeToTransferView = async (
     if (currentPath !== destNorm) {
         const liveOk = await tryNavigateLiveShell();
         if (!liveOk) {
+            const native = (() => {
+                try {
+                    const c = (globalThis as { Capacitor?: { isNativePlatform?: () => boolean } }).Capacitor;
+                    return typeof c?.isNativePlatform === "function" && Boolean(c.isNativePlatform());
+                } catch {
+                    return false;
+                }
+            })();
+            /* INVARIANT: Capacitor SKUs have no `/viewer` path — hard-nav blanks the WebView. */
+            if (native) {
+                console.warn("[ViewTransfer] Skipping hard navigation on Capacitor:", destNorm);
+                return delivered;
+            }
             const nextUrl = new URL(globalThis?.location?.href);
             nextUrl.pathname = destPath;
             nextUrl.search = "";
@@ -776,7 +804,33 @@ export const ingestSharePayload = async (
     } catch {
         /* cache optional */
     }
-    return routeToTransferView(shareData, source, extractTransferHint(shareData), false);
+    const file = files[0];
+    try {
+        const looksText =
+            !!file &&
+            (/^text\/|json|markdown|xml|javascript|typescript/i.test(String(file.type || "")) ||
+                /\.(?:md|markdown|txt|json|html?|css|js|ts|tsx|yml|yaml|csv|log|xml)$/i.test(file.name));
+        const content = looksText && file ? await file.text() : String(shareData.text || "");
+        if (content.trim() || file?.name) {
+            stashSkuHandoff({
+                dest: "viewer",
+                content,
+                filename: String(file?.name || shareData.title || ""),
+                src: String(shareData.url || shareData.sharedUrl || "")
+            });
+        }
+    } catch {
+        /* sessionStorage optional */
+    }
+    const native = (() => {
+        try {
+            const c = (globalThis as { Capacitor?: { isNativePlatform?: () => boolean } }).Capacitor;
+            return typeof c?.isNativePlatform === "function" && Boolean(c.isNativePlatform());
+        } catch {
+            return false;
+        }
+    })();
+    return routeToTransferView(shareData, source, extractTransferHint(shareData), native);
 };
 
 /**
@@ -1608,7 +1662,8 @@ export const checkPendingShareData = async () => {
         // Store in cache for the normal share target flow to pick up
         if ('caches' in window) {
             const cache = await globalThis?.caches?.open?.('share-target-data');
-            await cache?.put?.('/share-target-data', new Response(JSON.stringify({
+            const shareKey = new URL("/share-target-data", globalThis.location.origin).href;
+            await cache?.put?.(shareKey, new Response(JSON.stringify({
                 ...shareData,
                 files: [],
                 timestamp: shareData.timestamp || Date.now()
@@ -1635,6 +1690,11 @@ export const initIngressPWA = async (): Promise<void> => {
 
     _ingressPwaPromise = (async () => {
         if (typeof globalThis === "undefined" || !(globalThis as { window?: unknown }).window) return;
+        try {
+            installShellImageOpenListener();
+        } catch {
+            /* home drop/paste hook optional */
+        }
         if (!shouldRunPwaIngress()) return;
         try {
             /**

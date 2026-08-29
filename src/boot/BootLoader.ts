@@ -356,6 +356,14 @@ export class BootLoader {
             
             // Mark as ready
             this.setPhase("ready");
+            try {
+                if (typeof document !== "undefined") {
+                    document.documentElement.dataset.cwspBoot = "ready";
+                }
+                globalThis.dispatchEvent?.(new CustomEvent("cwsp:boot-ready"));
+            } catch {
+                /* non-DOM */
+            }
             
             // Save preferences
             if (config.rememberChoice) {

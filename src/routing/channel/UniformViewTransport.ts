@@ -22,6 +22,17 @@ export interface ViewAttachmentEnvelope {
     data: File;
 }
 
+const asDataAssetInput = (raw: ViewAttachmentInput): File | Blob | string | null => {
+    if (typeof raw === "string") return raw;
+    if (typeof Blob !== "undefined" && raw instanceof Blob) return raw;
+    if (raw && typeof raw === "object" && "data" in raw) {
+        const data = raw.data;
+        if (typeof data === "string") return data;
+        if (data && typeof Blob !== "undefined" && data instanceof Blob) return data;
+    }
+    return null;
+};
+
 const asNamePrefix = (source: string): string => {
     const normalized = String(source || "attachment")
         .toLowerCase()
@@ -38,9 +49,7 @@ export const normalizeIpcAttachments = async (
     const out: ViewAttachmentEnvelope[] = [];
 
     for (const raw of inputs) {
-        const candidate = (raw && typeof raw === "object" && "data" in raw)
-            ? (raw as { data?: File | Blob | string; source?: string }).data
-            : raw;
+        const candidate = asDataAssetInput(raw);
         if (!candidate) continue;
 
         try {
@@ -54,7 +63,7 @@ export const normalizeIpcAttachments = async (
             out.push({
                 hash: String(asset.hash || ""),
                 name: String(asset.name || asset.file?.name || "attachment"),
-                mimeType: String(asset.mimeType || asset.type || asset.file?.type || "application/octet-stream"),
+                mimeType: String(asset.type || asset.file?.type || "application/octet-stream"),
                 size: Number(asset.size || asset.file?.size || 0),
                 source: inferredSource,
                 data: asset.file
