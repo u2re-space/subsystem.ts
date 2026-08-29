@@ -2,12 +2,13 @@
  * Filename: open-files.ts
  * FullPath: modules/projects/subsystem/src/other/config/settings/contributions/open-files.ts
  * FIND:open-policy
- * Change date and time: 21.55.00_28.08.2026
- * Reason for changes: Open & share settings — per SKU / channel / file kind.
+ * Change date and time: 01.15.00_30.08.2026
+ * Reason for changes: Capacitor Explorer settings write nativeOpen — never Web channels.open.
  */
 
-import { registerSettingsContribution } from "../../SettingsContributions";
-import { mergeOpenPolicy, type OpenSurface } from "../../open-policy";
+import { bindContributionFields, registerSettingsContribution } from "../../SettingsContributions";
+import { mergeOpenPolicy, resolveHostOpenPolicy, stampHostOpenPolicy, type OpenSurface } from "../../open-policy";
+import { isCwspNativeHost } from "../../ecosystem-skus";
 import { settingsHint, settingsHeading, settingsPanel, settingsSelectField } from "../settings-contribution-ui";
 
 const SINK_OPTIONS: Array<[string, string]> = [
@@ -21,6 +22,24 @@ const SINK_OPTIONS: Array<[string, string]> = [
     ["wallpaper", "Wallpaper if it fits, otherwise viewer"],
     ["external", "New tab / browser"],
     ["system", "Android / system chooser"]
+];
+
+const PLACEMENT_OPTIONS: Array<[string, string]> = [
+    ["inline", "Inline window (same tab)"],
+    ["native-window", "Separate window"],
+    ["new-tab", "New tab (file as-is)"]
+];
+
+const ANDROID_EXPLORER_OPEN_OPTIONS: Array<[string, string]> = [
+    ["document", "CWSP-document"],
+    ["system", "Ask Android (Open with…)"],
+    ["transfer", "CWSP-transfer"],
+    ["workcenter", "CWSP-process"]
+];
+
+const ANDROID_EXPLORER_KIND_OPTIONS: Array<[string, string]> = [
+    ["ask", "Follow Open / click"],
+    ...ANDROID_EXPLORER_OPEN_OPTIONS
 ];
 
 const SHELL_IMAGE_OPTIONS: Array<[string, string]> = [
@@ -48,8 +67,8 @@ const showSurface = (ctx: { sku?: string; surface?: string; hubSection?: string 
     if (sku === "explorer") return surface === "explorer";
     if (sku === "process") return surface === "process";
     if (sku === "transfer") return surface === "transfer";
-    if (sku === "launcher" || host === "environment") return surface === "shell";
-    if (sku === "crx" || host === "crx") return surface === "crx";
+    if (sku === "launcher" || host === "environment") return surface === "shell" || surface === "explorer";
+    if (sku === "crx" || host === "crx") return surface === "crx" || surface === "explorer";
     return true;
 };
 
@@ -85,22 +104,67 @@ export const registerOpenFilesSettingsContribution = (): (() => void) =>
                 );
             }
             if (showSurface(ctx, "explorer")) {
+                /* WHY: launcher Settings used to force surface=environment and show Web fields on the APK. */
+                const android =
+                    ctx.surface === "capacitor" || ctx.surface === "native" || isCwspNativeHost();
                 blocks.push(
                     ...section(
                         "Explorer",
-                        "Open / click is the default. A file-type row overrides it only when that row is not “Follow default”. Capacitor Explorer has no in-app viewer — Display / Markdown here still open CWSP-document.",
-                        [
-                        settingsSelectField("Open / click", "openPolicy.explorer.channels.open", SINK_OPTIONS),
-                        settingsSelectField("Double-click", "openPolicy.explorer.channels.dblclick", SINK_OPTIONS),
-                        settingsSelectField("Share target", "openPolicy.explorer.channels.share-target", SINK_OPTIONS),
-                        settingsSelectField("Launch queue", "openPolicy.explorer.channels.launch-queue", SINK_OPTIONS),
-                        settingsSelectField("Capacitor open-with", "openPolicy.explorer.channels.capacitor", SINK_OPTIONS),
-                        settingsSelectField("Markdown", "openPolicy.explorer.kinds.markdown", SINK_OPTIONS),
-                        settingsSelectField("Text", "openPolicy.explorer.kinds.text", SINK_OPTIONS),
-                        settingsSelectField("Documents", "openPolicy.explorer.kinds.document", SINK_OPTIONS),
-                        settingsSelectField("Images", "openPolicy.explorer.kinds.image", SINK_OPTIONS),
-                        settingsSelectField("Other files", "openPolicy.explorer.kinds.other", SINK_OPTIONS)
-                    ])
+                        android
+                            ? "These rows are Android-only. They do not change the site / PWA / CRX. Open / click is CWSP-document or Ask Android; a file-type row overrides it only when it is not “Follow Open / click”."
+                            : "These rows are site / PWA / CRX only. They do not change the Android Explorer APK. Markdown and images open in an inline window unless you pick a separate window or a new tab.",
+                        android
+                            ? [
+                                  settingsSelectField(
+                                      "Open / click",
+                                      "openPolicy.explorer.nativeOpen",
+                                      ANDROID_EXPLORER_OPEN_OPTIONS
+                                  ),
+                                  settingsSelectField(
+                                      "Markdown",
+                                      "openPolicy.explorer.nativeKinds.markdown",
+                                      ANDROID_EXPLORER_KIND_OPTIONS
+                                  ),
+                                  settingsSelectField(
+                                      "Text",
+                                      "openPolicy.explorer.nativeKinds.text",
+                                      ANDROID_EXPLORER_KIND_OPTIONS
+                                  ),
+                                  settingsSelectField(
+                                      "Documents",
+                                      "openPolicy.explorer.nativeKinds.document",
+                                      ANDROID_EXPLORER_KIND_OPTIONS
+                                  ),
+                                  settingsSelectField(
+                                      "Images",
+                                      "openPolicy.explorer.nativeKinds.image",
+                                      ANDROID_EXPLORER_KIND_OPTIONS
+                                  ),
+                                  settingsSelectField(
+                                      "Other files",
+                                      "openPolicy.explorer.nativeKinds.other",
+                                      ANDROID_EXPLORER_KIND_OPTIONS
+                                  )
+                              ]
+                            : [
+                                  settingsSelectField(
+                                      "Open markdown / images in",
+                                      "openPolicy.explorer.placement",
+                                      PLACEMENT_OPTIONS
+                                  ),
+                                  settingsSelectField("Open / click", "openPolicy.explorer.channels.open", SINK_OPTIONS),
+                                  settingsSelectField(
+                                      "Double-click",
+                                      "openPolicy.explorer.channels.dblclick",
+                                      SINK_OPTIONS
+                                  ),
+                                  settingsSelectField("Markdown", "openPolicy.explorer.kinds.markdown", SINK_OPTIONS),
+                                  settingsSelectField("Text", "openPolicy.explorer.kinds.text", SINK_OPTIONS),
+                                  settingsSelectField("Documents", "openPolicy.explorer.kinds.document", SINK_OPTIONS),
+                                  settingsSelectField("Images", "openPolicy.explorer.kinds.image", SINK_OPTIONS),
+                                  settingsSelectField("Other files", "openPolicy.explorer.kinds.other", SINK_OPTIONS)
+                              ]
+                    )
                 );
             }
             if (showSurface(ctx, "shell")) {
@@ -161,12 +225,11 @@ export const registerOpenFilesSettingsContribution = (): (() => void) =>
             return settingsPanel("open-files", "Open & share", blocks);
         },
         load: (settings, panel) => {
-            const merged = { ...settings, openPolicy: mergeOpenPolicy(settings.openPolicy) };
-            settings.openPolicy = merged.openPolicy;
-            /* bindContributionFields runs after load when manualFields is unset */
-            void panel;
+            settings.openPolicy = resolveHostOpenPolicy(settings);
+            bindContributionFields(panel, settings);
         },
         save: (settings) => {
             settings.openPolicy = mergeOpenPolicy(settings.openPolicy);
+            stampHostOpenPolicy(settings);
         }
     });

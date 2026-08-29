@@ -11,7 +11,8 @@ import { JSOX } from "jsox";
 //
 import type { AppSettings } from "./SettingsTypes";
 import { DEFAULT_SETTINGS, normalizeEcosystemToken } from "./SettingsTypes";
-import { mergeOpenPolicy, rememberOpenPolicyFromSettings } from "./open-policy";
+import { mergeOpenPolicy, mergeOpenPolicyByHost, rememberOpenPolicyFromSettings, resolveHostOpenPolicy } from "./open-policy";
+import { detectSettingsHost } from "./settings-host";
 import { writeFileSmart } from "@fest-lib/lure";
 import { migrateLegacyCwspPublicPort } from "cwsp-shared/cwsp-endpoint-resolve";
 import {
@@ -1227,7 +1228,11 @@ const mergeAppSettingsShape = (base: AppSettings, patch: Partial<AppSettings> | 
             ...(base.shell || {}),
             ...(patch.shell || {})
         },
-        openPolicy: mergeOpenPolicy(base.openPolicy, patch.openPolicy)
+        openPolicyByHost: mergeOpenPolicyByHost(base.openPolicyByHost, patch.openPolicyByHost),
+        openPolicy: resolveHostOpenPolicy({
+            openPolicy: mergeOpenPolicy(base.openPolicy, patch.openPolicy),
+            openPolicyByHost: mergeOpenPolicyByHost(base.openPolicyByHost, patch.openPolicyByHost)
+        })
     };
 };
 
@@ -1712,7 +1717,11 @@ export const loadSettings = async (opts?: LoadSettingsOptions): Promise<AppSetti
                 },
                 appMenu: { ...DEFAULT_SETTINGS.appMenu, ...(stored as any)?.appMenu },
                 explorer: { ...DEFAULT_SETTINGS.explorer, ...(stored as any)?.explorer },
-                openPolicy: mergeOpenPolicy(DEFAULT_SETTINGS.openPolicy, (stored as any)?.openPolicy)
+                openPolicyByHost: mergeOpenPolicyByHost((stored as any)?.openPolicyByHost),
+                openPolicy: resolveHostOpenPolicy({
+                    openPolicy: (stored as any)?.openPolicy,
+                    openPolicyByHost: (stored as any)?.openPolicyByHost
+                })
             };
 
             // CWSAndroid bridge may expose canonical native settings projection.
@@ -1939,7 +1948,21 @@ export const saveSettings = async (settings: AppSettings) => {
             ...(current.explorer || {}),
             ...(settings.explorer || {})
         },
-        openPolicy: mergeOpenPolicy(DEFAULT_SETTINGS.openPolicy, current.openPolicy, settings.openPolicy)
+        openPolicyByHost: (() => {
+            const host = detectSettingsHost();
+            const next = mergeOpenPolicy(DEFAULT_SETTINGS.openPolicy, current.openPolicy, settings.openPolicy);
+            return mergeOpenPolicyByHost(current.openPolicyByHost, settings.openPolicyByHost, { [host]: next });
+        })(),
+        openPolicy: resolveHostOpenPolicy({
+            openPolicy: mergeOpenPolicy(DEFAULT_SETTINGS.openPolicy, current.openPolicy, settings.openPolicy),
+            openPolicyByHost: mergeOpenPolicyByHost(current.openPolicyByHost, settings.openPolicyByHost, {
+                [detectSettingsHost()]: mergeOpenPolicy(
+                    DEFAULT_SETTINGS.openPolicy,
+                    current.openPolicy,
+                    settings.openPolicy
+                )
+            })
+        })
     };
     // WHY: Settings UI uses short Client-IDs (L-196). Persist short form; do not expand to full LAN id.
     if (merged.core) {

@@ -3,14 +3,18 @@
  * FullPath: modules/projects/subsystem/src/other/config/open-policy.ts
  * FIND:open-policy
  * TAG:open-policy,share-target,sku
- * Change date and time: 00.40.00_30.08.2026
- * Reason for changes: Explorer kinds default to ask so Open/click settings apply; channel beats kind on explorer.
+ * Change date and time: 01.15.00_30.08.2026
+ * Reason for changes: Split Explorer Web channels from Capacitor nativeOpen so hosts cannot overwrite each other.
  */
 
 /**
  * What to do with a file or payload, per surface / channel / kind.
- * INVARIANT: `ask` keeps the current SKU / content-type router. Kind beats channel.
+ * INVARIANT: `ask` keeps the current SKU / content-type router.
+ * Explorer: Web uses `channels`/`kinds`/`placement`. Capacitor uses `nativeOpen`/`nativeKinds` only.
+ * Host slices live in `openPolicyByHost` (`settings-host.ts`).
  */
+
+import { detectSettingsHost, SETTINGS_HOSTS, type SettingsHost } from "./settings-host";
 
 export const OPEN_KINDS = ["markdown", "text", "document", "image", "url", "other"] as const;
 export type OpenKind = (typeof OPEN_KINDS)[number];
@@ -35,13 +39,24 @@ export type OpenChannel = (typeof OPEN_CHANNELS)[number];
 export const OPEN_SURFACES = ["viewer", "explorer", "shell", "crx", "process", "transfer"] as const;
 export type OpenSurface = (typeof OPEN_SURFACES)[number];
 
+/** How Explorer presents markdown/images in the browser (not Capacitor). */
+export const OPEN_PLACEMENTS = ["inline", "native-window", "new-tab"] as const;
+export type OpenPlacement = (typeof OPEN_PLACEMENTS)[number];
+
 export type OpenPolicyKinds = Partial<Record<OpenKind, OpenSink>>;
 export type OpenPolicyChannels = Partial<Record<OpenChannel, OpenSink>>;
 export type OpenPolicySurface = {
     channels?: OpenPolicyChannels;
     kinds?: OpenPolicyKinds;
+    /** Web/PWA/CRX window chrome. Capacitor ignores this. */
+    placement?: OpenPlacement;
+    /** Capacitor Explorer Open/click. Never written by Web settings. */
+    nativeOpen?: OpenSink;
+    /** Capacitor per-type override. `ask` = follow `nativeOpen`. */
+    nativeKinds?: OpenPolicyKinds;
 };
 export type OpenPolicy = Partial<Record<OpenSurface, OpenPolicySurface>>;
+export type OpenPolicyByHost = Partial<Record<SettingsHost, OpenPolicy>>;
 
 const KIND_SET = new Set<string>(OPEN_KINDS);
 const SINK_SET = new Set<string>(OPEN_SINKS);
@@ -73,13 +88,23 @@ export const DEFAULT_OPEN_POLICY: OpenPolicy = {
     },
     explorer: {
         channels: {
-            open: "document",
-            dblclick: "document",
-            "share-target": "document",
-            "launch-queue": "document",
+            open: "viewer",
+            dblclick: "viewer",
+            "share-target": "viewer",
+            "launch-queue": "viewer",
             capacitor: "document"
         },
+        placement: "inline",
         kinds: {
+            markdown: "ask",
+            text: "ask",
+            document: "ask",
+            image: "ask",
+            url: "ask",
+            other: "ask"
+        },
+        nativeOpen: "document",
+        nativeKinds: {
             markdown: "ask",
             text: "ask",
             document: "ask",
@@ -170,6 +195,22 @@ export const normalizeOpenSink = (raw: unknown, fallback: OpenSink = "ask"): Ope
     return SINK_SET.has(v) ? (v as OpenSink) : fallback;
 };
 
+export const normalizeOpenPlacement = (
+    raw: unknown,
+    fallback: OpenPlacement = "inline"
+): OpenPlacement => {
+    const v = String(raw || "")
+        .trim()
+        .toLowerCase();
+    if (!v) return fallback;
+    if (v === "in-shell" || v === "env" || v === "shell" || v === "iframe") return "inline";
+    if (v === "native" || v === "popup" || v === "app-window" || v === "detached" || v === "separate") {
+        return "native-window";
+    }
+    if (v === "tab" || v === "browser" || v === "as-is" || v === "browser-tab") return "new-tab";
+    return (OPEN_PLACEMENTS as readonly string[]).includes(v) ? (v as OpenPlacement) : fallback;
+};
+
 export const normalizeOpenKind = (raw: unknown): OpenKind | "" => {
     const v = String(raw || "")
         .trim()
@@ -224,13 +265,34 @@ export const mergeOpenPolicy = (...parts: Array<OpenPolicy | null | undefined>):
         const base = DEFAULT_OPEN_POLICY[surface] || {};
         let channels: OpenPolicyChannels = { ...(base.channels || {}) };
         let kinds: OpenPolicyKinds = { ...(base.kinds || {}) };
+        let placement = normalizeOpenPlacement(base.placement, "inline");
+        let nativeOpen = normalizeOpenSink(base.nativeOpen, surface === "explorer" ? "document" : "ask");
+        let nativeKinds: OpenPolicyKinds = { ...(base.nativeKinds || {}) };
+        let nativeOpenSaved = false;
         for (const part of parts) {
             const src = part?.[surface];
             if (!src) continue;
             channels = { ...channels, ...normalizeChannels(src.channels) };
             kinds = { ...kinds, ...normalizeKinds(src.kinds) };
+            if (src.placement != null && src.placement !== "") {
+                placement = normalizeOpenPlacement(src.placement, placement);
+            }
+            if (src.nativeOpen != null && src.nativeOpen !== "") {
+                nativeOpenSaved = true;
+                nativeOpen = normalizeOpenSink(src.nativeOpen, nativeOpen);
+            }
+            if (src.nativeKinds) nativeKinds = { ...nativeKinds, ...normalizeKinds(src.nativeKinds) };
         }
-        out[surface] = { channels, kinds };
+        if (!nativeOpenSaved && surface === "explorer") {
+            const legacy = channels.open;
+            if (legacy === "system" || legacy === "transfer" || legacy === "workcenter") {
+                nativeOpen = legacy;
+            }
+        }
+        out[surface] =
+            surface === "explorer"
+                ? { channels, kinds, placement, nativeOpen, nativeKinds }
+                : { channels, kinds, placement };
     }
     return out;
 };
@@ -238,8 +300,42 @@ export const mergeOpenPolicy = (...parts: Array<OpenPolicy | null | undefined>):
 export const normalizeOpenPolicy = (raw: unknown): OpenPolicy =>
     mergeOpenPolicy(raw && typeof raw === "object" ? (raw as OpenPolicy) : undefined);
 
-export const rememberOpenPolicyFromSettings = (settings: { openPolicy?: OpenPolicy } | null | undefined): OpenPolicy => {
-    cachedPolicy = normalizeOpenPolicy(settings?.openPolicy);
+export const mergeOpenPolicyByHost = (
+    ...parts: Array<OpenPolicyByHost | null | undefined>
+): OpenPolicyByHost => {
+    const out: OpenPolicyByHost = {};
+    for (const host of SETTINGS_HOSTS) {
+        const slices = parts.map((part) => part?.[host]).filter((p): p is OpenPolicy => Boolean(p));
+        if (slices.length) out[host] = mergeOpenPolicy(...slices);
+    }
+    return out;
+};
+
+/** Host slice wins over a leftover flat `openPolicy` so Capacitor cannot clobber Web. */
+export const resolveHostOpenPolicy = (settings?: {
+    openPolicy?: OpenPolicy;
+    openPolicyByHost?: OpenPolicyByHost;
+} | null): OpenPolicy => {
+    const host = detectSettingsHost();
+    return mergeOpenPolicy(settings?.openPolicy, settings?.openPolicyByHost?.[host]);
+};
+
+export const stampHostOpenPolicy = (settings: {
+    openPolicy?: OpenPolicy;
+    openPolicyByHost?: OpenPolicyByHost;
+}): OpenPolicy => {
+    const host = detectSettingsHost();
+    const next = mergeOpenPolicy(settings.openPolicy);
+    settings.openPolicy = next;
+    settings.openPolicyByHost = { ...(settings.openPolicyByHost || {}), [host]: next };
+    return next;
+};
+
+export const rememberOpenPolicyFromSettings = (settings: {
+    openPolicy?: OpenPolicy;
+    openPolicyByHost?: OpenPolicyByHost;
+} | null | undefined): OpenPolicy => {
+    cachedPolicy = resolveHostOpenPolicy(settings);
     return cachedPolicy;
 };
 
@@ -375,6 +471,46 @@ export const resolveOpenPolicy = (
     return firstNonAsk(kindSink, ...channelSinks) || kindSink || channelSinks[0] || "ask";
 };
 
+/**
+ * Capacitor Explorer has no inline viewer.
+ * `document` → CWSP-document. `system` / `ask` / `external` → Android Open-with.
+ * `viewer` / `display` only map to Document so a leftover web default still opens the APK.
+ */
+export const adaptExplorerSinkForNative = (sink: OpenSink): OpenSink => {
+    if (sink === "viewer" || sink === "display") return "document";
+    if (sink === "ask" || sink === "external") return "system";
+    return sink;
+};
+
+const NATIVE_EXPLORER_SINKS = new Set<OpenSink>(["document", "system", "transfer", "workcenter"]);
+
+/**
+ * INVARIANT: Web reads `channels`/`kinds` only. Capacitor reads `nativeOpen`/`nativeKinds` only.
+ * A leftover `channels.open` of document/system is honored on native until Settings saves `nativeOpen`.
+ */
+export const resolveExplorerOpenSink = (
+    policy: OpenPolicy | null | undefined,
+    kind: OpenKind | "",
+    native: boolean,
+    how: "open" | "dblclick" = "open"
+): OpenSink => {
+    const block = mergeOpenPolicy(policy).explorer || {};
+    if (native) {
+        const kindSink = kind && block.nativeKinds?.[kind] ? block.nativeKinds[kind] : undefined;
+        const legacy = block.channels?.open;
+        const open = normalizeOpenSink(
+            block.nativeOpen ||
+                (legacy && NATIVE_EXPLORER_SINKS.has(legacy) ? legacy : "") ||
+                block.channels?.capacitor,
+            "document"
+        );
+        return adaptExplorerSinkForNative(firstNonAsk(kindSink, open) || open);
+    }
+    const ch = how === "dblclick" ? block.channels?.dblclick : block.channels?.open;
+    const kindSink = kind && block.kinds?.[kind] ? block.kinds[kind] : undefined;
+    return firstNonAsk(ch, kindSink) || kindSink || ch || "viewer";
+};
+
 export type OpenPolicyDestination = "viewer" | "workcenter" | "explorer" | "home" | "network";
 
 export const sinkToDestination = (
@@ -420,6 +556,14 @@ export const sinkToOpenLinkTarget = (
     if (sink === "transfer") return "transfer";
     if (sink === "system" || sink === "external") return "external-app";
     return "";
+};
+
+export const resolveOpenPlacement = (
+    policy: OpenPolicy | null | undefined,
+    surface: OpenSurface | "" = "explorer"
+): OpenPlacement => {
+    const surf = normalizeOpenSurface(surface) || "explorer";
+    return normalizeOpenPlacement(mergeOpenPolicy(policy)[surf]?.placement, "inline");
 };
 
 export const viewIdForOpenSink = (sink: OpenSink): string => {

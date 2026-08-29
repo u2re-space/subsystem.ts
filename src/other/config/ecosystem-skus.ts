@@ -312,11 +312,15 @@ export type CwspSkuHandoff = {
 };
 
 export const stashSkuHandoff = (payload: Omit<CwspSkuHandoff, "ts">): void => {
+    const json = JSON.stringify({ ...payload, ts: Date.now() });
     try {
-        globalThis.sessionStorage?.setItem?.(
-            CWSP_SKU_HANDOFF_KEY,
-            JSON.stringify({ ...payload, ts: Date.now() })
-        );
+        globalThis.sessionStorage?.setItem?.(CWSP_SKU_HANDOFF_KEY, json);
+    } catch {
+        /* quota / non-DOM */
+    }
+    /* WHY: sessionStorage is per-tab — a detached viewer window must read localStorage. */
+    try {
+        globalThis.localStorage?.setItem?.(CWSP_SKU_HANDOFF_KEY, json);
     } catch {
         /* quota / non-DOM */
     }
@@ -324,7 +328,9 @@ export const stashSkuHandoff = (payload: Omit<CwspSkuHandoff, "ts">): void => {
 
 export const takeSkuHandoff = (...accept: string[]): CwspSkuHandoff | null => {
     try {
-        const raw = globalThis.sessionStorage?.getItem?.(CWSP_SKU_HANDOFF_KEY);
+        const raw =
+            globalThis.sessionStorage?.getItem?.(CWSP_SKU_HANDOFF_KEY) ||
+            globalThis.localStorage?.getItem?.(CWSP_SKU_HANDOFF_KEY);
         if (!raw) return null;
         const parsed = JSON.parse(raw) as CwspSkuHandoff;
         const dest = normalizeNavViewId(String(parsed.dest || ""));
@@ -333,6 +339,7 @@ export const takeSkuHandoff = (...accept: string[]): CwspSkuHandoff | null => {
             if (!ok) return null;
         }
         globalThis.sessionStorage?.removeItem?.(CWSP_SKU_HANDOFF_KEY);
+        globalThis.localStorage?.removeItem?.(CWSP_SKU_HANDOFF_KEY);
         return parsed;
     } catch {
         return null;

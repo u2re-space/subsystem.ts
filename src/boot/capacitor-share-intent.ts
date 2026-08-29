@@ -1,8 +1,10 @@
 /**
  * Capacitor share / process-text bridge (Android → WebView).
+ * FIND:open-policy
  *
  * Fans out to the clipboard bus and runs the SKU share pipeline
  * (process → AI/attach, document → viewer, explorer → path/ask, shell → pin/wallpaper).
+ * Document SKU does not ack pending-share — the viewer pull paints then acks.
  */
 
 import { isCapacitorNative } from "./capacitor-permissions";
@@ -78,6 +80,14 @@ const readDestinationNodes = (settings: Record<string, unknown>): string[] => {
         String(cwsp.shareIntentDestinationIds || cwsp.destinationNodeIds || "*").trim() || "*";
     if (raw === "*" || raw.toLowerCase() === "any") return ["*"];
     return splitMultiValueList(raw);
+};
+
+const isDocumentSku = (): boolean => {
+    try {
+        return String(document.documentElement?.dataset?.cwspSku || "").trim() === "document";
+    } catch {
+        return false;
+    }
 };
 
 const consumeNativePendingShare = async (): Promise<{
@@ -185,6 +195,9 @@ export const installCapacitorShareIntentBridge = (): void => {
 
             enqueueShareIngest(async () => {
                 try {
+                    /* WHY: Document viewer owns pending-share. Ack here deletes the stash
+                     * before the painted view can pull, so the last markdown stays on screen. */
+                    if (pending && isDocumentSku()) return;
                     if (pending) {
                         const native = await consumeNativePendingShare();
                         if (native) {
@@ -235,6 +248,7 @@ export const installCapacitorShareIntentBridge = (): void => {
             window.addEventListener("cwsp:boot-ready", onReady);
             window.setTimeout(done, 4000);
         });
+        if (isDocumentSku()) return;
         const native = await consumeNativePendingShare().catch(() => null);
         if (native) await ingestParsedShare(native);
     });

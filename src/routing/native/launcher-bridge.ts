@@ -73,11 +73,18 @@ export async function launcherOpenUri(
                 title
             }
         });
-        return r.ok === true;
+        return launcherNativeOpened(r);
     } catch {
         return false;
     }
 }
+
+/** WHY: CwsBridgeWeb echoes `{ ok: true }` for every channel and never opens a file. */
+const launcherNativeOpened = (r: { ok?: boolean; echo?: Record<string, unknown> } | null | undefined): boolean => {
+    if (!r || r.ok !== true) return false;
+    const echo = (r.echo || {}) as { opened?: unknown; sent?: unknown };
+    return echo.opened === true || echo.sent === true;
+};
 
 const fileToDataUrl = (file: File): Promise<string> =>
     new Promise((resolve, reject) => {
@@ -111,7 +118,7 @@ export async function launcherOpenFile(
                 title
             }
         });
-        return r.ok === true;
+        return launcherNativeOpened(r);
     } catch {
         return false;
     }

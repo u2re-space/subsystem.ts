@@ -315,13 +315,6 @@ export abstract class ShellBase implements Shell {
                 if (href) globalThis.location.assign(href);
                 return;
             }
-            if (!isEnabledView(vid)) return;
-
-            const windowShellIds: ShellId[] = ["window", "tabbed", "environment"];
-            if (windowShellIds.includes(this.id)) return;
-            /* WHY: explorer/document Capacitor use minimal shell. `target: "window"`
-             * used to return here, so dbl-tap never navigated to viewer. */
-
             let params: Record<string, string> | undefined;
             if (d.params && typeof d.params === "object" && !Array.isArray(d.params)) {
                 const out: Record<string, string> = {};
@@ -331,7 +324,16 @@ export abstract class ShellBase implements Shell {
                 }
                 if (Object.keys(out).length > 0) params = out;
             }
-
+            const windowShellIds: ShellId[] = ["window", "tabbed", "environment"];
+            /* WHY: environment/window used to return here and never open a ui-window.
+             * Explorer `cw:view-open-request` must hit EnvironmentShell.navigate → openInWindow. */
+            if (windowShellIds.includes(this.id)) {
+                void this.navigate(vid as ViewId, params);
+                return;
+            }
+            if (!isEnabledView(vid)) return;
+            /* WHY: explorer/document Capacitor use minimal shell. `target: "window"`
+             * used to return here, so dbl-tap never navigated to viewer. */
             void this.navigate(vid as ViewId, params);
         };
 

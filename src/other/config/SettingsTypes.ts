@@ -1,4 +1,4 @@
-import type { OpenPolicy } from "./open-policy";
+import type { OpenPolicy, OpenPolicyByHost } from "./open-policy";
 import { DEFAULT_OPEN_POLICY } from "./open-policy";
 
 export type FieldType = "text" | "password" | "select" | "color-palette" | "shape-palette" | "number-select" | "textarea";
@@ -509,6 +509,11 @@ export type AppSettings = {
      * @see open-policy.ts
      */
     openPolicy?: OpenPolicy;
+    /**
+     * Per-host Open & share. Capacitor / CRX / PWA / Web do not share one blob.
+     * `openPolicy` is the resolved slice for the current host.
+     */
+    openPolicyByHost?: OpenPolicyByHost;
     /** App Menu icon list (CWSP-shell). */
     appMenu?: {
         sortBy?: "name" | "installed" | "updated" | "color" | "category" | "package";
@@ -698,6 +703,7 @@ export const DEFAULT_SETTINGS: AppSettings = {
         iconScale: "fill"
     },
     openPolicy: DEFAULT_OPEN_POLICY,
+    openPolicyByHost: {},
     appMenu: {
         sortBy: "name",
         sortDir: "asc"
