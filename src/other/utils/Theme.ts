@@ -1,8 +1,10 @@
 /*
  * Filename: Theme.ts
  * FullPath: modules/projects/subsystem/src/other/utils/Theme.ts
- * Change date and time: 23.10.20_23.08.2026
- * Reason for changes: Always write meta theme-color so Neutralino caption can follow the nav.
+ * Change date and time: 12.30.00_30.08.2026
+ * Reason for changes: Do not rehydrate sheets on cold start — that wiped Capacitor chrome.
+ * FIND:theme-resume
+ * TAG:theme-resume,explorer-theme
  */
 import { loadSettings, saveSettings } from "com/config/Settings";
 import type { AppSettings } from "com/config/SettingsTypes";
@@ -235,13 +237,15 @@ export const syncBrowserChromeTheme = (
 
 //
 export const applyTheme = (settings: AppSettings | null | undefined) => {
-    if (typeof document === "undefined" || !settings) {
+    if (typeof document === "undefined") {
         // Service worker/offscreen-like runtimes have no DOM. Keep this a no-op.
         return;
     }
 
     /* Idempotent — ensures QS → IDB bridge is live after BootLoader applyTheme. */
     bindQuickSettingsThemePersistence();
+    installThemeLifecycleResync();
+    if (!settings) return;
 
     const root = document.documentElement;
     const theme = settings.appearance?.theme || "auto";
@@ -318,6 +322,107 @@ export const resyncThemeAfterAdoptedViewSheet = (): void => {
 };
 
 //
+const restampExplorerShellScheme = (): void => {
+    if (typeof document === "undefined") return;
+    try {
+        document.querySelectorAll<HTMLElement>(".view-explorer").forEach((el) => {
+            const scheme = el.dataset.explorerColorScheme;
+            if (scheme !== "light" && scheme !== "dark") return;
+            el.setAttribute("data-theme", scheme);
+            el.style.setProperty("color-scheme", `${scheme} only`);
+        });
+    } catch {
+        /* ignore */
+    }
+};
+
+let themeResumeAt = 0;
+let themeLifecycleBound = false;
+let sawBackground = false;
+
+const restampChromeScheme = (): void => {
+    restampExplorerShellScheme();
+    try {
+        const root = document.documentElement;
+        const pinned = root.getAttribute("data-theme");
+        if (pinned === "light" || pinned === "dark") {
+            root.style.colorScheme = pinned;
+            if (document.body) document.body.style.colorScheme = pinned;
+        }
+        void root.offsetHeight;
+    } catch {
+        /* ignore */
+    }
+};
+
+/**
+ * Restore chrome after Android recents / Home.
+ * INVARIANT: never rewrite constructable sheets on cold start — first onResume/focus wiped UI.
+ */
+export const resumeThemeAfterForeground = (force = false): void => {
+    if (typeof document === "undefined") return;
+    if (!force && document.visibilityState === "hidden") return;
+    const now = Date.now();
+    if (now - themeResumeAt < 240) return;
+    themeResumeAt = now;
+
+    restampChromeScheme();
+
+    /* WHY: first activity onResume is cold start — skip sheet rewrite + full applyTheme storm. */
+    if (!sawBackground) return;
+
+    void (async () => {
+        try {
+            const { rehydrateConstructableSheets } = await import("@fest-lib/dom");
+            rehydrateConstructableSheets();
+        } catch {
+            /* ignore */
+        }
+        try {
+            const { rehydrateAdoptedStyleSheets } = await import("@fest-lib/lure");
+            rehydrateAdoptedStyleSheets();
+        } catch {
+            /* ignore */
+        }
+        resyncThemeAfterAdoptedViewSheet();
+        restampChromeScheme();
+    })();
+};
+
+/** Bind visibility / pageshow / Capacitor appState + expose `__CWSP_THEME_RESUME__` for Java onResume. */
+export const installThemeLifecycleResync = (): void => {
+    if (themeLifecycleBound || typeof document === "undefined") return;
+    themeLifecycleBound = true;
+
+    (globalThis as { __CWSP_THEME_RESUME__?: (force?: boolean) => void }).__CWSP_THEME_RESUME__ =
+        resumeThemeAfterForeground;
+
+    document.addEventListener("visibilitychange", () => {
+        if (document.visibilityState === "hidden") {
+            sawBackground = true;
+            return;
+        }
+        resumeThemeAfterForeground();
+    });
+    document.addEventListener("resume", () => resumeThemeAfterForeground());
+    globalThis.addEventListener?.("pageshow", () => resumeThemeAfterForeground());
+
+    try {
+        const Cap = (globalThis as {
+            Capacitor?: { Plugins?: { App?: { addListener?: (n: string, fn: (s: { isActive?: boolean }) => void) => void } } };
+        }).Capacitor;
+        Cap?.Plugins?.App?.addListener?.("appStateChange", (state) => {
+            if (state?.isActive === false) {
+                sawBackground = true;
+                return;
+            }
+            if (state?.isActive) resumeThemeAfterForeground();
+        });
+    } catch {
+        /* plugin optional */
+    }
+};
+
 export const initTheme = async () => {
     try {
         if (typeof document === "undefined") return;
