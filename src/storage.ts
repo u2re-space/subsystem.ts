@@ -22,4 +22,4 @@ export {
     workCenterStorage,
     historyStorage,
     settingsStorage
-} from "../../../../modules/projects/lur.e/src/utils/opfs";
+} from "@fest-lib/lure";

@@ -3,7 +3,7 @@
  * Open https://localhost/demo.html when dev server uses default port 443.
  */
 import "@fest-lib/icon";
-import { mountViewModule, type ShellContext, type ViewModule } from "../types";
+import { mountViewModule, type ShellContext, type ViewModule } from "../types.ts";
 
 const MOUNT_ID = "fl-ui-explorer-mount";
 
@@ -26,7 +26,7 @@ async function main(): Promise<void> {
     status?.setAttribute("data-state", "loading");
 
     try {
-        const viewModule = (await import("../../../views/explorer-view/src/index.ts")) as ViewModule;
+        const viewModule = (await import("modules/views/explorer-view/src/index.ts")) as ViewModule;
         await mountViewModule(mount, viewModule, {
             id: "explorer",
             shellContext

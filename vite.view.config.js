@@ -9,7 +9,7 @@ import { resolve } from "node:path";
 import basicSsl from "@vitejs/plugin-basic-ssl";
 import { defineConfig, searchForWorkspaceRoot } from "vite";
 import { VitePWA } from "vite-plugin-pwa";
-import { getViewResolveAliases, workspaceRoot, viewsRoot } from "../../views/view-resolve-aliases.js";
+import { getViewResolveAliases, workspaceRoot, viewsRoot } from "./view-resolve-aliases.js";
 
 const alias = (find, replacement) => ({ find, replacement });
 

@@ -15,6 +15,7 @@ const PREFIXES = [
 const EXACT = [
     ["@fest-lib/core", "@fest-lib/core"],
     ["@fest-lib/dom", "@fest-lib/dom"],
+    ["@fest-lib/style-lib", "@fest-lib/style-lib"],
     ["@fest-lib/object", "@fest-lib/object"],
     ["@fest-lib/lure", "@fest-lib/lure"],
     ["@fest-lib/uniform", "@fest-lib/uniform"],

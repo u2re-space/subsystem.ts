@@ -3,7 +3,7 @@
  * Open https://localhost/?suite=explorer (default dev port 443, or VIEW_DEV_PORT).
  */
 import "@fest-lib/icon";
-import { mountViewModule, type ShellContext, type ViewModule } from "../types";
+import { mountViewModule, type ShellContext, type ViewModule } from "../types.ts";
 
 const MOUNT_ID = "fl-ui-playground";
 
@@ -23,8 +23,8 @@ const shellContext: ShellContext = {
 };
 
 const loaders: Record<SuiteId, () => Promise<ViewModule>> = {
-    explorer: () => import("../../../views/explorer-view/src/index.ts"),
-    markdown: () => import("../../../views/markdown-view/src/index.ts")
+    explorer: () => import("modules/views/explorer-view/src/index.ts"),
+    markdown: () => import("modules/views/markdown-view/src")
 };
 
 export async function loadSuite(id: SuiteId): Promise<void> {

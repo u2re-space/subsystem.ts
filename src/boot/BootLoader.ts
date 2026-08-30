@@ -21,7 +21,7 @@
  * [r] - recommended, [o] - optional
  */
 
-import { loadAsAdopted } from "@fest-lib/dom";
+import { loadAsAdopted } from "@fest-lib/style-lib";
 import type { ShellId, ViewId, Shell, ShellTheme } from "shells/types";
 import { LS_BOOT_SHELL_LAST_ACTIVE } from "./shell-preference";
 import { serviceChannels, type ServiceChannelId } from "com/routing/channel/ServiceChannels";

@@ -24,7 +24,7 @@ import type { ContentContext, ContentType } from "com/core/UnifiedAIConfig";
 // Import file handling components that are always needed
 import { createTemplateManager } from "core/modules/TemplateManager";
 import { BROADCAST_CHANNELS, getBroadcastChannelForDestination } from "com/config/Names";
-import { loadAsAdopted } from "@fest-lib/dom";
+import { loadAsAdopted } from "@fest-lib/style-lib";
 import { clearIconCaches, clearIconCache, testIconRacing, reinitializeRegistry, debugIconSystem } from "@fest-lib/icon";
 import type { AppSettings } from "com/config/SettingsTypes";
 import { loadSettings } from "com/config/Settings";
@@ -1349,7 +1349,7 @@ export const mountShellApp = (mountElement: HTMLElement, options: ShellOptions =
             // Lazy load history manager
             const historyModule = await getCachedComponent(
                 'history-manager',
-                () => import("../../../../../../modules/projects/lur.e/src/interactive/modules/HistoryManager"),
+                () => import("@fest-lib/lure"),
                 { componentName: 'HistoryManager' }
             );
 

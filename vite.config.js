@@ -124,7 +124,8 @@ export const projectMap = new Map([
     ["@fest-lib/veela", "veela.css"],
     ["veela-lib", "veela.css"],
     ["@fest-lib/lure", "lur.e"],
-    ["@fest-lib/image", "image.ts"]
+    ["@fest-lib/image", "image.ts"],
+    ["@fest-lib/style-lib", "style.ts"],
 ]);
 
 /**
@@ -350,6 +351,9 @@ export function initiate(
         modulePreload: {
             polyfill: true,
             include: [
+                "@fest-lib/icon",
+                "@fest-lib/image",
+                "@fest-lib/style-lib",
                 "@fest-lib/core",
                 "@fest-lib/dom",
                 "@fest-lib/lure",

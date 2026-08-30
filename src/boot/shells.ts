@@ -1,6 +1,6 @@
 import { ref } from "@fest-lib/object";
 import type { Shell, ShellContext, ShellId, ShellLayoutConfig, ShellNavigationState, ShellTheme, View, ViewId, ViewOptions, ShellNavigateOptions } from "./types";
-import { loadInlineStyle, preloadStyle } from "@fest-lib/dom";
+import { loadInlineStyle, preloadStyle } from "@fest-lib/style-lib";
 import { withViewTransition, getTransitionDirection } from "com/routing/core/view-transitions";
 import { loadSettings, saveSettings } from "com/config/Settings";
 import {
@@ -639,9 +639,13 @@ export abstract class ShellBase implements Shell {
             this.setViewToolbar(toolbar);
         }
 
-        // Call lifecycle
+        // WHY: onMount (explorer wire, IDB path) must not discard a successful render.
         if (view.lifecycle?.onMount) {
-            await view.lifecycle.onMount();
+            try {
+                await view.lifecycle.onMount();
+            } catch (err) {
+                console.error(`[${this.id}] onMount(${viewId}) failed:`, err);
+            }
         }
 
         return element;

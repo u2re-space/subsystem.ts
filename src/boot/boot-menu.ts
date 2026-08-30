@@ -12,7 +12,7 @@
  */
 
 import { H } from "@fest-lib/lure";
-import { loadAsAdopted } from "@fest-lib/dom";
+import { loadAsAdopted } from "@fest-lib/style-lib";
 //@ts-ignore
 import style from "./boot-menu.scss?inline";
 import type { ShellId } from "./types";

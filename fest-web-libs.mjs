@@ -6,6 +6,7 @@
  * builds each package once and serves `/fest/<name>.js` to every host.
  *
  * INVARIANT: lure + fl-ui stay bundled in com/app.js (TDZ).
+ * INVARIANT: style-lib is isolated `/fest/style-lib.js` (dom/icon/app import it; host caches are Symbol.for).
  * INVARIANT: package `dist/*.js` keeps `@fest-lib/*` (bundlers). `/fest/*.js` is written only when copying to `_shared` / app `fest/`.
  * INVARIANT: `@fest-lib/veela` stays an app Vite chunk (`fest/veela.js` from `?inline` SCSS).
  * The package dist is a style loader (`loadAsAdopted`) and does not export chunk names like `n`/`t`.
@@ -18,6 +19,7 @@ import { join } from "node:path";
 export const FEST_WEB_LIBS = [
     { id: "@fest-lib/core", name: "core", dir: "core.ts" },
     { id: "@fest-lib/object", name: "object", dir: "object.ts" },
+    { id: "@fest-lib/style-lib", name: "style-lib", dir: "style.ts" },
     { id: "@fest-lib/dom", name: "dom", dir: "dom.ts" },
     { id: "@fest-lib/uniform", name: "uniform", dir: "uniform.ts" },
     { id: "@fest-lib/icon", name: "icon", dir: "icon.ts" },

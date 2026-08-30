@@ -6,7 +6,7 @@
 import { resolve } from "node:path";
 import basicSsl from "@vitejs/plugin-basic-ssl";
 import { defineConfig, searchForWorkspaceRoot } from "vite";
-import { getViewResolveAliases, viewsRoot, workspaceRoot } from "../../views/view-resolve-aliases.js";
+import { getViewResolveAliases, viewsRoot, workspaceRoot } from "./view-resolve-aliases.js";
 
 const pkgRoot = resolve(import.meta.dirname);
 const port = Number(process.env.VIEW_DEV_PORT || 443);
