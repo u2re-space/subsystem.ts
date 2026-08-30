@@ -3,8 +3,8 @@
  * FullPath: modules/projects/subsystem/src/routing/channel/sku-ingress.ts
  * FIND:sku
  * TAG:sku,share-target,open-policy
- * Change date and time: 17.40.00_27.08.2026
- * Reason for changes: Share-target / launch-queue stay on the receiving SKU (process/document/explorer/shell).
+ * Change date and time: 08.30.00_30.08.2026
+ * Reason for changes: Explorer directory ingress stays in Explorer (Transfer Open in Folder).
  */
 
 import { inferCwspSkuFromLocation, type CwspSku } from "../../other/config/ecosystem-skus";
@@ -168,6 +168,16 @@ export const skuIngressHint = (
 
     /* User-set sink wins over SKU lock. `ask` keeps the receiving SKU. */
     if (surface && sink !== "ask") {
+        /* WHY: Transfer "Open in Folder" is a directory path — never hand off to Document. */
+        if (sku === "explorer" && looksLikeDirectoryPath(path) && !file) {
+            return {
+                destination: "explorer",
+                action: "open",
+                filename,
+                source: path || payload.hint?.source,
+                contentType: kind
+            };
+        }
         const destination = sinkToDestination(sink, skuDest || "workcenter");
         return {
             destination,
