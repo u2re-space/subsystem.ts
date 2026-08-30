@@ -125,7 +125,7 @@ function festWebCopyToOutDirPlugin(workspaceRoot) {
         writeBundle(outputOptions) {
             const outDir = outputOptions.dir;
             if (!outDir) return;
-            const n = copyFestWebLibsToDir(workspaceRoot, join(outDir, "fest"), { overwrite: false });
+            const n = copyFestWebLibsToDir(workspaceRoot, join(outDir, "fest"), { overwrite: true });
             if (n) console.log(`[fest-web] copied ${n} library file(s) → ${outDir}/fest`);
         },
     };

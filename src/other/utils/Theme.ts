@@ -1,8 +1,8 @@
 /*
  * Filename: Theme.ts
  * FullPath: modules/projects/subsystem/src/other/utils/Theme.ts
- * Change date and time: 12.30.00_30.08.2026
- * Reason for changes: Do not rehydrate sheets on cold start — that wiped Capacitor chrome.
+ * Change date and time: 17.05.00_30.08.2026
+ * Reason for changes: Resume must not applyTheme / replaceSync — that grayed chrome after recents.
  * FIND:theme-resume
  * TAG:theme-resume,explorer-theme
  */
@@ -328,7 +328,7 @@ const restampExplorerShellScheme = (): void => {
         document.querySelectorAll<HTMLElement>(".view-explorer").forEach((el) => {
             const scheme = el.dataset.explorerColorScheme;
             if (scheme !== "light" && scheme !== "dark") return;
-            el.setAttribute("data-theme", scheme);
+            if (el.getAttribute("data-theme") !== scheme) el.setAttribute("data-theme", scheme);
             el.style.setProperty("color-scheme", `${scheme} only`);
         });
     } catch {
@@ -372,20 +372,19 @@ export const resumeThemeAfterForeground = (force = false): void => {
     if (!sawBackground) return;
 
     void (async () => {
-        try {
-            const { rehydrateConstructableSheets } = await import("@fest-lib/dom");
-            rehydrateConstructableSheets();
-        } catch {
-            /* ignore */
-        }
+        /* WHY: replaceSync + applyTheme() after recents emptied live sheets and skipped text paint. */
         try {
             const { rehydrateAdoptedStyleSheets } = await import("@fest-lib/lure");
             rehydrateAdoptedStyleSheets();
         } catch {
             /* ignore */
         }
-        resyncThemeAfterAdoptedViewSheet();
         restampChromeScheme();
+        try {
+            document.dispatchEvent(new CustomEvent("cwsp:theme-resume"));
+        } catch {
+            /* ignore */
+        }
     })();
 };
 

@@ -5,6 +5,8 @@
  * Reason for changes: Material You on Capacitor launcher — refetch shell accent, do not keep the first empty cache.
  */
 
+import { Q } from "@fest-lib/lure";
+
 /**
  * Resolve `--color-primary` / `--base-color` for veela.
  * INVARIANT: one seed writer. WallpaperTheme may cache extracts but must not
@@ -137,6 +139,19 @@ const rgbToHex = (css: string): string => {
     return `#${hex}`;
 };
 
+export const registerColorProperty = (name: string, initialValue: string = "#5a9ec8")=>{
+    try {
+        CSS?.registerProperty?.({
+            name,
+            syntax: "<color>",
+            inherits: true,
+            initialValue,
+        });
+    } catch (error) {
+        console.debug(error);
+    }
+}
+
 const seedHosts = (): HTMLElement[] => {
     const nodes = new Set<HTMLElement>();
     if (typeof document === "undefined") return [];
@@ -159,6 +174,15 @@ const SEED_PROPS = [
     "--current"
 ] as const;
 
+export const isValidColor = (color: string): boolean => {
+    try {
+        rgbToHex(color);
+        return true;
+    } catch {
+        return false;
+    }
+};
+
 export const applyBaseColorSeed = (
     hex: string,
     source: AppearanceBaseSource,
@@ -171,6 +195,18 @@ export const applyBaseColorSeed = (
     const concrete = source === "user" ? "custom" : source === "system" ? "material-you" : source;
     document.documentElement.dataset.baseSource = String(concrete);
     document.documentElement.dataset.colorSource = String(concrete);
+    
+    if (!isValidColor(seed)) return;
+    if (!isValidColor(secondary)) return;
+    if (!isValidColor(tertiary)) return;
+    
+    registerColorProperty("--color-primary", seed);
+    registerColorProperty("--base-color", seed);
+    registerColorProperty("--color-secondary", secondary);
+    registerColorProperty("--color-tertiary", tertiary);
+    registerColorProperty("--secondary", secondary);
+    registerColorProperty("--tertiary", tertiary);
+    
     for (const host of seedHosts()) {
         for (const prop of SEED_PROPS) host.style.setProperty(prop, seed);
         host.style.setProperty("--color-secondary", secondary);
@@ -178,6 +214,15 @@ export const applyBaseColorSeed = (
         host.style.setProperty("--secondary", secondary);
         host.style.setProperty("--tertiary", tertiary);
     }
+
+    const globalQuery = Q("body, html, .wf-demo-root, ui-window, .view-explorer, [data-view='explorer'], .view-viewer, [data-view='viewer'], .view-settings, [data-view='settings'], .cw-network-view, .cw-network-view-host");
+    globalQuery.style.setProperty("--color-primary", seed);
+    globalQuery.style.setProperty("--base-color", seed);
+    globalQuery.style.setProperty("--color-secondary", secondary);
+    globalQuery.style.setProperty("--color-tertiary", tertiary);
+    globalQuery.style.setProperty("--secondary", secondary);
+    globalQuery.style.setProperty("--tertiary", tertiary);
+
 };
 
 /** CSS `AccentColor` when the engine maps it to a real system accent (not generic link blue). */
