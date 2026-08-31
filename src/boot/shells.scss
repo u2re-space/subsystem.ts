@@ -1,4 +1,4 @@
-@layer layer.shell.faint {
+@layer components {
     :is(html, body):has([data-shell="faint"]) {
         /* Layout */
         --shell-nav-height: 0;
@@ -10,7 +10,7 @@
 
         /* Colors
          * NOTE: `--faint-*` / `--shell-sidebar-*` / `--shell-tabs-*` color defaults are owned
-         * by veela `core/misc/_tokens.scss` (single source of truth) and inherit via `:root`.
+         * by veela `core/_tokens.scss` (single source of truth) and inherit via `:root`.
          * The `light-dark(x, x)` wrappers below are equivalent to `var(--x)` and remain as
          * standalone fallbacks for the faint shell without veela.
          */

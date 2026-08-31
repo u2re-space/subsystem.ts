@@ -1,8 +1,8 @@
-@layer boot.tokens {
+@layer tokens {
     /*
      * NOTE: `--choice-*` is a standalone boot-screen palette (concrete `light-dark(#…)`),
      * intentionally local: the boot view renders before veela is guaranteed loaded.
-     * Canonical color-token source of truth is veela `core/misc/_tokens.scss`.
+     * Canonical color-token source of truth is veela `core/_tokens.scss`.
      */
     :root:has([data-view="boot"]),
     html:has([data-view="boot"]) {
@@ -47,7 +47,7 @@
     }
 }
 
-@layer boot.base {
+@layer base {
     :where(html, body):has(.choice.container) {
         block-size: 100%;
         min-block-size: 100%;
@@ -136,7 +136,7 @@
     }
 }
 
-@layer boot.components {
+@layer components {
     .choice {
         &.container {
             inline-size: min(640px, 100%);
@@ -334,7 +334,7 @@
     }
 }
 
-@layer boot.responsive {
+@layer layout {
     @container (max-inline-size: 520px) {
         .choice {
             &.container {

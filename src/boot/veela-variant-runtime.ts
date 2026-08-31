@@ -1,12 +1,12 @@
 /**
  * Veela stylesheet loader for CWSP-shell (no `fest/fl-ui` runtime SCSS dependency).
  *
- * Uses the canonical forwarded stack in `veela.css/src/scss/index.scss` (core + curated basic surface).
- * `advanced` / `beercss` currently share that stack until a standalone advanced bundle exists with stable `@use` paths.
+ * Uses Veela's curated public SCSS entry-points (core + foundation).
  */
 
 import { loadAsAdopted } from "@fest-lib/style-lib";
 
+// WHY: `scss/core` is a directory. Vite `?inline` does not resolve `index.scss`.
 //@ts-expect-error vite inline
 import coreStyles from "@fest-lib/veela/scss/core/index.scss?inline";
 //@ts-expect-error vite inline

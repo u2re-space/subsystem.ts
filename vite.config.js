@@ -73,7 +73,7 @@ function escapeRegex(value) {
  * `src/index.ts/src/...`. File targets must be exact-match only.
  */
 export function toViteAlias(find, replacement) {
-    const isFileTarget = /\.(m?[jt]sx?|cjs|mjs|json)$/i.test(replacement);
+    const isFileTarget = /\.(m?[jt]sx?|cjs|mjs|json|css|s[ac]ss)$/i.test(replacement);
     if (isFileTarget && typeof find === "string") {
         return { find: new RegExp(`^${escapeRegex(find)}$`), replacement };
     }

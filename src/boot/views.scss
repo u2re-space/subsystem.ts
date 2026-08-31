@@ -5,9 +5,7 @@
     @return string.unquote($css);
 }
 
-@layer layer.view.common, layer.view.viewer;
-
-@layer layer.view.common {
+@layer layout {
     /*
      * Isolate view subtree from shell chrome inheritance while Veela / theme settle after first paint.
      * Tokens use --view-* first; shell --shell-* must not win here via late cascade.
@@ -34,7 +32,7 @@
  * Toolbar/spacing/button chrome lives in markdown-view `layer.view.viewer` — keep this file
  * structural to avoid padding/gap/border fights when both sheets load.
  */
-@layer layer.view.viewer {
+@layer components {
     .cw-view-viewer-shell {
         display: flex;
         flex-direction: column;

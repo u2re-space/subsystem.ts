@@ -106,6 +106,15 @@
             "@fest-lib/veela": [
                 "./fest/veela/index.ts"
             ],
+            "@fest-lib/veela/scss/core": [
+                "../veela.css/src/scss/core/index.scss"
+            ],
+            "@fest-lib/veela/scss": [
+                "../veela.css/src/scss/index.scss"
+            ],
+            "@fest-lib/veela/scss/*": [
+                "../veela.css/src/scss/*"
+            ],
             "@fest-lib/veela/*": [
                 "./fest/veela/*"
             ],
