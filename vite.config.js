@@ -124,6 +124,7 @@ export const projectMap = new Map([
     ["@fest-lib/veela", "veela.css"],
     ["veela-lib", "veela.css"],
     ["@fest-lib/lure", "lur.e"],
+    ["@fest-lib/ssre", "ssr.e"],
     ["@fest-lib/image", "image.ts"],
     ["@fest-lib/style-lib", "style.ts"],
 ]);
