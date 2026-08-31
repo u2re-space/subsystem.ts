@@ -12,6 +12,7 @@ import { JSOX } from "jsox";
 import type { AppSettings } from "./SettingsTypes";
 import { DEFAULT_SETTINGS, normalizeEcosystemToken } from "./SettingsTypes";
 import { mergeOpenPolicy, mergeOpenPolicyByHost, rememberOpenPolicyFromSettings, resolveHostOpenPolicy } from "./open-policy";
+import { mergeProcessIngress, rememberProcessIngressSettings } from "./process-ingress";
 import { detectSettingsHost } from "./settings-host";
 import { writeFileSmart } from "@fest-lib/lure";
 import { migrateLegacyCwspPublicPort } from "cwsp-shared/cwsp-endpoint-resolve";
@@ -1186,7 +1187,8 @@ const mergeAppSettingsShape = (base: AppSettings, patch: Partial<AppSettings> | 
             ...(patch.ai || {}),
             mcp: patch.ai?.mcp ?? base.ai?.mcp ?? [],
             customInstructions: patch.ai?.customInstructions ?? base.ai?.customInstructions ?? [],
-            activeInstructionId: patch.ai?.activeInstructionId ?? base.ai?.activeInstructionId ?? ""
+            activeInstructionId: patch.ai?.activeInstructionId ?? base.ai?.activeInstructionId ?? "",
+            processIngress: mergeProcessIngress(base.ai?.processIngress, patch.ai?.processIngress)
         },
         webdav: {
             ...(base.webdav || {}),
@@ -1685,7 +1687,11 @@ export const loadSettings = async (opts?: LoadSettingsOptions): Promise<AppSetti
                     ...DEFAULT_SETTINGS.ai, ...(stored as any)?.ai,
                     mcp: (stored as any)?.ai?.mcp || [],
                     customInstructions: (stored as any)?.ai?.customInstructions || [],
-                    activeInstructionId: (stored as any)?.ai?.activeInstructionId || ""
+                    activeInstructionId: (stored as any)?.ai?.activeInstructionId || "",
+                    processIngress: mergeProcessIngress(
+                        DEFAULT_SETTINGS.ai.processIngress,
+                        (stored as any)?.ai?.processIngress
+                    )
                 },
                 webdav: { ...DEFAULT_SETTINGS.webdav, ...(stored as any)?.webdav },
                 timeline: { ...DEFAULT_SETTINGS.timeline, ...(stored as any)?.timeline },
@@ -1806,6 +1812,7 @@ export const loadSettings = async (opts?: LoadSettingsOptions): Promise<AppSetti
 
             const migrated = applyLegacyCwspPortMigration(result as AppSettings);
             rememberOpenPolicyFromSettings(migrated);
+            rememberProcessIngressSettings(migrated);
             return migrated;
         }
 
@@ -1815,6 +1822,7 @@ export const loadSettings = async (opts?: LoadSettingsOptions): Promise<AppSetti
     }
     const fallback = JSOX.parse(JSOX.stringify(DEFAULT_SETTINGS as any) as string) as unknown as AppSettings;
     rememberOpenPolicyFromSettings(fallback);
+    rememberProcessIngressSettings(fallback);
     return fallback;
 };
 
@@ -1886,7 +1894,12 @@ export const saveSettings = async (settings: AppSettings) => {
             ...(settings.ai || {}),
             mcp: getMcp(),
             customInstructions: getCustomInstructions(),
-            activeInstructionId: getActiveInstructionId()
+            activeInstructionId: getActiveInstructionId(),
+            processIngress: mergeProcessIngress(
+                DEFAULT_SETTINGS.ai.processIngress,
+                current.ai?.processIngress,
+                settings.ai?.processIngress
+            )
         },
         webdav: {
             ...(DEFAULT_SETTINGS.webdav || {}),

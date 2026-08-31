@@ -138,7 +138,7 @@ export const HUB_PUBLIC_HOSTS = ["u2re.space", "www.u2re.space"] as const;
 export const SKU_PUBLIC_HOSTS: Record<Exclude<CwspSku, "launcher" | "crx">, readonly string[]> = {
     document: ["md.u2re.space", "www.md.u2re.space"],
     explorer: ["explorer.u2re.space", "www.explorer.u2re.space"],
-    process: ["process.u2re.space", "workcenter.u2re.space"],
+    process: ["process.u2re.space", "workcenter.u2re.space", "ai.u2re.space"],
     transfer: ["cwsp.u2re.space", "www.cwsp.u2re.space", "transfer.u2re.space"]
 };
 
@@ -146,7 +146,7 @@ export const SKU_PUBLIC_HOSTS: Record<Exclude<CwspSku, "launcher" | "crx">, read
 export const SKU_HUB_PATHS: Record<Exclude<CwspSku, "launcher" | "crx">, readonly string[]> = {
     document: ["markdown", "document", "viewer"],
     explorer: ["explorer", "files", "fm"],
-    process: ["workcenter", "process"],
+    process: ["workcenter", "process", "ai"],
     transfer: ["cwsp", "transfer"]
 };
 

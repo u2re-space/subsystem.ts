@@ -20,8 +20,26 @@ import {
     type OpenPolicyDestination,
     type OpenSink
 } from "../../other/config/open-policy";
+import type { AppSettings } from "../../other/config/SettingsTypes";
+import { peekProcessIngressSettings, resolveProcessIngressKind } from "../../other/config/process-ingress";
 
 export type SkuIngressAction = "open" | "attach" | "process" | "ask" | "shortcut" | "wallpaper";
+
+/**
+ * Same-tab File objects die when unified messaging queues through IDB/JSON.
+ * Hold them in memory so Work Center can still attach the real blobs.
+ */
+const heldIngressFiles: File[] = [];
+
+export const holdIngressFiles = (files?: File[] | null): void => {
+    heldIngressFiles.length = 0;
+    if (!Array.isArray(files)) return;
+    for (const file of files) {
+        if (file instanceof File) heldIngressFiles.push(file);
+    }
+};
+
+export const takeHeldIngressFiles = (): File[] => heldIngressFiles.splice(0, heldIngressFiles.length);
 
 export type SkuIngressHint = {
     destination: "viewer" | "workcenter" | "explorer" | "home" | "network";
@@ -31,6 +49,8 @@ export type SkuIngressHint = {
     contentType?: string;
     /** Concrete open-policy sink — `document` vs `viewer`, `system` vs in-app. */
     sink?: OpenSink;
+    instructionId?: string;
+    copyToClipboard?: boolean;
 };
 
 type IngressProbe = {
@@ -143,9 +163,10 @@ const skuDefaultDestination = (sku: CwspSku | ""): OpenPolicyDestination | undef
 
 export const skuIngressHint = (
     payload: IngressProbe,
-    opts?: { sku?: CwspSku | ""; autoProcessShared?: boolean; openPolicy?: OpenPolicy }
+    opts?: { sku?: CwspSku | ""; autoProcessShared?: boolean; openPolicy?: OpenPolicy; settings?: AppSettings | null }
 ): SkuIngressHint | undefined => {
     const sku = opts?.sku || inferCwspSkuFromLocation();
+    const settings = opts?.settings || peekProcessIngressSettings();
     const file = firstFile(payload);
     const path = pathProbe(payload);
     const filename = payload.hint?.filename || file?.name || "";
@@ -179,6 +200,26 @@ export const skuIngressHint = (
             };
         }
         const destination = sinkToDestination(sink, skuDest || "workcenter");
+        if (destination === "workcenter") {
+            const row = resolveProcessIngressKind(settings, kind);
+            const hinted = payload.hint?.action;
+            const action: SkuIngressAction =
+                hinted === "attach" || hinted === "process"
+                    ? hinted
+                    : opts?.autoProcessShared === false
+                      ? "attach"
+                      : row.mode;
+            return {
+                destination,
+                action,
+                filename,
+                source: path || payload.hint?.source,
+                contentType: kind,
+                sink,
+                instructionId: row.instructionId,
+                copyToClipboard: row.copyToClipboard
+            };
+        }
         return {
             destination,
             action: sinkToAction(sink, sku === "process" ? "process" : "open"),
@@ -192,18 +233,21 @@ export const skuIngressHint = (
     if (!sku || sku === "crx" || sku === "transfer") return undefined;
 
     if (sku === "process") {
+        const row = resolveProcessIngressKind(settings, kind);
         const hinted = payload.hint?.action;
         const action: SkuIngressAction =
             hinted === "attach" || hinted === "process"
                 ? hinted
-                : opts?.autoProcessShared !== false
-                  ? "process"
-                  : "attach";
+                : opts?.autoProcessShared === false
+                  ? "attach"
+                  : row.mode;
         return {
             destination: "workcenter",
             action,
             filename,
-            contentType: kind
+            contentType: kind,
+            instructionId: row.instructionId,
+            copyToClipboard: row.copyToClipboard
         };
     }
 

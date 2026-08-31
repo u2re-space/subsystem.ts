@@ -1,4 +1,4 @@
-import type { OpenPolicy, OpenPolicyByHost } from "./open-policy";
+import type { OpenKind, OpenPolicy, OpenPolicyByHost } from "./open-policy";
 import { DEFAULT_OPEN_POLICY } from "./open-policy";
 
 export type FieldType = "text" | "password" | "select" | "color-palette" | "shape-palette" | "number-select" | "textarea";
@@ -71,6 +71,23 @@ export type CustomInstruction = {
     instruction: string;
     enabled?: boolean;
     order?: number;
+};
+
+/** Per-kind Share Target / Launch Queue action for CWSP-process. */
+export type ProcessIngressMode = "attach" | "process";
+
+export type ProcessIngressKindPolicy = {
+    mode: ProcessIngressMode;
+    /** Empty → active custom instruction. */
+    instructionId?: string;
+    copyToClipboard?: boolean;
+};
+
+export type ProcessIngressPolicy = {
+    autoProcess: boolean;
+    /** Capacitor: keep the foreground service and write the AI result to the device clipboard. */
+    backgroundClipboard: boolean;
+    kinds: Record<OpenKind, ProcessIngressKindPolicy>;
 };
 
 export type ResponseLanguage = "en" | "ru" | "auto" | "follow";
@@ -427,8 +444,10 @@ export type AppSettings = {
         parallelToolCalls?: boolean;
         mcp?: MCPConfig[];
         shareTargetMode?: "analyze" | "recognize";
-        /** When true (default), share-target / launch-queue will auto run AI and copy result to clipboard. */
+        /** COMPAT: master off forces attach for every kind. Prefer `processIngress.autoProcess`. */
         autoProcessShared?: boolean;
+        /** Per-kind attach vs AI + clipboard for share-target / launch-queue / Capacitor. */
+        processIngress?: ProcessIngressPolicy;
         customInstructions?: CustomInstruction[];
         activeInstructionId?: string;
         // Language and translation settings
@@ -634,6 +653,18 @@ export const DEFAULT_SETTINGS: AppSettings = {
         mcp: [],
         shareTargetMode: "recognize",
         autoProcessShared: true,
+        processIngress: {
+            autoProcess: true,
+            backgroundClipboard: true,
+            kinds: {
+                markdown: { mode: "process", instructionId: "", copyToClipboard: true },
+                text: { mode: "process", instructionId: "", copyToClipboard: true },
+                document: { mode: "process", instructionId: "", copyToClipboard: true },
+                image: { mode: "process", instructionId: "", copyToClipboard: true },
+                url: { mode: "process", instructionId: "", copyToClipboard: true },
+                other: { mode: "attach", instructionId: "", copyToClipboard: false }
+            }
+        },
         customInstructions: [],
         activeInstructionId: "",
         responseLanguage: "auto",

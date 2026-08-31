@@ -24,6 +24,7 @@ const PROCESS_API_SUFFIX: Record<ProcessApiSuffix, string> = {
 const PROCESS_SAME_ORIGIN_HOSTS = new Set([
     "process.u2re.space",
     "workcenter.u2re.space",
+    "ai.u2re.space",
     "u2re.space",
     "www.u2re.space"
 ]);

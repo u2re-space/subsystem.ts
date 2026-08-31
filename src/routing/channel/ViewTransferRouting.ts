@@ -13,7 +13,8 @@ import {
     siblingSkuForView,
     stashSkuHandoff
 } from "../../other/config/ecosystem-skus";
-import { skuIngressHint } from "./sku-ingress";
+import { holdIngressFiles, skuIngressHint } from "./sku-ingress";
+import { peekProcessIngressSettings } from "../../other/config/process-ingress";
 import {
     classifyOpenKindFromPayload,
     inferIngressChannels,
@@ -108,6 +109,8 @@ export interface ViewTransferHint {
     source?: string;
     /** Open-policy sink when it must stay distinct from `destination` (`document` vs `viewer`). */
     sink?: OpenSink | string;
+    instructionId?: string;
+    copyToClipboard?: boolean;
 }
 
 export interface ViewTransferPayload {
@@ -195,7 +198,7 @@ const isNativeCapacitor = (): boolean => {
 
 const pickDestination = (payload: ViewTransferPayload, contentType: string): ViewTransferDestination => {
     ensureCwspSkuFromLocation();
-    const skuHint = skuIngressHint(payload);
+    const skuHint = skuIngressHint(payload, { settings: peekProcessIngressSettings() });
     if (skuHint?.destination) return skuHint.destination;
 
     /* Hub / CRX / transfer: no SKU lock — still honor a concrete openPolicy sink. */
@@ -240,7 +243,7 @@ const toMessageType = (destination: ViewTransferDestination, hint?: ViewTransfer
 
 export const resolveViewTransfer = (payload: ViewTransferPayload): ViewTransferResolved => {
     const contentType = getContentType(payload);
-    const skuHint = skuIngressHint(payload);
+    const skuHint = skuIngressHint(payload, { settings: peekProcessIngressSettings() });
     const destination = pickDestination(payload, contentType);
     const hint = skuHint ? { ...payload.hint, ...skuHint } : payload.hint;
     const messageType = toMessageType(destination, hint);
@@ -449,6 +452,7 @@ export const dispatchViewTransfer = async (
         if (handedOff) return { delivered: true, resolved };
     }
     const files = Array.isArray(payload.files) ? payload.files : [];
+    holdIngressFiles(files);
     const hasBinaryPayload = resolved.contentType === "image" || resolved.contentType === "file";
     const message: UnifiedMessage = {
         id: crypto.randomUUID(),

@@ -168,26 +168,56 @@ export const installCapacitorShareIntentBridge = (): void => {
             );
 
             try {
-                const [{ loadSettings }, ws] = await Promise.all([
+                const [{ loadSettings }, ws, { classifyOpenKindFromPayload }, ingress] = await Promise.all([
                     import("com/config/Settings"),
-                    import("shared/transport/websocket")
+                    import("shared/transport/websocket"),
+                    import("com/config/open-policy"),
+                    import("com/config/process-ingress")
                 ]);
-                const settings = loadSettings() as Record<string, unknown>;
-                const nodes = readDestinationNodes(settings);
-                ws.connectWS();
-                if (asset) {
-                    ws.sendCoordinatorAct(
-                        "clipboard:update",
-                        { asset, source: "android-share" },
-                        nodes
+                const settings = await loadSettings();
+                ingress.rememberProcessIngressSettings(settings);
+                const files: File[] = [];
+                if (asset?.data) {
+                    const { dataUrlToFile } = await import("com/routing/channel/sku-ingress");
+                    const file = await dataUrlToFile(
+                        asset.data,
+                        String(asset.name || "shared.bin"),
+                        String(asset.mimeType || asset.type || "application/octet-stream")
                     );
+                    if (file) files.push(file);
                 }
-                if (text) {
-                    ws.sendCoordinatorAct(
-                        "clipboard:update",
-                        { text, source: "android-share" },
-                        nodes
+                const kind = classifyOpenKindFromPayload({
+                    text,
+                    title,
+                    files,
+                    source: "share-target"
+                });
+                const row = ingress.resolveProcessIngressKind(settings, kind);
+                if (row.backgroundClipboard) {
+                    const { ensureCapacitorBridgeDaemonStarted } = await import(
+                        "./capacitor-settings-permissions"
                     );
+                    await ensureCapacitorBridgeDaemonStarted(settings);
+                }
+                // WHY: process + clipboard kinds write the AI result; do not overwrite with the raw share.
+                const skipRawClipboard = row.mode === "process" && row.copyToClipboard !== false;
+                if (!skipRawClipboard) {
+                    const nodes = readDestinationNodes(settings as unknown as Record<string, unknown>);
+                    ws.connectWS();
+                    if (asset) {
+                        ws.sendCoordinatorAct(
+                            "clipboard:update",
+                            { asset, source: "android-share" },
+                            nodes
+                        );
+                    }
+                    if (text) {
+                        ws.sendCoordinatorAct(
+                            "clipboard:update",
+                            { text, source: "android-share" },
+                            nodes
+                        );
+                    }
                 }
             } catch {
                 /* clipboard fan-out optional */

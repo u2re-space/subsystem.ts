@@ -29,7 +29,6 @@
     "compilerOptions": {
         "rootDir": "../",
         "skipLibCheck": true,
-        "baseUrl": ".",
         "paths": {
             "frontend/shared/*": [
                 "./src/frontend/shared/*"

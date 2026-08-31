@@ -27,6 +27,15 @@ import { unifiedMessaging } from "../channel/UnifiedMessaging";
 import { loadSettings } from "com/config/Settings";
 import { BROADCAST_CHANNELS } from "com/config/Names";
 import { resolveProcessApiUrl } from "../api/process-api";
+import { classifyOpenKindFromPayload } from "../../other/config/open-policy";
+import {
+    formatProcessIngressResult,
+    holdCapacitorIngressJob,
+    instructionTextForIngress,
+    rememberProcessIngressSettings,
+    resolveProcessIngressKind,
+    writeProcessIngressClipboard
+} from "../../other/config/process-ingress";
 
 // ============================================================================
 // EXTENSION VS PWA
@@ -570,18 +579,20 @@ const routeToTransferView = async (
     }));
 
     let autoProcessShared = true;
+    let loadedSettings: Awaited<ReturnType<typeof loadSettings>> | null = null;
     try {
-        const settings = await loadSettings().catch(() => null);
-        autoProcessShared = (settings?.ai?.autoProcessShared ?? true) !== false;
+        loadedSettings = await loadSettings().catch(() => null);
+        rememberProcessIngressSettings(loadedSettings);
+        autoProcessShared = (loadedSettings?.ai?.autoProcessShared ?? true) !== false;
         const { rememberOpenPolicyFromSettings } = await import("../../other/config/open-policy");
-        rememberOpenPolicyFromSettings(settings);
+        rememberOpenPolicyFromSettings(loadedSettings);
     } catch {
         autoProcessShared = true;
     }
 
     const sku = inferCwspSkuFromLocation();
     const skuHint = await refineLauncherImageIngress(
-        skuIngressHint(preparedData, { sku, autoProcessShared }),
+        skuIngressHint(preparedData, { sku, autoProcessShared, settings: loadedSettings }),
         files
     );
     const forceAttachToWorkCenter =
@@ -813,7 +824,7 @@ export const ingestSharePayload = async (
         const content = looksText && file ? await file.text() : String(shareData.text || "");
         if (content.trim() || file?.name) {
             stashSkuHandoff({
-                dest: "viewer",
+                dest: inferCwspSkuFromLocation() === "process" ? "workcenter" : "viewer",
                 content,
                 filename: String(file?.name || shareData.title || ""),
                 src: String(shareData.url || shareData.sharedUrl || "")
@@ -867,40 +878,141 @@ const extractShareContent = (shareData: ShareDataInput): { content: string | nul
     return { content: null, type: null };
 };
 
+const shareProcessKey = (shareData: ShareDataInput): string =>
+    [
+        shareData.timestamp || 0,
+        shareData.title || "",
+        (shareData.text || "").slice(0, 64),
+        shareData.url || shareData.sharedUrl || "",
+        shareData.fileCount || shareData.files?.length || 0
+    ].join("|");
+
+const recentShareProcess = new Map<string, Promise<boolean>>();
+
+const extractProcessApiText = (result: unknown): string => {
+    if (!result || typeof result !== "object") return "";
+    const row = result as Record<string, unknown>;
+    if (row.success === false || row.ok === false) return "";
+    const inner = row.result && typeof row.result === "object" ? (row.result as Record<string, unknown>) : null;
+    const candidates = [row.data, inner?.data, inner?.text, inner?.content, row.result, row.text];
+    for (const item of candidates) {
+        const text = formatProcessIngressResult(item);
+        if (text.trim()) return text;
+    }
+    return "";
+};
+
+const deliverProcessIngressResult = async (
+    text: string,
+    raw: unknown,
+    copyToClipboard: boolean
+): Promise<void> => {
+    if (copyToClipboard && text.trim()) {
+        const wrote = await writeProcessIngressClipboard(text);
+        try {
+            const clipboardChannel = new BroadcastChannel(CHANNELS.CLIPBOARD);
+            clipboardChannel.postMessage({ type: "copy", data: text });
+            clipboardChannel.close();
+        } catch {
+            /* bus optional */
+        }
+        if (wrote) showToast({ message: "Processed and copied", kind: "success" });
+    }
+    try {
+        await unifiedMessaging.sendMessage({
+            type: "share-target-result",
+            source: "share-target",
+            destination: "workcenter",
+            data: {
+                content: text,
+                rawData: raw,
+                timestamp: Date.now(),
+                source: "share-target",
+                action: "Processing (/api/process/processing)"
+            },
+            metadata: { priority: "high" }
+        } as any);
+    } catch {
+        const workCenterChannel = new BroadcastChannel(BROADCAST_CHANNELS.WORK_CENTER);
+        workCenterChannel.postMessage({
+            type: "share-target-result",
+            data: {
+                content: text,
+                rawData: raw,
+                timestamp: Date.now(),
+                source: "share-target",
+                action: "Processing (/api/process/processing)"
+            }
+        });
+        workCenterChannel.close();
+    }
+};
+
 /**
  * Process share payloads on the page side when the service worker either did
  * not process them or only delivered metadata.
+ * INVARIANT: one AI pass per payload. Attach-mode kinds return false here.
  */
 export const processShareTargetData = async (shareData: ShareDataInput, skipIfEmpty = false): Promise<boolean> => {
+    const key = shareProcessKey(shareData);
+    const pending = recentShareProcess.get(key);
+    if (pending) return pending;
+
+    const job = runProcessShareTargetData(shareData, skipIfEmpty);
+    recentShareProcess.set(key, job);
+    try {
+        return await job;
+    } finally {
+        globalThis.setTimeout(() => {
+            if (recentShareProcess.get(key) === job) recentShareProcess.delete(key);
+        }, 8000);
+    }
+};
+
+const runProcessShareTargetData = async (shareData: ShareDataInput, skipIfEmpty = false): Promise<boolean> => {
     console.log("[ShareTarget] Processing shared data:", {
         hasText: !!shareData.text,
         hasUrl: !!shareData.url,
         fileCount: shareData.files?.length || shareData.fileCount || 0,
         imageCount: shareData.imageCount || 0,
-        source: shareData.source || 'unknown',
+        source: shareData.source || "unknown",
         aiProcessed: shareData.aiProcessed
     });
 
-    // If AI already processed in SW, just show result info
     if (shareData.aiProcessed && shareData.results?.length) {
         console.log("[ShareTarget] AI already processed in SW, showing result");
         showToast({ message: "Content processed by service worker", kind: "success" });
         return true;
     }
 
+    const settings = await loadSettings().catch(() => null);
+    rememberProcessIngressSettings(settings);
+    const kind = classifyOpenKindFromPayload({
+        files: Array.isArray(shareData.files) ? shareData.files.filter((f): f is File => f instanceof File) : [],
+        text: shareData.text,
+        url: shareData.url || shareData.sharedUrl,
+        title: shareData.title,
+        hint: shareData.hint
+    });
+    const ingress = resolveProcessIngressKind(settings, kind);
+    if (ingress.mode !== "process") {
+        console.log("[ShareTarget] Kind policy is attach — skip AI");
+        return false;
+    }
+    await holdCapacitorIngressJob(settings);
+    const customInstruction = instructionTextForIngress(settings, shareData.hint?.instructionId || ingress.instructionId);
+
     const { content, type } = extractShareContent(shareData);
 
-    console.log("[ShareTarget] Extracted content:", { content: content?.substring(0, 50), type });
+    console.log("[ShareTarget] Extracted content:", { content: content?.substring(0, 50), type, kind: ingress.kind });
 
-    if (!content && type !== 'file') {
+    if (!content && type !== "file") {
         if (skipIfEmpty) {
             console.log("[ShareTarget] No content to process (skipping)");
             return false;
         }
 
-        // Check if there's file metadata but no actual files
         if (shareData.fileCount && shareData.fileCount > 0) {
-            // Files were processed in SW, this is just metadata notification
             console.log("[ShareTarget] Files processed in service worker");
             showToast({ message: "Files received and being processed", kind: "info" });
             return true;
@@ -915,7 +1027,6 @@ export const processShareTargetData = async (shareData: ShareDataInput, skipIfEm
         console.log("[ShareTarget] Starting AI processing for type:", type);
         showToast({ message: "Processing shared content...", kind: "info" });
 
-        // Utility function to convert file to base64
         const fileToBase64 = (file: File): Promise<string> => {
             return new Promise((resolve, reject) => {
                 const reader = new FileReader();
@@ -925,45 +1036,44 @@ export const processShareTargetData = async (shareData: ShareDataInput, skipIfEm
             });
         };
 
-        // Use unified processing endpoint
-        console.log("[ShareTarget] Using unified processing endpoint");
-
-        let processingContent: any;
+        let processingContent: string;
         let contentType: string;
 
-        if (type === 'file' && shareData.files?.[0]) {
+        if (type === "file" && shareData.files?.[0]) {
             const file = shareData.files[0] as File;
             console.log("[ShareTarget] Processing file:", { name: file.name, type: file.type, size: file.size });
-
-            // Convert file to base64 for API transport
-            const base64 = await fileToBase64(file);
-            processingContent = base64;
-            contentType = 'base64';
+            processingContent = await fileToBase64(file);
+            contentType = "base64";
         } else if (content) {
             processingContent = content;
-            contentType = 'text';
+            contentType = "text";
             console.log("[ShareTarget] Processing text content, length:", content.length);
         } else {
             throw new Error("No processable content found");
         }
 
-        // Call unified processing endpoint
+        const analyze = settings?.ai?.shareTargetMode === "analyze";
         console.log("[ShareTarget] Calling unified processing API");
         const response = await fetch(resolveProcessApiUrl("processing"), {
-            method: 'POST',
+            method: "POST",
             headers: {
-                'Content-Type': 'application/json',
+                "Content-Type": "application/json"
             },
             body: JSON.stringify({
                 content: processingContent,
+                text: contentType === "text" ? processingContent : undefined,
+                input: processingContent,
+                url: type === "url" ? content : undefined,
                 contentType,
-                processingType: (await loadSettings().catch(() => null))?.ai?.shareTargetMode === "analyze"
-                    ? "general-processing"
-                    : "recognize-content",
+                processingType: analyze ? "general-processing" : "recognize-content",
+                mode: analyze ? "analyze" : "smartRecognize",
+                customInstruction: customInstruction || undefined,
                 metadata: {
-                    source: 'share-target',
-                    title: shareData.title || 'Shared Content',
-                    timestamp: Date.now()
+                    source: "share-target",
+                    title: shareData.title || "Shared Content",
+                    timestamp: Date.now(),
+                    kind: ingress.kind,
+                    instructionId: ingress.instructionId || ""
                 }
             })
         });
@@ -973,90 +1083,48 @@ export const processShareTargetData = async (shareData: ShareDataInput, skipIfEm
         }
 
         const result = await response.json();
-        console.log("[ShareTarget] Unified processing completed:", { success: result.success });
+        const text = extractProcessApiText(result);
+        console.log("[ShareTarget] Unified processing completed:", { ok: result?.ok, success: result?.success });
 
-        if (result.success && result.data) {
-            console.log("[ShareTarget] Processing result via unified messaging");
-
-            // Send to clipboard if configured
-            const clipboardChannel = new BroadcastChannel(CHANNELS.CLIPBOARD);
-            clipboardChannel.postMessage({
-                type: 'copy',
-                data: result.data
-            });
-            clipboardChannel.close();
-
-            // Send to workcenter for display (destination-aware)
-            try {
-                await unifiedMessaging.sendMessage({
-                    type: 'share-target-result',
-                    source: 'share-target',
-                    destination: 'workcenter',
-                    data: {
-                        content: typeof result.data === 'string' ? result.data : JSON.stringify(result.data, null, 2),
-                        rawData: result.data,
-                        timestamp: Date.now(),
-                        source: 'share-target',
-                        action: 'Processing (/api/processing)',
-                        metadata: result.metadata
-                    },
-                    metadata: { priority: 'high' }
-                } as any);
-            } catch (e) {
-                // Fallback to legacy broadcast (best-effort)
-                const workCenterChannel = new BroadcastChannel(BROADCAST_CHANNELS.WORK_CENTER);
-                workCenterChannel.postMessage({
-                    type: 'share-target-result',
-                    data: {
-                        content: result.data,
-                        rawData: result.data,
-                        timestamp: Date.now(),
-                        source: 'share-target',
-                        action: 'Processing (/api/processing)',
-                        metadata: result.metadata
-                    }
-                });
-                workCenterChannel.close();
-            }
-
+        if (text) {
+            shareData.aiProcessed = true;
+            await deliverProcessIngressResult(text, result.data ?? result.result ?? result, ingress.copyToClipboard === true);
             return true;
-        } else {
-            const errorMsg = result?.error || "AI processing returned no data";
-            console.warn("[ShareTarget] AI processing failed:", errorMsg);
-
-            // Broadcast error to clipboard handlers
-            const shareChannel = new BroadcastChannel(CHANNELS.SHARE_TARGET);
-            shareChannel.postMessage({
-                type: 'ai-result',
-                data: { success: false, error: errorMsg }
-            });
-            shareChannel.close();
-
-            showToast({ message: `Processing failed: ${errorMsg}`, kind: "warning" });
-            return false;
         }
+
+        const errorMsg = result?.error || "AI processing returned no data";
+        console.warn("[ShareTarget] AI processing failed:", errorMsg);
+
+        const shareChannel = new BroadcastChannel(CHANNELS.SHARE_TARGET);
+        shareChannel.postMessage({
+            type: "ai-result",
+            data: { success: false, error: errorMsg }
+        });
+        shareChannel.close();
+
+        showToast({ message: `Processing failed: ${errorMsg}`, kind: "warning" });
+        return false;
     } catch (error: any) {
         console.error("[ShareTarget] Processing error:", error);
 
-        // Try fallback to server-side AI processing
         console.log("[ShareTarget] Attempting server-side fallback");
-        const fallbackResult = await tryServerSideProcessing(shareData);
+        const fallbackResult = await tryServerSideProcessing(shareData, ingress.copyToClipboard === true);
         if (fallbackResult) {
             console.log("[ShareTarget] Server-side fallback succeeded");
+            shareData.aiProcessed = true;
             return true;
         }
 
         console.warn("[ShareTarget] All processing methods failed");
 
-        // Broadcast error to clipboard handlers
         const shareChannel = new BroadcastChannel(CHANNELS.SHARE_TARGET);
         shareChannel.postMessage({
-            type: 'ai-result',
+            type: "ai-result",
             data: { success: false, error: error?.message || String(error) }
         });
         shareChannel.close();
 
-        showToast({ message: `Processing failed: ${error?.message || 'Unknown error'}`, kind: "error" });
+        showToast({ message: `Processing failed: ${error?.message || "Unknown error"}`, kind: "error" });
         return false;
     }
 };
@@ -1080,7 +1148,7 @@ export const CHANNELS = {
  * Fallback to server-side AI processing when client-side fails
  * Broadcasts results to PWA clipboard handlers instead of copying directly
  */
-const tryServerSideProcessing = async (shareData: ShareDataInput): Promise<boolean> => {
+const tryServerSideProcessing = async (shareData: ShareDataInput, copyToClipboard = true): Promise<boolean> => {
     try {
         const { content, type } = extractShareContent(shareData);
         if (!content) return false;
@@ -1118,12 +1186,13 @@ const tryServerSideProcessing = async (shareData: ShareDataInput): Promise<boole
 
         const result = await response.json();
         if (result?.ok && result?.data) {
-            // Broadcast result to PWA clipboard handlers
+            const text = String(result.data);
             console.log("[ShareTarget] Broadcasting server-side result to clipboard handlers");
+            await deliverProcessIngressResult(text, result.data, copyToClipboard);
             const shareChannel = new BroadcastChannel(CHANNELS.SHARE_TARGET);
             shareChannel.postMessage({
-                type: 'ai-result',
-                data: { success: true, data: String(result.data) }
+                type: "ai-result",
+                data: { success: true, data: text }
             });
             shareChannel.close();
             return true;
