@@ -48,6 +48,11 @@ const bodyLooksLikeHtmlDocument = (snippet: string): boolean => {
 
 const PROBE_TIMEOUT_MS = 8000;
 
+/** WHY: Vite 8 only inlines `import.meta.env.DEV` / `BASE_URL` on the exact member access — `(import.meta as any).env.DEV` stays undefined and we only probe `/sw.js` (SPA HTML). */
+const isViteDev = (): boolean => import.meta.env.DEV === true || Boolean(import.meta.hot);
+
+const viteBaseUrl = (): string => String(import.meta.env.BASE_URL ?? "/");
+
 const probeScriptUrl = async (url: string): Promise<ProbeResult> => {
     const ac = new AbortController();
     const timer = setTimeout(() => ac.abort(), PROBE_TIMEOUT_MS);
@@ -157,7 +162,7 @@ export const dropStaleServiceWorkerRegistrations = async (): Promise<void> => {
 
 /** Vite base (e.g. `/` or `/apps/cw/`) — normalized with trailing slash. */
 const viteBasePrefix = (): string => {
-    const raw = String((import.meta as any)?.env?.BASE_URL ?? "/");
+    const raw = viteBaseUrl();
     if (raw === "/" || raw === "") return "/";
     return raw.endsWith("/") ? raw : `${raw}/`;
 };
@@ -212,8 +217,7 @@ export const scopeForServiceWorkerScript = (swUrl: string): string => {
 };
 
 export const getServiceWorkerCandidates = (): string[] => {
-    const env = (import.meta as any)?.env;
-    const isDev = Boolean(env?.DEV);
+    const isDev = isViteDev();
     const bases = serviceWorkerPathBases();
 
     const perBaseDev: string[] = [];
@@ -236,7 +240,7 @@ export const getServiceWorkerCandidates = (): string[] => {
 
     const merged = isDev
         ? [...perBaseDev, ...devFallbacks, ...perBaseProd]
-        : [...new Set([...perBaseProd, ...prod])];
+        : [...new Set([...perBaseProd, ...prod, "/dev-sw.js?dev-sw"])];
     return [...new Set(merged)];
 };
 
@@ -294,29 +298,30 @@ export const ensureServiceWorkerRegistered = async (): Promise<ServiceWorkerRegi
         const scope = scopeForServiceWorkerScript(url);
         const isDevVirtualWorker = url.includes("/dev-sw.js?dev-sw");
 
-        // Prod `sw.js` is built as IIFE (see CWSP-shell `injectManifest.rollupFormat`). Register as
-        // classic by default so we never parse a non-module script as `type: "module"`.
+        // VitePWA `devOptions.type: "module"` emits `import.meta` — classic register throws
+        // "Cannot use 'import.meta' outside a module". Prod `sw.js` is IIFE (injectManifest).
+        if (isDevVirtualWorker) {
+            try {
+                return await navigator.serviceWorker.register(url, {
+                    scope,
+                    type: "module",
+                    updateViaCache: "none",
+                });
+            } catch (eModule) {
+                if (isViteDev()) {
+                    console.warn("[SW] Dev worker registration failed (module)", url, eModule);
+                }
+                return null;
+            }
+        }
+
         try {
             return await navigator.serviceWorker.register(url, {
                 scope,
                 updateViaCache: "none",
             });
         } catch (eClassic) {
-            if (isDevVirtualWorker) {
-                try {
-                    return await navigator.serviceWorker.register(url, {
-                        scope,
-                        type: "module",
-                        updateViaCache: "none",
-                    });
-                } catch (eModule) {
-                    if ((import.meta as any)?.env?.DEV) {
-                        console.warn("[SW] Dev worker registration failed (classic + module)", url, eClassic, eModule);
-                    }
-                    return null;
-                }
-            }
-            if ((import.meta as any)?.env?.DEV) {
+            if (isViteDev()) {
                 console.warn("[SW] Registration failed for", url, eClassic);
             }
             return null;
@@ -333,7 +338,7 @@ export const ensureServiceWorkerRegistered = async (): Promise<ServiceWorkerRegi
         if (reg) return reg;
     }
 
-    if ((import.meta as any)?.env?.DEV) {
+    if (isViteDev()) {
         try {
             const probes = await Promise.all(candidates.map(probeScriptUrl));
             console.warn("[SW] No service worker registered; candidates exhausted. Dev probes:", probes);

@@ -57,7 +57,8 @@ export const needsRemoteProcessApi = (): boolean => {
     try {
         const protocol = String(globalThis.location?.protocol || "").toLowerCase();
         if (isExtensionProtocol(protocol)) return true;
-        if (isCapacitorNative()) return true;
+        /* WHY: Capacitor WebView same-origin is SW + Java Process API, not process.u2re.space first. */
+        if (isCapacitorNative()) return false;
         const host = String(globalThis.location?.hostname || "").toLowerCase();
         if (!host) return true;
         return !PROCESS_SAME_ORIGIN_HOSTS.has(host);
@@ -152,23 +153,12 @@ export const readProcessApiResultText = (json: unknown): string => {
     return "";
 };
 
-export const postProcessApi = async (
+const fetchProcessApi = async (
+    url: string,
     suffix: ProcessApiSuffix,
-    body: Record<string, unknown> = {},
-    auth?: ProcessApiAuth,
+    payload: Record<string, unknown>,
     init?: { signal?: AbortSignal }
 ): Promise<{ ok: boolean; status: number; json: unknown; error?: string }> => {
-    const url = resolveProcessApiUrl(suffix);
-    const payload = {
-        ...body,
-        ...(auth?.userId ? { userId: auth.userId } : {}),
-        ...(auth?.userKey ? { userKey: auth.userKey } : {}),
-        ...(auth?.accessToken ? { accessToken: auth.accessToken } : {}),
-        ...(auth?.apiKey ? { apiKey: auth.apiKey } : {}),
-        ...(auth?.baseUrl ? { baseUrl: auth.baseUrl } : {}),
-        ...(auth?.model ? { model: auth.model } : {}),
-        ...(auth?.mcp ? { mcp: auth.mcp } : {})
-    };
     try {
         const isGet = suffix === "health";
         const res = await fetch(url, {
@@ -195,4 +185,67 @@ export const postProcessApi = async (
             error: String(error instanceof Error ? error.message : error)
         };
     }
+};
+
+const tryNativeProcessApi = async (
+    payload: Record<string, unknown>
+): Promise<{ ok: boolean; status: number; json: unknown; error?: string } | null> => {
+    if (!isCapacitorNative()) return null;
+    try {
+        const { CwsBridge } = await import("../native/cws-bridge.ts");
+        const plugin = CwsBridge as { processApi?: (body: Record<string, unknown>) => Promise<unknown> };
+        const row =
+            typeof plugin.processApi === "function"
+                ? await plugin.processApi(payload)
+                : await CwsBridge.invoke({ channel: "process:api", payload });
+        if (!row || typeof row !== "object") return null;
+        const json = row as { ok?: unknown; error?: unknown; echo?: unknown };
+        /* invoke() echo without a real handler is not a process result. */
+        if (json.echo && json.ok === true && json.error == null && !("result" in json) && !("fallback" in json)) {
+            return null;
+        }
+        return { ok: json.ok !== false, status: 200, json };
+    } catch {
+        return null;
+    }
+};
+
+export const postProcessApi = async (
+    suffix: ProcessApiSuffix,
+    body: Record<string, unknown> = {},
+    auth?: ProcessApiAuth,
+    init?: { signal?: AbortSignal }
+): Promise<{ ok: boolean; status: number; json: unknown; error?: string }> => {
+    const path = processApiPath(suffix);
+    const payload = {
+        ...body,
+        ...(auth?.userId ? { userId: auth.userId } : {}),
+        ...(auth?.userKey ? { userKey: auth.userKey } : {}),
+        ...(auth?.baseUrl ? { baseUrl: auth.baseUrl } : {}),
+        ...(auth?.accessToken ? { accessToken: auth.accessToken } : {}),
+        ...(auth?.apiKey ? { apiKey: auth.apiKey } : {}),
+        ...(auth?.model ? { model: auth.model } : {}),
+        ...(auth?.mcp ? { mcp: auth.mcp } : {})
+    };
+
+    if (suffix !== "health" && (auth?.apiKey || payload.apiKey)) {
+        const native = await tryNativeProcessApi(payload);
+        if (native && !isProcessApiUnavailable(native) && native.json) return native;
+    }
+
+    const urls: string[] = [];
+    const remote = `${PROCESS_API_PUBLIC_ORIGIN}${path}`;
+    const local = path;
+    if (needsRemoteProcessApi()) urls.push(remote);
+    else {
+        urls.push(local);
+        if (isCapacitorNative()) urls.push(remote);
+    }
+
+    let last: { ok: boolean; status: number; json: unknown; error?: string } | null = null;
+    for (const url of urls) {
+        last = await fetchProcessApi(url, suffix, payload, init);
+        if (!isProcessApiUnavailable(last)) return last;
+    }
+    return last ?? { ok: false, status: 0, json: null, error: "Process API unavailable" };
 };

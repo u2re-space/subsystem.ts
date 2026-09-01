@@ -75,10 +75,10 @@ export const registerWorkcenterSettingsContribution = (): (() => void) =>
                 settingsTextField("Default instruction id", "views.workcenter.defaultInstructionId", "(none)"),
                 settingsHeading("File types and incoming actions"),
                 settingsHint(
-                    "PWA/Web is not a Share Target. Open with / Launch Queue still opens files here. On Android, Share and Open with follow these per-type actions. “Run AI and write to clipboard” can keep a background service so the result still lands after Share."
+                    "PWA/Web Share Target and Launch Queue open files here. On Android, Share and Open with follow these per-type actions. “Run AI and write to clipboard” can keep a background service so the result still lands after Share."
                 ),
                 settingsHint(
-                    "Chat and AI actions POST to the VDS process API at process.u2re.space / ai.u2re.space (`/api/process`). LAN and Capacitor use that public host; the dedicated hosts stay same-origin."
+                    "Chat and AI actions POST to `/api/process`. PWA service worker and Capacitor Java run the same key-on-request fallback as Fastify; dedicated hosts stay same-origin, LAN still uses process.u2re.space."
                 ),
                 settingsCheckboxField("Allow automatic AI for incoming files", "ai.processIngress.autoProcess"),
                 settingsCheckboxField(

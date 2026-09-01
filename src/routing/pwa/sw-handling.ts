@@ -26,6 +26,7 @@ import { summarizeForLog } from "../channel/LogSanitizer";
 import { unifiedMessaging } from "../channel/UnifiedMessaging";
 import { loadSettings } from "com/config/Settings";
 import { BROADCAST_CHANNELS } from "com/config/Names";
+import { postWorkCenterCommand } from "../channel/workcenter-command-wire";
 import { postProcessApi, processApiAuthFromSettings, readProcessApiResultText } from "../api/process-api";
 import { classifyOpenKindFromPayload } from "../../other/config/open-policy";
 import {
@@ -88,8 +89,7 @@ const shouldRunPwaIngress = (): boolean => {
 export const ensureAppCss = () => {
     // App is built as a JS module; make sure extracted CSS is loaded in production.
     // Skip extension pages: they have their own HTML entrypoints and CSS injection.
-    const viteEnv = (import.meta as any)?.env;
-    if (viteEnv?.DEV) return;
+    if (import.meta.env.DEV) return;
     if (!(globalThis as { window?: unknown }).window) return;
     if (globalThis?.location?.protocol === "chrome-extension:") return;
 
@@ -228,9 +228,8 @@ export const initServiceWorker = async (_options: { immediate?: boolean, onRegis
 
         try {
             const registration = await ensureServiceWorkerRegistered();
-            const viteEnv = (import.meta as any)?.env;
             if (!registration) {
-                if (viteEnv?.DEV) {
+                if (import.meta.env.DEV) {
                     console.warn(
                         "[PWA] Service worker not registered (dev): probe failed for dev-sw/sw.js — check Vite BASE_URL matches vite-plugin-pwa dev worker path."
                     );
@@ -247,7 +246,7 @@ export const initServiceWorker = async (_options: { immediate?: boolean, onRegis
             bindServiceWorkerLifecycleUpdateChecks(registration);
 
             // DEV: newly built worker often sits in `waiting` — nudge SKIP_WAITING so Vite/asset routes refresh.
-            if (viteEnv?.DEV && registration.waiting) {
+            if (import.meta.env.DEV && registration.waiting) {
                 activateWaitingWorker(registration, 'initial');
             }
 
@@ -270,7 +269,7 @@ export const initServiceWorker = async (_options: { immediate?: boolean, onRegis
                             console.log('[PWA] New service worker available');
                             showToast({ message: 'App update available', kind: 'info' });
                             try {
-                                if (_swOptions?.immediate === true && !activateWaitingWorker(registration, 'updatefound') && viteEnv?.DEV) {
+                                if (_swOptions?.immediate === true && !activateWaitingWorker(registration, 'updatefound') && import.meta.env.DEV) {
                                     // In dev, try one more time after a micro-delay while waiting worker settles.
                                     globalThis.setTimeout(() => {
                                         try {
@@ -293,7 +292,7 @@ export const initServiceWorker = async (_options: { immediate?: boolean, onRegis
                 globalThis?.clearInterval?.(_swUpdateInterval);
                 _swUpdateInterval = null;
             }
-            if (!viteEnv?.DEV) {
+            if (!import.meta.env.DEV) {
                 _swUpdateInterval = globalThis?.setInterval?.(() => {
                     registration?.update?.().catch?.(console.warn);
                 }, 5 * 60 * 1000) as unknown as number | null;
@@ -947,6 +946,13 @@ const deliverProcessIngressResult = async (
             }
         });
         workCenterChannel.close();
+        postWorkCenterCommand({
+            type: "ingress.apply",
+            payload: {
+                type: "share-target-result",
+                data: { content: text, rawData: raw, timestamp: Date.now(), source: "share-target" }
+            }
+        });
     }
 };
 

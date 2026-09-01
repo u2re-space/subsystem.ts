@@ -17,6 +17,12 @@ export {
     processApiSuffixFromPath,
     readProcessApiResultText
 } from "./process-api";
+export {
+    hasProcessRequestCredential,
+    handleProcessApiPost,
+    processApiMissPayload,
+    runLocalProcessFallback
+} from "./process-local";
 
 // ============================================================================
 // TYPES

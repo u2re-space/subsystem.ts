@@ -1,6 +1,7 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 
+import { CWSP_CORE_FLEET_PORT, skuChannelPorts } from "../src/routing/api/sku-ports.ts";
 import {
     PROCESS_API_PUBLIC_ORIGIN,
     isProcessApiPath,
@@ -11,6 +12,12 @@ import {
     readProcessApiResultText,
     resolveProcessApiUrl
 } from "../src/routing/api/process-api.ts";
+import {
+    hasProcessRequestCredential,
+    handleProcessApiPost,
+    processApiMissPayload
+} from "../src/routing/api/process-local.ts";
+import { isProcessApiRequest } from "../src/routing/api/process-api-sw.ts";
 
 const withLocation = (hostname: string, protocol = "https:", run: () => void): void => {
     const prev = (globalThis as { location?: unknown }).location;
@@ -68,4 +75,26 @@ test("processApiSuffixFromPath and auth + result helpers", () => {
     assert.equal(readProcessApiResultText({ ok: false, error: "nope", result: { text: "hello" } }), "");
     assert.equal(isProcessApiUnavailable({ ok: false, status: 502, json: { ok: false, layer: "api" } }), true);
     assert.equal(isProcessApiUnavailable({ ok: true, status: 200, json: { ok: true, result: { text: "x" } } }), false);
+});
+
+test("local fallback misses without a request key", async () => {
+    assert.equal(hasProcessRequestCredential({ text: "hi" }), false);
+    assert.equal(hasProcessRequestCredential({ apiKey: "sk-test" }), true);
+    const miss = await handleProcessApiPost({ text: "hi" }, "test");
+    assert.equal(miss.ok, false);
+    assert.equal(miss.error, "Missing credentials");
+    assert.equal(processApiMissPayload("sw").fallback, "sw");
+    assert.equal(isProcessApiRequest("/api/process/processing", "POST"), true);
+    assert.equal(isProcessApiRequest("/workcenter", "POST"), false);
+});
+
+test("SKU channel ports do not bind core :8434", () => {
+    assert.equal(CWSP_CORE_FLEET_PORT, 8434);
+    assert.equal(skuChannelPorts("process").fleetWs, 8436);
+    assert.equal(skuChannelPorts("process").ssre, 8455);
+    for (const id of ["process", "shell", "explorer", "document"] as const) {
+        const ports = skuChannelPorts(id);
+        assert.notEqual(ports.fleetWs, CWSP_CORE_FLEET_PORT);
+        assert.notEqual(ports.ssre, CWSP_CORE_FLEET_PORT);
+    }
 });

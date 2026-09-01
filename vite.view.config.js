@@ -10,6 +10,7 @@ import basicSsl from "@vitejs/plugin-basic-ssl";
 import { defineConfig, searchForWorkspaceRoot } from "vite";
 import { VitePWA } from "vite-plugin-pwa";
 import { getViewResolveAliases, workspaceRoot, viewsRoot } from "./view-resolve-aliases.js";
+import { createSsreAndProcessVitePlugins } from "./vite-ssre.mjs";
 
 const alias = (find, replacement) => ({ find, replacement });
 
@@ -130,8 +131,9 @@ function explorerPwaAssetsPlugin(projectRoot) {
  * @param {string} [opts.sslDir] — if set, try PEMs under project root before basic-ssl.
  * @param {Record<string, unknown>} [opts.buildExtend] — shallow-merged into Vite `build`.
  * @param {boolean} [opts.pwa] — enable slim Explorer PWA (VitePWA injectManifest + /pwa assets).
+ * @param {boolean} [opts.ssre] — inject ssre into existing index.html + `/ssre/channel` on Vite Dev.
  */
-export function defineViewProject({ name, root = process.cwd(), defaultDevPort, sslDir, buildExtend, pwa = false } = {}) {
+export function defineViewProject({ name, root = process.cwd(), defaultDevPort, sslDir, buildExtend, pwa = false, ssre = false } = {}) {
     const projectRoot = resolve(root);
     const entry = resolve(projectRoot, "src/index.ts");
     const sharedRoot = resolve(import.meta.dirname);
@@ -145,6 +147,10 @@ export function defineViewProject({ name, root = process.cwd(), defaultDevPort, 
     const plugins = useHttps ? (projectSsl ? [] : [basicSsl()]) : [];
     const serverHttps =
         !useHttps ? false : projectSsl !== null ? projectSsl : undefined;
+
+    if (ssre) {
+        plugins.push(...createSsreAndProcessVitePlugins(projectRoot));
+    }
 
     if (pwa) {
         plugins.push(explorerPwaAssetsPlugin(projectRoot));

@@ -53,6 +53,8 @@ export type CwsNativeIpcInput = {
 
 export interface CwsBridgePluginContract {
     getShellInfo(): Promise<CwsShellInfo>;
+    /** Capacitor Java Process API fallback (`CwsProcessApi`). */
+    processApi?(body: Record<string, unknown>): Promise<Record<string, unknown>>;
     invoke(options: {
         channel: string;
         payload?: Record<string, unknown>;
@@ -71,6 +73,10 @@ type CwsBridgeGlobal = typeof globalThis & {
 };
 
 class CwsBridgeWeb extends WebPlugin implements CwsBridgePluginContract {
+    async processApi(): Promise<Record<string, unknown>> {
+        return { ok: false, error: "web", fallback: "none" };
+    }
+
     async getShellInfo(): Promise<CwsShellInfo> {
         return {
             shell: "browser",

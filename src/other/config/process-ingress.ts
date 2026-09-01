@@ -138,23 +138,6 @@ export const peekProcessIngressSettings = (): AppSettings | null => settingsPeek
 export const processIngressSettingsFound = (settings?: AppSettings | null): boolean =>
     Boolean(settings?.ai && (settings.ai.processIngress || typeof settings.ai.autoProcessShared === "boolean"));
 
-const isProcessSkuHost = (): boolean => {
-    try {
-        const fromDom = String(
-            (globalThis as { document?: Document }).document?.documentElement?.dataset?.cwspSku || ""
-        ).trim();
-        if (fromDom === "process") return true;
-    } catch {
-        /* no document */
-    }
-    try {
-        const loc = String((globalThis as { location?: Location }).location?.hostname || "");
-        return /^(process|workcenter|ai)\./i.test(loc);
-    } catch {
-        return false;
-    }
-};
-
 const isCapacitorNativeSync = (): boolean => {
     try {
         const g = globalThis as {
@@ -173,19 +156,16 @@ const isCapacitorNativeSync = (): boolean => {
 };
 
 /**
- * INVARIANT: Process PWA/Web is not a Share Target (no `share_target` in the manifest).
- * Capacitor/Android still uses Share + Open-with.
+ * INVARIANT: Process PWA/Web is a Share Target (manifest `share_target`) and Launch Queue.
+ * Capacitor/Android still uses OS Share + Open-with.
  */
 export const allowProcessWebShareLaunch = (settings?: AppSettings | null): boolean => {
-    if (!isProcessSkuHost()) return true;
-    if (isCapacitorNativeSync()) return true;
     void settings;
-    return false;
+    return true;
 };
 
 /**
  * INVARIANT: Process PWA/Web consumes Launch Queue like document/explorer (`file_handlers`).
- * Share Target stays off; Open with / file-handler launches still attach in Work Center.
  */
 export const allowProcessWebLaunchQueue = (settings?: AppSettings | null): boolean => {
     void settings;
