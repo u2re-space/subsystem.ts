@@ -141,7 +141,7 @@ export const defaultSettingsTabForProfile = (profile: SettingsShellProfile): str
     // WHY: contributed `crx` panel is the single Extension tab after prune.
     if (profile === "extension") return "crx";
     if (profile === "markdown" || profile === "document") return "markdown";
-    if (profile === "process") return "ai";
+    if (profile === "process") return "workcenter";
     if (profile === "environment") return "appearance";
     if (profile === "explorer") return "appearance";
     return "ai";

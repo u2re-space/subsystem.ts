@@ -134,6 +134,64 @@ export const rememberProcessIngressSettings = (settings?: AppSettings | null): v
 
 export const peekProcessIngressSettings = (): AppSettings | null => settingsPeek;
 
+/** True when a settings blob has been loaded (defaults still apply on Capacitor). */
+export const processIngressSettingsFound = (settings?: AppSettings | null): boolean =>
+    Boolean(settings?.ai && (settings.ai.processIngress || typeof settings.ai.autoProcessShared === "boolean"));
+
+const isProcessSkuHost = (): boolean => {
+    try {
+        const fromDom = String(
+            (globalThis as { document?: Document }).document?.documentElement?.dataset?.cwspSku || ""
+        ).trim();
+        if (fromDom === "process") return true;
+    } catch {
+        /* no document */
+    }
+    try {
+        const loc = String((globalThis as { location?: Location }).location?.hostname || "");
+        return /^(process|workcenter|ai)\./i.test(loc);
+    } catch {
+        return false;
+    }
+};
+
+const isCapacitorNativeSync = (): boolean => {
+    try {
+        const g = globalThis as {
+            Capacitor?: { isNativePlatform?: () => boolean; getPlatform?: () => string };
+            __CWS_NATIVE__?: boolean;
+        };
+        return Boolean(
+            g.Capacitor?.isNativePlatform?.() ||
+                g.Capacitor?.getPlatform?.() === "android" ||
+                g.Capacitor?.getPlatform?.() === "ios" ||
+                g.__CWS_NATIVE__ === true
+        );
+    } catch {
+        return false;
+    }
+};
+
+/**
+ * INVARIANT: Process PWA/Web is not a Share Target (no `share_target` in the manifest).
+ * Capacitor/Android still uses Share + Open-with.
+ */
+export const allowProcessWebShareLaunch = (settings?: AppSettings | null): boolean => {
+    if (!isProcessSkuHost()) return true;
+    if (isCapacitorNativeSync()) return true;
+    void settings;
+    return false;
+};
+
+/**
+ * INVARIANT: Process PWA/Web consumes Launch Queue like document/explorer (`file_handlers`).
+ * Share Target stays off; Open with / file-handler launches still attach in Work Center.
+ */
+export const allowProcessWebLaunchQueue = (settings?: AppSettings | null): boolean => {
+    void settings;
+    return true;
+};
+
 export const writeProcessIngressClipboard = async (text: string): Promise<boolean> => {
     const value = String(text || "");
     if (!value.trim()) return false;
@@ -158,7 +216,11 @@ export const holdCapacitorIngressJob = async (settings?: AppSettings | null): Pr
     if (!policy.backgroundClipboard) return () => {};
     try {
         const { ensureCapacitorBridgeDaemonStarted } = await import("../../boot/capacitor-settings-permissions");
-        await ensureCapacitorBridgeDaemonStarted(settings || undefined);
+        /* WHY: a share-time AI job must keep the foreground bridge even if Settings left the daemon off. */
+        await ensureCapacitorBridgeDaemonStarted({
+            ...(settings || {}),
+            shell: { ...(settings?.shell || {}), bridgeDaemonEnabled: true }
+        });
     } catch {
         /* daemon optional */
     }

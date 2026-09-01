@@ -7,7 +7,16 @@
 
 import { resolveProcessApiUrl } from "./process-api";
 
-export { resolveProcessApiUrl, processApiPath, needsRemoteProcessApi } from "./process-api";
+export {
+    resolveProcessApiUrl,
+    processApiPath,
+    needsRemoteProcessApi,
+    isProcessApiPath,
+    postProcessApi,
+    processApiAuthFromSettings,
+    processApiSuffixFromPath,
+    readProcessApiResultText
+} from "./process-api";
 
 // ============================================================================
 // TYPES

@@ -2,8 +2,8 @@
  * Filename: history-base.ts
  * FullPath: modules/projects/subsystem/src/boot/history-base.ts
  * FIND:history-base
- * Change date and time: 23.20.00_24.08.2026
- * Reason for changes: Named SKU hosts (md.u2re.space) must not treat /viewer as a History base — that + Fastify alias-strip is a bootloop.
+ * Change date and time: 12.30.00_01.09.2026
+ * Reason for changes: ai.u2re.space is a dedicated process host — /workcenter /ai are aliases of `/`, not History bases.
  */
 
 import { inferCwspSkuFromLocation, isCwspNativeHost, SKU_HUB_PATHS } from "com/config/ecosystem-skus";
@@ -17,6 +17,7 @@ const KNOWN_PATH_MOUNTS = [
     "explorer",
     "workcenter",
     "process",
+    "ai",
     "kvm"
 ] as const;
 
@@ -28,6 +29,7 @@ const DEDICATED_SKU_HOSTS = [
     "www.explorer.u2re.space",
     "process.u2re.space",
     "workcenter.u2re.space",
+    "ai.u2re.space",
     "cwsp.u2re.space",
     "www.cwsp.u2re.space",
     "transfer.u2re.space"

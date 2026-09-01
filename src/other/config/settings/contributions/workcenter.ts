@@ -25,8 +25,8 @@ import {
 } from "../settings-contribution-ui";
 
 const MODE_OPTIONS: Array<[string, string]> = [
-    ["attach", "Attach only"],
-    ["process", "Run AI"]
+    ["attach", "Open as attachment in chat"],
+    ["process", "Run AI and write to clipboard"]
 ];
 
 const instructionSelect = (label: string, path: string): HTMLElement => {
@@ -65,21 +65,24 @@ const kindBlock = (kind: ProcessIngressKind): HTMLElement[] => [
 export const registerWorkcenterSettingsContribution = (): (() => void) =>
     registerSettingsContribution({
         id: "workcenter",
-        label: "Work Center",
-        order: 65,
+        label: "Process",
+        order: 20,
         requiresView: "workcenter",
         manualFields: true,
         render: () =>
-            settingsPanel("workcenter", "Work Center", [
+            settingsPanel("workcenter", "Process", [
                 settingsCheckboxField("Auto-run pinned tasks", "views.workcenter.autoRunPinned"),
                 settingsTextField("Default instruction id", "views.workcenter.defaultInstructionId", "(none)"),
-                settingsHeading("Share, launch, and open-with"),
+                settingsHeading("File types and incoming actions"),
                 settingsHint(
-                    "Per type: attach only, or run AI with that type’s instruction and copy the result. Capacitor can keep the foreground service so clipboard-write still happens after Share."
+                    "PWA/Web is not a Share Target. Open with / Launch Queue still opens files here. On Android, Share and Open with follow these per-type actions. “Run AI and write to clipboard” can keep a background service so the result still lands after Share."
                 ),
-                settingsCheckboxField("Allow automatic AI for shares", "ai.processIngress.autoProcess"),
+                settingsHint(
+                    "Chat and AI actions POST to the VDS process API at process.u2re.space / ai.u2re.space (`/api/process`). LAN and Capacitor use that public host; the dedicated hosts stay same-origin."
+                ),
+                settingsCheckboxField("Allow automatic AI for incoming files", "ai.processIngress.autoProcess"),
                 settingsCheckboxField(
-                    "Capacitor: keep background service and write clipboard",
+                    "Android: keep background service for clipboard-write",
                     "ai.processIngress.backgroundClipboard"
                 ),
                 settingsSelectField("AI action", "ai.shareTargetMode", [

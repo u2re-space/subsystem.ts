@@ -26,12 +26,14 @@ import { summarizeForLog } from "../channel/LogSanitizer";
 import { unifiedMessaging } from "../channel/UnifiedMessaging";
 import { loadSettings } from "com/config/Settings";
 import { BROADCAST_CHANNELS } from "com/config/Names";
-import { resolveProcessApiUrl } from "../api/process-api";
+import { postProcessApi, processApiAuthFromSettings, readProcessApiResultText } from "../api/process-api";
 import { classifyOpenKindFromPayload } from "../../other/config/open-policy";
 import {
     formatProcessIngressResult,
     holdCapacitorIngressJob,
     instructionTextForIngress,
+    allowProcessWebShareLaunch,
+    allowProcessWebLaunchQueue,
     rememberProcessIngressSettings,
     resolveProcessIngressKind,
     writeProcessIngressClipboard
@@ -1054,12 +1056,9 @@ const runProcessShareTargetData = async (shareData: ShareDataInput, skipIfEmpty 
 
         const analyze = settings?.ai?.shareTargetMode === "analyze";
         console.log("[ShareTarget] Calling unified processing API");
-        const response = await fetch(resolveProcessApiUrl("processing"), {
-            method: "POST",
-            headers: {
-                "Content-Type": "application/json"
-            },
-            body: JSON.stringify({
+        const posted = await postProcessApi(
+            "processing",
+            {
                 content: processingContent,
                 text: contentType === "text" ? processingContent : undefined,
                 input: processingContent,
@@ -1075,15 +1074,16 @@ const runProcessShareTargetData = async (shareData: ShareDataInput, skipIfEmpty 
                     kind: ingress.kind,
                     instructionId: ingress.instructionId || ""
                 }
-            })
-        });
+            },
+            processApiAuthFromSettings(settings)
+        );
 
-        if (!response.ok) {
-            throw new Error(`Processing API failed: ${response.status}`);
+        if (!posted.ok) {
+            throw new Error(`Processing API failed: ${posted.status || posted.error || "network"}`);
         }
 
-        const result = await response.json();
-        const text = extractProcessApiText(result);
+        const result = posted.json;
+        const text = readProcessApiResultText(result) || extractProcessApiText(result);
         console.log("[ShareTarget] Unified processing completed:", { ok: result?.ok, success: result?.success });
 
         if (text) {
@@ -1214,6 +1214,11 @@ const tryServerSideProcessing = async (shareData: ShareDataInput, copyToClipboar
  * be staged or routed.
  */
 export const handleShareTarget = () => {
+    // WHY: Process PWA has no OS Share Target, but Launch Queue stages into this same
+    // consumer (`?shared=1` / cache). Do not return early — only the manifest stays share-off.
+    if (!allowProcessWebShareLaunch()) {
+        console.log("[ShareTarget] Process PWA/Web OS share-target is off; launch-queue replay stays on");
+    }
     const params = new URLSearchParams(globalThis?.location?.search);
     const shared = params.get("shared");
     const hasExplicitSharedFlow = shared === "1" || shared === "true" || shared === "test";
@@ -1500,6 +1505,10 @@ declare global {
  * transfer pipeline.
  */
 export const setupLaunchQueueConsumer = async () => {
+    if (!allowProcessWebLaunchQueue()) {
+        console.log("[LaunchQueue] Process PWA/Web launch-queue is off");
+        return;
+    }
     if (!('launchQueue' in globalThis)) {
         console.log('[LaunchQueue] launchQueue API not available');
         return;
