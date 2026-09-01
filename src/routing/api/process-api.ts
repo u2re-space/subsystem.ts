@@ -2,7 +2,7 @@
  * Filename: process-api.ts
  * FullPath: modules/projects/subsystem/src/routing/api/process-api.ts
  * FIND:process
- * Change date: 12.30.00_01.09.2026
+ * Change date: 15.10.00_01.09.2026
  * Reason: LAN / CRX / Capacitor hit process.u2re.space; dedicated process hosts stay same-origin.
  *
  * INVARIANT: POST work stays on /api/process/* (COMPAT /api/processing still works on :443).
@@ -121,6 +121,23 @@ export const processApiAuthFromSettings = (
         model: String(settings?.ai?.model || "").trim() || undefined,
         mcp: Array.isArray(settings?.ai?.mcp) ? settings.ai.mcp : undefined
     };
+};
+
+/** True when :443 never reached a working CWSP core — caller should run in-browser AI. */
+export const isProcessApiUnavailable = (posted: {
+    ok: boolean;
+    status: number;
+    json: unknown;
+    error?: string;
+}): boolean => {
+    if (posted.status === 0 || posted.status >= 500) return true;
+    const error = String(posted.error || "").toLowerCase();
+    if (/failed to fetch|networkerror|econnrefused|certificate|aborted/.test(error)) return true;
+    if (!posted.json || typeof posted.json !== "object") return !posted.ok;
+    const row = posted.json as { ok?: unknown; layer?: unknown; error?: unknown; hint?: unknown };
+    if (row.ok !== false) return false;
+    const detail = `${row.error || ""} ${row.hint || ""}`.toLowerCase();
+    return row.layer === "api" || /unreachable|econnrefused|certificate|bad gateway/.test(detail);
 };
 
 export const readProcessApiResultText = (json: unknown): string => {

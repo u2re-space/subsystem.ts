@@ -4,6 +4,7 @@ import test from "node:test";
 import {
     PROCESS_API_PUBLIC_ORIGIN,
     isProcessApiPath,
+    isProcessApiUnavailable,
     needsRemoteProcessApi,
     processApiAuthFromSettings,
     processApiSuffixFromPath,
@@ -65,4 +66,6 @@ test("processApiSuffixFromPath and auth + result helpers", () => {
     assert.equal(auth.accessToken, "tok");
     assert.equal(readProcessApiResultText({ ok: true, result: { text: "hello" } }), "hello");
     assert.equal(readProcessApiResultText({ ok: false, error: "nope", result: { text: "hello" } }), "");
+    assert.equal(isProcessApiUnavailable({ ok: false, status: 502, json: { ok: false, layer: "api" } }), true);
+    assert.equal(isProcessApiUnavailable({ ok: true, status: 200, json: { ok: true, result: { text: "x" } } }), false);
 });
