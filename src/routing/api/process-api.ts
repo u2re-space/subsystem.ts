@@ -10,8 +10,9 @@
  * INVARIANT: process.u2re.space / ai.u2re.space / workcenter.u2re.space stay same-origin.
  */
 
-export const PROCESS_API_PUBLIC_ORIGIN = "https://process.u2re.space";
-export const PROCESS_API_PREFIX = "/api/process";
+import { PROCESS_API_PREFIX, PROCESS_API_PUBLIC_ORIGIN, isProcessApiPath } from "./process-api-path.ts";
+
+export { PROCESS_API_PREFIX, PROCESS_API_PUBLIC_ORIGIN, isProcessApiPath };
 
 export type ProcessApiSuffix = "processing" | "recognize" | "analyze" | "health";
 
@@ -73,20 +74,6 @@ export const processApiPath = (suffix: ProcessApiSuffix = "processing"): string 
 export const resolveProcessApiUrl = (suffix: ProcessApiSuffix = "processing"): string => {
     const path = processApiPath(suffix);
     return needsRemoteProcessApi() ? `${PROCESS_API_PUBLIC_ORIGIN}${path}` : path;
-};
-
-/** True for public / legacy process API paths that must not SPA-fallback to index.html. */
-export const isProcessApiPath = (pathname: string): boolean => {
-    const path = String(pathname || "").split("?")[0] || "/";
-    return (
-        path === PROCESS_API_PREFIX ||
-        path.startsWith(`${PROCESS_API_PREFIX}/`) ||
-        path === "/api/processing" ||
-        path.startsWith("/process/ai") ||
-        path.startsWith("/process/processing") ||
-        path.startsWith("/process/api") ||
-        path === "/process/health"
-    );
 };
 
 export const processApiSuffixFromPath = (path: string): ProcessApiSuffix => {
@@ -192,7 +179,7 @@ const tryNativeProcessApi = async (
 ): Promise<{ ok: boolean; status: number; json: unknown; error?: string } | null> => {
     if (!isCapacitorNative()) return null;
     try {
-        const { CwsBridge } = await import("../native/cws-bridge.ts");
+        const { CwsBridge } = await import(/* @vite-ignore */ "../native/cws-bridge.ts");
         const plugin = CwsBridge as { processApi?: (body: Record<string, unknown>) => Promise<unknown> };
         const row =
             typeof plugin.processApi === "function"

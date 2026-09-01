@@ -5,7 +5,7 @@
  *
  * Vite Dev middleware for `/api/process/*` — same local-first fallback as Fastify / SW.
  */
-import { isProcessApiPath } from "./process-api.ts";
+import { isProcessApiPath } from "./process-api-path.ts";
 import { handleProcessApiPost, processApiMissPayload } from "./process-local.ts";
 import { isProcessApiRequest } from "./process-api-sw.ts";
 

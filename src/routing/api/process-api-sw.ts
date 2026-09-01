@@ -7,7 +7,7 @@
  * WHY: Workbox NetworkOnly used to swallow these POSTs before the legacy
  * `/api/processing` route; Vite Dev has no Fastify unless this middleware runs.
  */
-import { isProcessApiPath, PROCESS_API_PUBLIC_ORIGIN } from "./process-api.ts";
+import { isProcessApiPath, PROCESS_API_PUBLIC_ORIGIN } from "./process-api-path.ts";
 import {
     handleProcessApiPost,
     processApiJsonResponse,
