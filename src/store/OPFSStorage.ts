@@ -1,17 +1,22 @@
 /*
-* OPFS Storage
-* Data Storage based on browser's OPFS API
-* https://developer.mozilla.org/en-US/docs/Web/API/File_System_API/Origin_private_file_system
-* https://developer.mozilla.org/en-US/docs/Web/API/File_System_API
-* https://developer.mozilla.org/en-US/docs/Web/API/FileSystemObserver
-*/
+ * Filename: OPFSStorage.ts
+ * FullPath: modules/projects/subsystem/src/store/OPFSStorage.ts
+ * FIND:idb-fs
+ * TAG:opfs
+ *
+ * Thin facade over lure virtual FS. Bytes live in OPFS or IdbFs; hosts may
+ * also register `/sdcard/` `/saf/` via `registerProvideBackend`.
+ */
 
-//
+import { getIdbRoot, isOpfsBackendActive, provide } from "@fest-lib/lure";
+
 export class OPFSStorage {
-    //private storage: FileSystemDirectoryHandle;
+    provide(path: string, rw = false) {
+        return provide(path, rw);
+    }
 
-    //
-    constructor(/*storage: FileSystemDirectoryHandle*/) {
-        //this.storage = storage;
+    root() {
+        if (isOpfsBackendActive()) return navigator.storage?.getDirectory?.();
+        return getIdbRoot();
     }
 }

@@ -81,6 +81,12 @@
             "@fest-lib/lure": [
                 "./fest/lure/index.ts"
             ],
+            "@fest-lib/lure/remote-fs": [
+                "../lur.e/src/utils/opfs/remote-fs.ts"
+            ],
+            "@fest-lib/lure/provide": [
+                "../lur.e/src/utils/opfs/provide.ts"
+            ],
             "@fest-lib/lure/src/lure/node": [
                 "./fest/lure/lure/node"
             ],
@@ -95,6 +101,9 @@
             ],
             "@fest-lib/uniform": [
                 "./fest/uniform/index.ts"
+            ],
+            "@fest-lib/uniform/mounted-fs": [
+                "../uniform.ts/src/newer/messaging/MountedFs.ts"
             ],
             "@fest-lib/theme": [
                 "./fest/theme/index.ts"

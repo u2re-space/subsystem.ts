@@ -103,9 +103,14 @@
             "@fest-lib/fl-ui": ["../../projects/fl.ui/src/index.ts"],
             "@fest-lib/icon": ["../../projects/icon.ts/src/index.ts"],
             "@fest-lib/lure": ["../../projects/lur.e/src/index.ts"],
+            "@fest-lib/lure/provide": ["../../projects/lur.e/src/utils/opfs/provide.ts"],
+            "@fest-lib/lure/idb-fs": ["../../projects/lur.e/src/utils/opfs/IdbFs.ts"],
+            "@fest-lib/lure/remote-fs": ["../../projects/lur.e/src/utils/opfs/remote-fs.ts"],
+            "@fest-lib/lure/markdown-assets": ["../../projects/lur.e/src/utils/opfs/markdown-assets.ts"],
             "@fest-lib/object": ["../../projects/object.ts/src/index.ts"],
             "@fest-lib/subsystem": ["../../projects/subsystem/src/index.ts"],
             "@fest-lib/uniform": ["../../projects/uniform.ts/src/index.ts"],
+            "@fest-lib/uniform/mounted-fs": ["../../projects/uniform.ts/src/newer/messaging/MountedFs.ts"],
             "@fest-lib/image": ["../../projects/image.ts/src/index.ts"],
             "fl-ui": ["../../projects/fl.ui/src/ui"]
         }
