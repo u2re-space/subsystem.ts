@@ -232,7 +232,6 @@ export const createView = <T extends ViewInstance>(
         return element;
     }
 
-    //@ts-ignore Map.prototype.getOrInsertComputed polyfill (fl.ui / index.html)
     return currentViewMap.getOrInsertComputed(key, () => {
         const element = document.createElement(elementName) as T;
         element.options = resolvedOptions;
