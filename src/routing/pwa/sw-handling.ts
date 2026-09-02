@@ -795,6 +795,19 @@ export const ingestSharePayload = async (
     shareData: ShareDataInput,
     source: "share-target" | "launch-queue" = "share-target"
 ): Promise<boolean> => {
+    const capacitorNative = (() => {
+        try {
+            const c = (globalThis as { Capacitor?: { isNativePlatform?: () => boolean } }).Capacitor;
+            return typeof c?.isNativePlatform === "function" && Boolean(c.isNativePlatform());
+        } catch {
+            return false;
+        }
+    })();
+    // WHY: Transfer APK ShareActivity + files-hub already staged/offered.
+    // Stashing a viewer handoff opens a view this SKU does not mount.
+    if (capacitorNative && inferCwspSkuFromLocation() === "transfer") {
+        return true;
+    }
     const files = Array.isArray(shareData.files)
         ? shareData.files.filter((f): f is File => f instanceof File)
         : [];
@@ -844,15 +857,7 @@ export const ingestSharePayload = async (
     } catch {
         /* sessionStorage optional */
     }
-    const native = (() => {
-        try {
-            const c = (globalThis as { Capacitor?: { isNativePlatform?: () => boolean } }).Capacitor;
-            return typeof c?.isNativePlatform === "function" && Boolean(c.isNativePlatform());
-        } catch {
-            return false;
-        }
-    })();
-    return routeToTransferView(shareData, source, extractTransferHint(shareData), native);
+    return routeToTransferView(shareData, source, extractTransferHint(shareData), capacitorNative);
 };
 
 /**

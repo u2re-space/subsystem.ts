@@ -90,6 +90,14 @@ const isDocumentSku = (): boolean => {
     }
 };
 
+const isTransferSku = (): boolean => {
+    try {
+        return String(document.documentElement?.dataset?.cwspSku || "").trim() === "transfer";
+    } catch {
+        return false;
+    }
+};
+
 const consumeNativePendingShare = async (): Promise<{
     text: string;
     title: string;
@@ -160,6 +168,9 @@ const enqueueShareIngest = (job: () => Promise<void>): void => {
 export const installCapacitorShareIntentBridge = (): void => {
     if (!isCapacitorNative() || installed) return;
     installed = true;
+    // WHY: Transfer APK ShareActivity + files-hub own inbound share.
+    // Viewer ingest is dead here (enabled views are network/settings/history).
+    if (isTransferSku()) return;
 
     const handler = (ev: Event): void => {
         void (async () => {
@@ -278,7 +289,7 @@ export const installCapacitorShareIntentBridge = (): void => {
             window.addEventListener("cwsp:boot-ready", onReady);
             window.setTimeout(done, 4000);
         });
-        if (isDocumentSku()) return;
+        if (isDocumentSku() || isTransferSku()) return;
         const native = await consumeNativePendingShare().catch(() => null);
         if (native) await ingestParsedShare(native);
     });

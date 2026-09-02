@@ -230,7 +230,16 @@ export const skuIngressHint = (
         };
     }
 
-    if (!sku || sku === "crx" || sku === "transfer") return undefined;
+    if (!sku || sku === "crx") return undefined;
+    if (sku === "transfer") {
+        return {
+            destination: "network",
+            action: "open",
+            filename,
+            contentType: kind,
+            sink: "transfer"
+        };
+    }
 
     if (sku === "process") {
         const row = resolveProcessIngressKind(settings, kind);
