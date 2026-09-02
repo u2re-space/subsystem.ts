@@ -203,6 +203,8 @@ export const createInteropEnvelope = <T = unknown>(input: InteropMessageInput<T>
     };
 };
 
+export { unwrapSwInteropMessage, type UnwrappedSwMessage } from "./sw-unwrap.ts";
+
 /**
  * Map an envelope-like payload into the app's unified-message shape.
  */

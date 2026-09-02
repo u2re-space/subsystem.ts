@@ -6,6 +6,10 @@
  * page side, while `src/pwa/sw.ts` owns the worker-side behavior.
  */
 import { initPWAClipboard } from "./pwa-copy";
+import { deliverShareTargetInput } from "./sw-page-bridge";
+import { bindIngressHosts } from "./ingress-host";
+import { safeCacheMatch, safeCacheOpen } from "./sw-cache";
+import { unwrapSwInteropMessage } from "../channel/UniformInterop";
 import { showToast } from "../../boot/toast";
 import { pathForSkuHostView } from "../../boot/history-base";
 import { dropStaleServiceWorkerRegistrations, ensureServiceWorkerRegistered } from "./sw-url";
@@ -181,6 +185,22 @@ const activateWaitingWorker = (registration: ServiceWorkerRegistration, reason: 
     return true;
 };
 
+/** WHY: a new worker often reaches `waiting` after boot — DEV-only nudge left #434 stuck. */
+const bindWaitingActivation = (registration: ServiceWorkerRegistration): void => {
+    const nudge = (reason: 'initial' | 'updatefound') => activateWaitingWorker(registration, reason);
+    nudge('initial');
+    try {
+        registration.addEventListener('updatefound', () => {
+            const worker = registration.installing;
+            worker?.addEventListener('statechange', () => {
+                if (worker.state === 'installed') nudge('updatefound');
+            });
+        });
+    } catch {
+        /* ignore */
+    }
+};
+
 /** Re-fetch `sw.js` from network; helps when CDN/proxy cache or long-lived tabs hide updates. */
 const probeServiceWorkerUpdate = async (registration: ServiceWorkerRegistration | null): Promise<void> => {
     await dropStaleServiceWorkerRegistrations();
@@ -245,20 +265,7 @@ export const initServiceWorker = async (_options: { immediate?: boolean, onRegis
             await probeServiceWorkerUpdate(registration);
             bindServiceWorkerLifecycleUpdateChecks(registration);
 
-            // DEV: newly built worker often sits in `waiting` — nudge SKIP_WAITING so Vite/asset routes refresh.
-            if (import.meta.env.DEV && registration.waiting) {
-                activateWaitingWorker(registration, 'initial');
-            }
-
-            // In dev, aggressively activate updated SW to avoid stale Workbox routes breaking Vite module fetches.
-            // This prevents "Failed to fetch dynamically imported module: /src/..." when an old SW is still controlling the page.
-            try {
-                if (_swOptions?.immediate === true && registration.waiting) {
-                    activateWaitingWorker(registration, 'initial');
-                }
-            } catch (e) {
-                console.warn('[PWA] Failed to auto-activate waiting service worker:', e);
-            }
+            bindWaitingActivation(registration);
 
             // Handle updates
             registration?.addEventListener?.('updatefound', () => {
@@ -268,20 +275,7 @@ export const initServiceWorker = async (_options: { immediate?: boolean, onRegis
                         if (newWorker?.state === 'installed' && navigator.serviceWorker.controller) {
                             console.log('[PWA] New service worker available');
                             showToast({ message: 'App update available', kind: 'info' });
-                            try {
-                                if (_swOptions?.immediate === true && !activateWaitingWorker(registration, 'updatefound') && import.meta.env.DEV) {
-                                    // In dev, try one more time after a micro-delay while waiting worker settles.
-                                    globalThis.setTimeout(() => {
-                                        try {
-                                            activateWaitingWorker(registration, 'updatefound');
-                                        } catch (retryError) {
-                                            console.warn('[PWA] Delayed SW activation failed:', retryError);
-                                        }
-                                    }, 0);
-                                }
-                            } catch (e) {
-                                console.warn('[PWA] Failed to auto-activate waiting service worker on updatefound:', e);
-                            }
+                            activateWaitingWorker(registration, 'updatefound');
                         }
                     });
                 }
@@ -331,7 +325,12 @@ let _receiversCleanup: (() => void) | null = null;
 /** Initialize one-time clipboard/share receivers used by the window-side PWA bridge. */
 export const initReceivers = () => {
     if (_receiversCleanup) return;
-    _receiversCleanup = initPWAClipboard();
+    const clipboard = initPWAClipboard();
+    const hosts = bindIngressHosts();
+    _receiversCleanup = () => {
+        clipboard();
+        hosts();
+    };
 };
 
 // ============================================================================
@@ -492,13 +491,14 @@ const awaitHydratedSharePayloadWithRetries = async (
  * WHY: `extractShareContent` can see a title "handle" and skip the cache branch while `File[]` only lives in the cache.
  */
 const mergeUrlParamsShareWithCache = async (fromUrl: ShareDataInput): Promise<ShareDataInput> => {
-    if (!("caches" in globalThis)) {
-        return { ...fromUrl, source: "share-target" };
-    }
     try {
-        const cache = await caches.open("share-target-data");
-        const shareKey = new URL("/share-target-data", globalThis.location.origin).href;
-        const response = await cache.match(shareKey);
+        const cache = await safeCacheOpen("share-target-data");
+        if (!cache) {
+            return { ...fromUrl, source: "share-target" };
+        }
+        const origin = (globalThis as { location?: { origin?: string } }).location?.origin || "https://localhost";
+        const shareKey = new URL("/share-target-data", origin).href;
+        const response = (await safeCacheMatch(cache, shareKey)) || (await safeCacheMatch(cache, "/share-target-data"));
         if (!response) {
             return { ...fromUrl, source: "share-target" };
         }
@@ -816,6 +816,16 @@ export const ingestSharePayload = async (
     } catch {
         /* cache optional */
     }
+    try {
+        await deliverShareTargetInput({
+            ...shareData,
+            files,
+            source: shareData.source || source,
+            fileCount: files.length || shareData.fileCount
+        });
+    } catch {
+        /* Work Center command bus optional — SKU route still runs */
+    }
     const file = files[0];
     try {
         const looksText =
@@ -920,6 +930,18 @@ const deliverProcessIngressResult = async (
         if (wrote) showToast({ message: "Processed and copied", kind: "success" });
     }
     try {
+        postWorkCenterCommand({
+            type: "ingress.apply",
+            payload: {
+                type: "share-target-result",
+                data: {
+                    content: text,
+                    rawData: raw,
+                    timestamp: Date.now(),
+                    source: "share-target"
+                }
+            }
+        });
         await unifiedMessaging.sendMessage({
             type: "share-target-result",
             source: "share-target",
@@ -934,18 +956,6 @@ const deliverProcessIngressResult = async (
             metadata: { priority: "high" }
         } as any);
     } catch {
-        const workCenterChannel = new BroadcastChannel(BROADCAST_CHANNELS.WORK_CENTER);
-        workCenterChannel.postMessage({
-            type: "share-target-result",
-            data: {
-                content: text,
-                rawData: raw,
-                timestamp: Date.now(),
-                source: "share-target",
-                action: "Processing (/api/process/processing)"
-            }
-        });
-        workCenterChannel.close();
         postWorkCenterCommand({
             type: "ingress.apply",
             payload: {
@@ -1428,12 +1438,13 @@ export const handleShareTarget = () => {
     if (typeof BroadcastChannel !== "undefined") {
         const shareChannel = new BroadcastChannel(CHANNELS.SHARE_TARGET);
         shareChannel.addEventListener("message", async (event) => {
-            const msgType = event.data?.type;
-            const msgData = event.data?.data;
+            const unwrapped = unwrapSwInteropMessage(event.data);
+            const msgType = unwrapped?.type || event.data?.type;
+            const msgData = unwrapped?.data ?? event.data?.data;
 
             console.log("[ShareTarget] Broadcast received:", { type: msgType, hasData: !!msgData });
 
-            if (msgType === "share-received" && msgData) {
+            if ((msgType === "share-received" || msgType === "share-target-input") && msgData) {
                 console.log("[ShareTarget] Share notification received:", {
                     hasText: !!msgData.text,
                     hasUrl: !!msgData.url,

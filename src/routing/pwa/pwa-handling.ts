@@ -3,6 +3,7 @@
 // ============================================================================
 
 import { dropStaleServiceWorkerRegistrations, ensureServiceWorkerRegistered } from "./sw-url";
+import { safeCachesDelete, safeCachesKeys } from "./sw-cache";
 
 const IS_DEV = Boolean((import.meta as any)?.env?.DEV);
 const AUTO_RELOAD_COOLDOWN_MS = 2 * 60 * 1000;
@@ -336,6 +337,19 @@ class ServiceWorkerUpdateManager {
         // Listen for messages from service worker
         navigator.serviceWorker.addEventListener('message', (event) => {
             const { type, data } = event.data || {};
+            if (
+                type === "ai-result" ||
+                type === "process-api-result" ||
+                type === "share-target-result" ||
+                type === "share-target-input" ||
+                type === "share-received" ||
+                type === "content-cached" ||
+                type === "content-received"
+            ) {
+                void import("./sw-page-bridge").then(({ ingestSwClientMessage }) => {
+                    ingestSwClientMessage(event.data);
+                }).catch(() => undefined);
+            }
 
             switch (type) {
                 case 'sw-update-ready':
@@ -600,9 +614,9 @@ export const forceRefreshAssets = async (): Promise<void> => {
 
     try {
         // Clear all caches
-        const cacheNames = await caches.keys();
+        const cacheNames = await safeCachesKeys();
         await Promise.all(
-            cacheNames.map(cacheName => caches.delete(cacheName))
+            cacheNames.map((cacheName) => safeCachesDelete(cacheName))
         );
         console.log('[PWA] All caches cleared');
 

@@ -25,6 +25,10 @@ export function createSsreVitePlugin(root, opts = {}) {
     if (opts.htmlAsBase !== false && existsSync(indexHtml)) {
         if (pages["/"] == null) pages["/"] = indexHtml;
         if (pages["/index.html"] == null) pages["/index.html"] = indexHtml;
+        /* WHY: OS share-target POSTs 302 to these paths; Vite must serve the same PWA HTML. */
+        for (const alias of ["/share-target", "/share_target", "/workcenter", "/process", "/settings", "/ai"]) {
+            if (pages[alias] == null) pages[alias] = indexHtml;
+        }
     }
     return ssreVite({
         htmlAsBase: opts.htmlAsBase !== false,

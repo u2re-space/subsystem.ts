@@ -117,8 +117,9 @@ export class CrxRuntimeChannel implements CrxOptimizedWorkerChannelLike {
             // Fallback for non-CRX environments
             chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
                 this.handleIncomingMessage(message, sender, sendResponse);
-                // Return true to indicate async response will be sent
-                return true;
+                // WHY: fire-and-forget mail (`share-received`) has no request: handler —
+                // returning true without sendResponse closes the channel with a Chrome error.
+                return false;
             });
         }
     }
@@ -146,7 +147,14 @@ export class CrxRuntimeChannel implements CrxOptimizedWorkerChannelLike {
                 // Check if this message is for us
                 if (!unifiedMessage.target || unifiedMessage.target === this.context) {
                     // Handle request-response pattern
-                    if (unifiedMessage.type.startsWith('request:')) {
+                    if (!unifiedMessage.type.startsWith('request:')) {
+                        sendResponse({
+                            id: unifiedMessage.id,
+                            type: unifiedMessage.type,
+                            success: true,
+                            source: this.context
+                        });
+                    } else {
                         const actualType = unifiedMessage.type.replace('request:', '');
                         const listener = this.listeners.get(actualType) as (data: any) => Promise<any> | void;
 

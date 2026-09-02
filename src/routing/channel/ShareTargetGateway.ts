@@ -7,6 +7,12 @@
  * it later without depending on a live in-memory handoff.
  */
 import { API_ENDPOINTS } from "com/config/Names";
+import {
+    safeCacheDelete,
+    safeCacheMatch,
+    safeCacheOpen,
+    safeCachePut
+} from "../pwa/sw-cache";
 
 export const SHARE_CACHE_NAME = "share-target-data";
 export const SHARE_CACHE_KEY = "/share-target-data";
@@ -45,21 +51,18 @@ export type SwCachedContentItem = {
     content?: unknown;
 };
 
-const hasCaches = (): boolean =>
-    typeof globalThis !== "undefined" && "caches" in globalThis;
-
 /** Persist the last share-target payload so the app can recover it after navigation or cold start. */
 export const storeShareTargetPayloadToCache = async (payload: { files: File[]; meta?: Record<string, unknown> }): Promise<boolean> => {
-    if (!hasCaches()) return false;
-
     const files = Array.isArray(payload.files) ? payload.files : [];
     const meta = payload.meta ?? {};
 
     try {
-        const cache = await caches.open(SHARE_CACHE_NAME);
+        const cache = await safeCacheOpen(SHARE_CACHE_NAME);
+        if (!cache) return false;
         const timestamp = Number(meta?.timestamp) || Date.now();
 
-        await cache.put(
+        await safeCachePut(
+            cache,
             SHARE_CACHE_KEY,
             new Response(JSON.stringify({
                 ...meta,
@@ -86,7 +89,7 @@ export const storeShareTargetPayloadToCache = async (payload: { files: File[]; m
             headers.set("X-File-Size", String(file.size || 0));
             headers.set("X-File-LastModified", String((file as any).lastModified ?? 0));
 
-            await cache.put(key, new Response(file, { headers }));
+            await safeCachePut(cache, key, new Response(file, { headers }));
             fileManifest.push({
                 key,
                 name: file.name || `file-${i}`,
@@ -96,7 +99,8 @@ export const storeShareTargetPayloadToCache = async (payload: { files: File[]; m
             });
         }
 
-        await cache.put(
+        await safeCachePut(
+            cache,
             SHARE_FILES_MANIFEST_KEY,
             new Response(JSON.stringify({ files: fileManifest, timestamp }), {
                 headers: { "Content-Type": "application/json" }
@@ -116,12 +120,12 @@ export const storeShareTargetPayloadToCache = async (payload: { files: File[]; m
  */
 export const consumeCachedShareTargetPayload = async (opts: { clear?: boolean } = {}): Promise<CachedShareTargetPayload | null> => {
     const clear = opts.clear !== false;
-    if (!hasCaches()) return null;
 
     try {
-        const cache = await caches.open(SHARE_CACHE_NAME);
-        const metaResp = await cache.match(SHARE_CACHE_KEY);
-        const manifestResp = await cache.match(SHARE_FILES_MANIFEST_KEY);
+        const cache = await safeCacheOpen(SHARE_CACHE_NAME);
+        if (!cache) return null;
+        const metaResp = await safeCacheMatch(cache, SHARE_CACHE_KEY);
+        const manifestResp = await safeCacheMatch(cache, SHARE_FILES_MANIFEST_KEY);
         if (!metaResp && !manifestResp) return null;
 
         const meta = metaResp ? await metaResp.json().catch(() => null) : null;
@@ -132,7 +136,7 @@ export const consumeCachedShareTargetPayload = async (opts: { clear?: boolean } 
         for (const fm of fileMeta) {
             const fileKey = typeof fm?.key === "string" ? fm.key.trim() : String(fm?.key ?? "").trim();
             if (!fileKey) continue;
-            const response = await cache.match(fileKey);
+            const response = await safeCacheMatch(cache, fileKey);
             if (!response) continue;
             const blob = await response.blob();
             files.push(new File([blob], fm.name || "shared-file", {
@@ -142,10 +146,10 @@ export const consumeCachedShareTargetPayload = async (opts: { clear?: boolean } 
         }
 
         if (clear) {
-            await cache.delete(SHARE_CACHE_KEY).catch(() => { });
-            await cache.delete(SHARE_FILES_MANIFEST_KEY).catch(() => { });
+            await safeCacheDelete(cache, SHARE_CACHE_KEY);
+            await safeCacheDelete(cache, SHARE_FILES_MANIFEST_KEY);
             for (const fm of fileMeta) {
-                if (fm?.key) await cache.delete(fm.key).catch(() => { });
+                if (fm?.key) await safeCacheDelete(cache, fm.key);
             }
         }
 

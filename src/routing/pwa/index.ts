@@ -48,6 +48,9 @@ export {
     initClipboardReceiver
 } from "./pwa-copy";
 
+export { bindSwPageBridge, deliverSwResultToWorkCenter, deliverShareTargetInput, ingestSwClientMessage } from "./sw-page-bridge";
+export { publishSwFrontendResult, publishSwShareReceived, PROCESS_PENDING_PATH, SHARE_LANDING_PATH } from "./sw-result-wire";
+
 // ============================================================================
 // INSTALL PROMPT HANDLING
 // ============================================================================

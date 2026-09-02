@@ -8,18 +8,15 @@ import { initToastReceiver, showToast } from "../../boot/toast";
 import { unifiedMessaging } from "com/core/UnifiedMessaging";
 import { summarizeForLog } from "com/core/LogSanitizer";
 import { copy, initClipboardReceiver, listenForClipboardRequests, requestCopy } from "@fest-lib/lure";
+import { unwrapSwInteropMessage } from "../channel/UniformInterop";
+import { deliverShareTargetInput, deliverSwResultToWorkCenter } from "./sw-page-bridge";
 
 // Track initialization
 let _pwaClipboardInitialized = false;
 let _cleanupFns: (() => void)[] = [];
 
-const sendShareTargetResultToWorkcenter = async (data: Record<string, unknown>, priority: "high" | "normal" = "high"): Promise<void> => {
-    await unifiedMessaging.sendMessage({
-        type: "share-target-result",
-        destination: "workcenter",
-        data,
-        metadata: { priority }
-    });
+const sendShareTargetResultToWorkcenter = async (data: Record<string, unknown>, _priority: "high" | "normal" = "high"): Promise<void> => {
+    await deliverSwResultToWorkCenter("share-target-result", data, String(data.content || ""));
 };
 
 // Helper function to extract recognized content from AI responses
@@ -255,7 +252,12 @@ export const initPWAClipboard = (): (() => void) => {
         const clipboardChannel = new BroadcastChannel("rs-clipboard");
 
         const clipboardHandler = async (event: MessageEvent) => {
-            const { type, data, operations } = event.data || {};
+            const unwrapped = unwrapSwInteropMessage(event.data) || { type: "", data: undefined, operations: undefined, raw: {} };
+            const { type, data, operations } = {
+                type: unwrapped.type,
+                data: unwrapped.data,
+                operations: unwrapped.operations ?? (event.data as { operations?: unknown })?.operations
+            };
             console.log('[PWA-Copy] Clipboard channel message:', type, summarizeForLog(data));
 
             // type === "copy" is handled only by initClipboardReceiver() (singleton in Clipboard.ts).
@@ -304,7 +306,9 @@ export const initPWAClipboard = (): (() => void) => {
         const shareChannel = new BroadcastChannel("rs-share-target");
 
         const shareHandler = async (event: MessageEvent) => {
-            const { type, data } = event.data || {};
+            const unwrapped = unwrapSwInteropMessage(event.data);
+            const type = unwrapped?.type || (event.data as { type?: string })?.type;
+            const data = unwrapped?.data ?? (event.data as { data?: unknown })?.data;
             console.log('[PWA-Copy] Share channel message:', type, summarizeForLog(data));
 
             // Handle share-target copy request
@@ -318,49 +322,31 @@ export const initPWAClipboard = (): (() => void) => {
             }
 
             // Handle AI result from service worker
-            if (type === "ai-result" && data) {
+            if ((type === "ai-result" || type === "process-api-result") && data) {
                 console.log('[PWA-Copy] AI result from SW:', summarizeForLog(data));
-                if (data.success && data.data) {
-                    const text = extractRecognizedContent(data.data);
+                const row = data as { success?: boolean; data?: unknown; error?: string };
+                if (row.success !== false) {
+                    const text = extractRecognizedContent(row.data ?? data);
                     await copy(text, { showFeedback: true });
-
-                    // Also broadcast to work center for visibility
-                    await unifiedMessaging.sendMessage({
-                        type: 'share-target-result',
-                        destination: 'workcenter',
-                        data: {
-                            content: typeof text === 'string' ? text : JSON.stringify(text),
-                            rawData: data.data,
-                            timestamp: Date.now(),
-                            source: 'share-target',
-                            action: 'AI Processing',
-                            metadata: {
-                                fromServiceWorker: true,
-                                shareTargetId: data.id || 'unknown'
-                            }
-                        },
-                        metadata: { priority: 'high' }
-                    });
+                    await deliverSwResultToWorkCenter(type, {
+                        success: true,
+                        data: row.data ?? data,
+                        content: typeof text === "string" ? text : JSON.stringify(text),
+                        rawData: row.data ?? data,
+                        timestamp: Date.now(),
+                        source: "share-target",
+                        action: "AI Processing"
+                    }, typeof text === "string" ? text : "");
                 } else {
-                    showToast({ message: data.error || "Processing failed", kind: "error" });
+                    showToast({ message: row.error || "Processing failed", kind: "error" });
                 }
             }
 
-            // Handle share target input attachment (when files/text/URLs come in)
-            if (type === "share-received" && data) {
-                console.log('[PWA-Copy] Share received, broadcasting input to work center:', summarizeForLog(data));
-                await unifiedMessaging.sendMessage({
-                    type: 'share-target-input',
-                    destination: 'workcenter',
-                    data: {
-                        ...data,
-                        timestamp: Date.now(),
-                        metadata: {
-                            fromServiceWorker: true,
-                            ...data.metadata
-                        }
-                    },
-                    metadata: { priority: 'high' }
+            if ((type === "share-received" || type === "share-target-input") && data) {
+                console.log('[PWA-Copy] Share received, delivering input to work center:', summarizeForLog(data));
+                await deliverShareTargetInput({
+                    ...(typeof data === "object" && data ? data as Record<string, unknown> : { text: data }),
+                    timestamp: Date.now()
                 });
             }
         };
@@ -375,7 +361,9 @@ export const initPWAClipboard = (): (() => void) => {
         const swChannel = new BroadcastChannel("rs-sw");
 
         const swHandler = async (event: MessageEvent) => {
-            const { type, results } = event.data || {};
+            const unwrapped = unwrapSwInteropMessage(event.data);
+            const type = unwrapped?.type || (event.data as { type?: string })?.type;
+            const results = unwrapped?.results ?? (event.data as { results?: unknown })?.results;
             console.log('[PWA-Copy] SW channel message:', type, summarizeForLog(results));
 
             // Handle commit-to-clipboard messages

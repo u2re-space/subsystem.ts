@@ -11,8 +11,10 @@
  */
 
 import { PROCESS_API_PREFIX, PROCESS_API_PUBLIC_ORIGIN, isProcessApiPath } from "./process-api-path.ts";
+import { readProcessApiResultText } from "./process-api-result.ts";
 
 export { PROCESS_API_PREFIX, PROCESS_API_PUBLIC_ORIGIN, isProcessApiPath };
+export { readProcessApiResultText };
 
 export type ProcessApiSuffix = "processing" | "recognize" | "analyze" | "health";
 
@@ -126,18 +128,6 @@ export const isProcessApiUnavailable = (posted: {
     if (row.ok !== false) return false;
     const detail = `${row.error || ""} ${row.hint || ""}`.toLowerCase();
     return row.layer === "api" || /unreachable|econnrefused|certificate|bad gateway/.test(detail);
-};
-
-export const readProcessApiResultText = (json: unknown): string => {
-    if (!json || typeof json !== "object") return "";
-    const row = json as Record<string, unknown>;
-    if (row.ok === false || row.success === false) return "";
-    const inner = row.result && typeof row.result === "object" ? (row.result as Record<string, unknown>) : null;
-    const candidates = [row.data, inner?.data, inner?.text, inner?.content, row.text, row.result];
-    for (const item of candidates) {
-        if (typeof item === "string" && item.trim()) return item;
-    }
-    return "";
 };
 
 const fetchProcessApi = async (

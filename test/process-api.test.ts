@@ -73,6 +73,11 @@ test("processApiSuffixFromPath and auth + result helpers", () => {
     assert.equal(auth.accessToken, "tok");
     assert.equal(readProcessApiResultText({ ok: true, result: { text: "hello" } }), "hello");
     assert.equal(readProcessApiResultText({ ok: false, error: "nope", result: { text: "hello" } }), "");
+    assert.equal(readProcessApiResultText({ ok: true, recognized_data: ["a", "b"] }), "a\nb");
+    assert.equal(
+        readProcessApiResultText({ ok: true, choices: [{ message: { content: "from-openai" } }] }),
+        "from-openai"
+    );
     assert.equal(isProcessApiUnavailable({ ok: false, status: 502, json: { ok: false, layer: "api" } }), true);
     assert.equal(isProcessApiUnavailable({ ok: true, status: 200, json: { ok: true, result: { text: "x" } } }), false);
 });
@@ -86,6 +91,52 @@ test("local fallback misses without a request key", async () => {
     assert.equal(processApiMissPayload("sw").fallback, "sw");
     assert.equal(isProcessApiRequest("/api/process/processing", "POST"), true);
     assert.equal(isProcessApiRequest("/workcenter", "POST"), false);
+});
+
+test("Uniform keeps app mail types on the protocol envelope", async () => {
+    const { createProtocolEnvelope } = await import("../../uniform.ts/src/newer/messaging/Protocol.ts");
+    const envelope = createProtocolEnvelope({
+        type: "share-target-result",
+        source: "sw-page-bridge",
+        destination: "workcenter",
+        data: { content: "shown" }
+    });
+    assert.equal(envelope.type, "share-target-result");
+    assert.equal((envelope.data as { content?: string }).content, "shown");
+});
+
+test("SW envelopes unwrap to the app mail verb", async () => {
+    const { unwrapSwInteropMessage } = await import("../src/routing/channel/sw-unwrap.ts");
+    const wrapped = unwrapSwInteropMessage({
+        type: "request",
+        what: "ai-result",
+        protocol: "worker",
+        data: { success: true, data: "late result" },
+        flags: { canonicalV2: true }
+    });
+    assert.equal(wrapped?.type, "ai-result");
+    const share = unwrapSwInteropMessage({
+        type: "request",
+        destination: "workcenter",
+        data: { content: "shown", rawData: { ok: true }, source: "share-target" }
+    });
+    assert.equal(share?.type, "share-target-result");
+    const incoming = unwrapSwInteropMessage({
+        type: "request",
+        what: "share-received",
+        data: { title: "doc", fileCount: 1, files: [] }
+    });
+    assert.equal(incoming?.type, "share-received");
+    const native = unwrapSwInteropMessage({
+        type: "act",
+        payload: { type: "share-received", title: "from-java", pending: true, source: "share-target" }
+    });
+    assert.equal(native?.type, "share-received");
+    const javaResult = unwrapSwInteropMessage({
+        type: "process-api-result",
+        data: { ok: true, result: { text: "from-java" }, fallback: "java" }
+    });
+    assert.equal(javaResult?.type, "process-api-result");
 });
 
 test("SKU channel ports do not bind core :8434", () => {

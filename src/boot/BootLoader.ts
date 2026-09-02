@@ -244,6 +244,14 @@ export class BootLoader {
             void initCwsNativeBridge().catch(() => {
                 /* Capacitor / CWSAndroid bridge is optional on pure web */
             });
+            if (isCapacitorCwsNativeShell()) {
+                void import("./capacitor-share-intent")
+                    .then((mod) => mod.installCapacitorShareIntentBridge())
+                    .catch(() => undefined);
+                void import("./capacitor-clipboard-asset")
+                    .then((mod) => mod.installCapacitorClipboardAssetBridge())
+                    .catch(() => undefined);
+            }
             try {
                 const { initFrontendDebugCapture } = await import("./frontend-debug-capture");
                 initFrontendDebugCapture();
