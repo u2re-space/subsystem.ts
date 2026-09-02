@@ -15,7 +15,8 @@ import {
     consumeCachedShareTargetPayload,
     buildShareDataFromCachedPayload
 } from "../channel/ShareTargetGateway";
-import { PROCESS_PENDING_PATH } from "./sw-result-wire";
+import { clearPendingProcessResults, readPendingProcessResults } from "./sw-result-wire";
+import { holdIngressFiles } from "../channel/sku-ingress";
 
 const RESULT_TYPES = new Set([
     "ai-result",
@@ -102,6 +103,10 @@ const hydrateShareInput = async (data: unknown): Promise<Record<string, unknown>
 
 export const deliverShareTargetInput = async (data: unknown): Promise<boolean> => {
     const payload = await hydrateShareInput(data);
+    const files = Array.isArray(payload.files)
+        ? payload.files.filter((file): file is File => typeof File !== "undefined" && file instanceof File)
+        : [];
+    if (files.length) holdIngressFiles(files);
     return deliverSwResultToWorkCenter("share-target-input", payload, String(payload.text || payload.title || ""));
 };
 
@@ -168,11 +173,8 @@ const replayProcessPending = async (): Promise<void> => {
         if (!loc || !/^https?:$/.test(String(loc.protocol || ""))) return;
         const href = String(loc.href || "");
         if (href.startsWith("chrome-extension://") || href.startsWith("moz-extension://")) return;
-        const response = await fetch(PROCESS_PENDING_PATH, { cache: "no-store" });
-        const type = String(response.headers.get("content-type") || "").toLowerCase();
-        if (!response.ok || !type.includes("application/json")) return;
-        const json = (await response.json()) as { operations?: Array<{ id?: string; type?: string; text?: string; raw?: unknown; data?: unknown }> };
-        const operations = Array.isArray(json?.operations) ? json.operations : [];
+        /* WHY: GET/DELETE /process/pending 404s on Fastify when SW is not controlling. Cache is the SoT. */
+        const operations = await readPendingProcessResults();
         if (!operations.length) return;
         for (const operation of operations) {
             const opType = String(operation.type || "process-api-result");
@@ -183,9 +185,9 @@ const replayProcessPending = async (): Promise<void> => {
             }
             await deliverSwResultToWorkCenter(opType, payload, String(operation.text || ""));
         }
-        await fetch(PROCESS_PENDING_PATH, { method: "DELETE", cache: "no-store" }).catch(() => undefined);
+        await clearPendingProcessResults();
     } catch {
-        /* pending route is SW-only */
+        /* pending cache optional */
     }
 };
 

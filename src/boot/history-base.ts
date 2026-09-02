@@ -72,6 +72,16 @@ export function pathForSkuHostView(viewPath: string): string {
     return "/";
 }
 
+const normalizeAppPath = (path: string): string => String(path || "/").replace(/\/+$/, "") || "/";
+
+/**
+ * WHY: process.u2re.space `/workcenter` and `/` are the same app. Hard-nav between them
+ * remounts the SPA and drops in-memory share files (`holdIngressFiles`).
+ */
+export function sameSkuHostViewPath(currentPath: string, destPath: string): boolean {
+    return normalizeAppPath(pathForSkuHostView(currentPath)) === normalizeAppPath(pathForSkuHostView(destPath));
+}
+
 /**
  * Router base path without trailing slash ("" at domain root, "/cwsp" on IP path mount).
  * WHY: absolute `/network` history entries drop the Fastify debugPath prefix and 404 on reload.

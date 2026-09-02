@@ -34,6 +34,8 @@ function carrierPresent(data: Record<string, unknown>): boolean {
     if (hasFileLike(data.file) || hasFileLike(data.blob)) return true;
     const files = data.files;
     if (Array.isArray(files) && files.some((x) => hasFileLike(x))) return true;
+    /* WHY: launch-queue / share pending strips File[]; blobs stay in holdIngressFiles. */
+    if (Number(data.fileCount) > 0) return true;
     if (String(data.path ?? data.into ?? "").trim().length > 0) return true;
     const t = String(data.text ?? data.content ?? "").trim();
     if (t.length > 0) return true;

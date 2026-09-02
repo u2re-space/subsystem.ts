@@ -255,6 +255,7 @@ export const resolveViewTransfer = (payload: ViewTransferPayload): ViewTransferR
         content: payload.text,
         url: payload.url,
         files,
+        fileCount: files.length || Number(payload.fileCount || 0),
         filename: hint?.filename || files[0]?.name,
         source: payload.source,
         route: payload.route,
@@ -453,6 +454,8 @@ export const dispatchViewTransfer = async (
     }
     const files = Array.isArray(payload.files) ? payload.files : [];
     holdIngressFiles(files);
+    const dest = normalizeDestination(resolved.destination);
+    const heldForWorkCenter = dest === "workcenter" && files.some((file) => file instanceof File);
     const hasBinaryPayload = resolved.contentType === "image" || resolved.contentType === "file";
     const message: UnifiedMessage = {
         id: crypto.randomUUID(),
@@ -483,13 +486,20 @@ export const dispatchViewTransfer = async (
     });
 
     let queuedAsPending = false;
-    if (!deliveredNow && !hasBinaryPayload) {
+    /**
+     * WHY: File blobs cannot go through IDB pending. Hold them in memory and still
+     * enqueue a files-stripped `content-attach` so Work Center `onShow` / replay
+     * calls `takeHeldIngressFiles`. Skipping the queue for images left share/launch
+     * as a no-op when the view was not mounted yet (settings, cold boot).
+     */
+    if (!deliveredNow && (!hasBinaryPayload || heldForWorkCenter)) {
         try {
             const pendingMessage: UnifiedMessage = {
                 ...message,
                 data: {
                     ...(message.data || {}),
-                    files: []
+                    files: [],
+                    fileCount: Number((message.data as { fileCount?: number } | undefined)?.fileCount || files.length || 0)
                 }
             };
             enqueuePendingMessage(resolved.destination, pendingMessage);
@@ -498,11 +508,12 @@ export const dispatchViewTransfer = async (
             console.warn("[ViewTransfer] Failed to enqueue pending message:", error);
         }
     }
-    const delivered = deliveredNow || queuedAsPending;
+    const delivered = deliveredNow || queuedAsPending || heldForWorkCenter;
     console.log("[ViewTransfer] Message delivery status:", {
         deliveredNow,
         queuedAsPending,
         hasBinaryPayload,
+        heldForWorkCenter,
         delivered,
         destination: resolved.destination,
         routePath: resolved.routePath

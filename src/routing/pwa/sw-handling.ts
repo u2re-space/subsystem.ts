@@ -11,18 +11,36 @@ import { bindIngressHosts } from "./ingress-host";
 import { safeCacheMatch, safeCacheOpen } from "./sw-cache";
 import { unwrapSwInteropMessage } from "../channel/UniformInterop";
 import { showToast } from "../../boot/toast";
-import { pathForSkuHostView } from "../../boot/history-base";
+import { pathForSkuHostView, sameSkuHostViewPath } from "../../boot/history-base";
 import { dropStaleServiceWorkerRegistrations, ensureServiceWorkerRegistered } from "./sw-url";
 import { classifyIngressFile, classifyIngressFromBasename, dispatchViewTransfer, type ViewTransferHint } from "../channel/ViewTransferRouting";
-import { applyLauncherIngress, installShellImageOpenListener, refineLauncherImageIngress, skuIngressHint } from "../channel/sku-ingress";
+import { applyLauncherIngress, flushHeldIngressToWorkCenter, holdIngressFiles, installShellImageOpenListener, peekHeldIngressFiles, refineLauncherImageIngress, skuIngressHint } from "../channel/sku-ingress";
 import { inferCwspSkuFromLocation, stashSkuHandoff } from "../../other/config/ecosystem-skus";
 import { bindDirectoryForLaunchedFiles } from "@fest-lib/lure";
 import {
     buildShareDataFromCachedPayload,
-    consumeCachedShareTargetPayload,
-    storeShareTargetPayloadToCache,
+    consumeCachedShareTargetPayload as consumeCachedShareTargetPayloadImpl,
+    storeShareTargetPayloadToCache as storeShareTargetPayloadToCacheImpl,
     type CachedShareTargetPayload
 } from "../channel/ShareTargetGateway";
+
+/**
+ * WHY: page `sw-handling.js` imports these from unhashed `boot-index.js` (`dt`/`ft`).
+ * Stale SW `assets-cache` + a new barrel → `X is not a function` on share-target.
+ */
+const consumeCachedShareTargetPayload = (
+    opts?: { clear?: boolean }
+): Promise<CachedShareTargetPayload | null> => {
+    if (typeof consumeCachedShareTargetPayloadImpl !== "function") return Promise.resolve(null);
+    return consumeCachedShareTargetPayloadImpl(opts);
+};
+
+const storeShareTargetPayloadToCache = (
+    payload: { files: File[]; meta?: Record<string, unknown> }
+): Promise<boolean> => {
+    if (typeof storeShareTargetPayloadToCacheImpl !== "function") return Promise.resolve(false);
+    return storeShareTargetPayloadToCacheImpl(payload);
+};
 
 export { consumeCachedShareTargetPayload, storeShareTargetPayloadToCache };
 import { waitForIngressPipelineSlot } from "../policies/ingress-pipeline-guard";
@@ -84,6 +102,55 @@ const shouldRunPwaIngress = (): boolean => {
         return false;
     }
 };
+
+/**
+ * WHY: BootLoader runs `initIngressPWA` before shell.navigate. Share / launch-queue
+ * must wait until Work Center (or settings) is mounted, otherwise `content-attach`
+ * and `ingress.apply` fire into an unbound bus and binary payloads are dropped.
+ */
+const waitForBootReady = (timeoutMs = 8000): Promise<void> => {
+    try {
+        if (typeof document !== "undefined" && document.documentElement?.dataset?.cwspBoot === "ready") {
+            return Promise.resolve();
+        }
+    } catch {
+        /* non-DOM */
+    }
+    return new Promise((resolve) => {
+        let done = false;
+        const finish = (): void => {
+            if (done) return;
+            done = true;
+            try {
+                globalThis.removeEventListener?.("cwsp:boot-ready", onReady);
+            } catch {
+                /* ignore */
+            }
+            resolve();
+        };
+        const onReady = (): void => finish();
+        try {
+            globalThis.addEventListener?.("cwsp:boot-ready", onReady, { once: true });
+        } catch {
+            finish();
+            return;
+        }
+        globalThis.setTimeout(finish, timeoutMs);
+    });
+};
+
+const recentShareRoute = new Map<string, number>();
+const ingressRouteFingerprint = (shareData: ShareDataInput): string =>
+    [
+        shareData.title || "",
+        (shareData.text || "").slice(0, 64),
+        shareData.url || shareData.sharedUrl || "",
+        (Array.isArray(shareData.files) ? shareData.files : [])
+            .filter((file): file is File => file instanceof File)
+            .map((file) => `${file.name}:${file.size}`)
+            .join(","),
+        shareData.fileCount || 0
+    ].join("|");
 
 // ============================================================================
 // CSS INJECTION
@@ -558,6 +625,15 @@ const routeToTransferView = async (
     hint?: ViewTransferHint,
     pending = false
 ): Promise<boolean> => {
+    const routeKey = ingressRouteFingerprint(shareData);
+    const prevRoute = recentShareRoute.get(routeKey);
+    if (routeKey !== "||||0" && prevRoute && Date.now() - prevRoute < 5000) {
+        console.log("[ViewTransfer] Skipping duplicate ingress route");
+        return true;
+    }
+    if (routeKey !== "||||0") recentShareRoute.set(routeKey, Date.now());
+
+    await waitForBootReady();
     await waitForIngressPipelineSlot();
 
     const preparedData = await hydrateTextPayloadFromFiles(shareData);
@@ -565,6 +641,7 @@ const routeToTransferView = async (
     const files = Array.isArray(preparedData.files)
         ? preparedData.files.filter((file): file is File => file instanceof File)
         : [];
+    holdIngressFiles(files);
 
     console.log("[ViewTransfer] Pipeline input:", summarizeForLog({
         source,
@@ -648,13 +725,6 @@ const routeToTransferView = async (
         contentType: resolved.contentType
     });
 
-    if (sku === "process" && resolvedHint?.action === "process") {
-        try {
-            await processShareTargetData(preparedData, true);
-        } catch (error) {
-            console.warn("[ViewTransfer] Process SKU auto-AI failed:", error);
-        }
-    }
     if (resolved.destination === "home") {
         const capacitorNative = (() => {
             try {
@@ -691,6 +761,7 @@ const routeToTransferView = async (
     // WHY: md.u2re.space / dedicated SKU hosts live at `/`. Hard-nav to `/viewer` + SPA writing `/` is a bootloop.
     const destPath = pathForSkuHostView(resolved.routePath);
     const destNorm = destPath.replace(/\/+$/, "") || "/";
+    const alreadyOnDest = sameSkuHostViewPath(currentPath, destPath);
     let silentRoute = false;
     try {
         const sp = new URLSearchParams(globalThis?.location?.search || "");
@@ -700,7 +771,7 @@ const routeToTransferView = async (
     }
 
     const tryNavigateLiveShell = async (): Promise<boolean> => {
-        if (!delivered) return false;
+        if (!delivered && peekHeldIngressFiles().length === 0) return false;
         try {
             const { bootLoader } = await import("boot/BootLoader");
             const shell = bootLoader.getShell();
@@ -728,13 +799,24 @@ const routeToTransferView = async (
                     pending,
                     delivered
                 });
+                await flushHeldIngressToWorkCenter();
                 return true;
             }
 
-            // WHY: `force` bypasses same-view early-return so lifecycle `onShow` runs — fixes Work Center /
-            // viewer not repainting after automatic ingress while already on that route path.
+            /* WHY: `navigate(workcenter, undefined)` vs boot `?shell=minimal` fails sameRouteParams
+             * and remounts an empty composer after Files were already held / attached. */
+            if (activeView === resolved.destination) {
+                console.log("[ViewTransfer] Already on destination view — skip remount", {
+                    activeView,
+                    source
+                });
+                await flushHeldIngressToWorkCenter();
+                return true;
+            }
+
             await shell.navigate(resolved.destination, undefined, { force: true });
             console.log("[ViewTransfer] Routed through live shell:", resolved.routePath);
+            await flushHeldIngressToWorkCenter();
             return true;
         } catch (error) {
             console.warn("[ViewTransfer] Live shell routing failed, falling back to hard navigation:", error);
@@ -742,21 +824,16 @@ const routeToTransferView = async (
         }
     };
 
+    let leftTheDocument = false;
     if (silentRoute) {
-        if (currentPath !== destNorm) {
+        if (!alreadyOnDest) {
             console.log("[ViewTransfer] Silent mode: skipping navigation; delivery via channels only:", destNorm);
         } else {
             await tryNavigateLiveShell();
         }
-        return delivered;
-    }
-
-    if (resolved.destination === "home" || sku === "launcher") {
+    } else if (resolved.destination === "home" || sku === "launcher") {
         await tryNavigateLiveShell();
-        return delivered;
-    }
-
-    if (currentPath !== destNorm) {
+    } else if (!alreadyOnDest) {
         const liveOk = await tryNavigateLiveShell();
         if (!liveOk) {
             const native = (() => {
@@ -770,23 +847,40 @@ const routeToTransferView = async (
             /* INVARIANT: Capacitor SKUs have no `/viewer` path — hard-nav blanks the WebView. */
             if (native) {
                 console.warn("[ViewTransfer] Skipping hard navigation on Capacitor:", destNorm);
-                return delivered;
+            } else {
+                const nextUrl = new URL(globalThis?.location?.href);
+                nextUrl.pathname = destPath;
+                nextUrl.search = "";
+                nextUrl.hash = "";
+                if (pending) {
+                    nextUrl.searchParams.set("shared", "1");
+                }
+                console.log("[ViewTransfer] Navigating to resolved route:", nextUrl.toString());
+                leftTheDocument = true;
+                globalThis.location.href = nextUrl.toString();
             }
-            const nextUrl = new URL(globalThis?.location?.href);
-            nextUrl.pathname = destPath;
-            nextUrl.search = "";
-            nextUrl.hash = "";
-            if (pending) {
-                nextUrl.searchParams.set("shared", "1");
-            }
-            console.log("[ViewTransfer] Navigating to resolved route:", nextUrl.toString());
-            globalThis.location.href = nextUrl.toString();
         }
-        return delivered;
+    } else {
+        await tryNavigateLiveShell();
+        console.log("[ViewTransfer] Already on resolved route:", destNorm);
     }
 
-    await tryNavigateLiveShell();
-    console.log("[ViewTransfer] Already on resolved route:", destNorm);
+    if (!leftTheDocument && resolved.destination === "workcenter") {
+        await flushHeldIngressToWorkCenter();
+    }
+
+    /**
+     * WHY: auto-process after Work Center is mounted. Running AI before navigate
+     * posted `share-target-result` onto an unbound command bus (settings / cold boot).
+     * Hard-nav leaves processing to the next document (`?shared=1` + cache).
+     */
+    if (!leftTheDocument && sku === "process" && resolvedHint?.action === "process") {
+        try {
+            await processShareTargetData(preparedData, true);
+        } catch (error) {
+            console.warn("[ViewTransfer] Process SKU auto-AI failed:", error);
+        }
+    }
     return delivered;
 };
 
@@ -1235,8 +1329,8 @@ const tryServerSideProcessing = async (shareData: ShareDataInput, copyToClipboar
  * be staged or routed.
  */
 export const handleShareTarget = () => {
-    // WHY: Process PWA has no OS Share Target, but Launch Queue stages into this same
-    // consumer (`?shared=1` / cache). Do not return early — only the manifest stays share-off.
+    // INVARIANT: Process PWA/Web is a Share Target (`share_target`) and Launch Queue.
+    // `?shared=1` / cache replay still run even if a future settings flag turns OS share off.
     if (!allowProcessWebShareLaunch()) {
         console.log("[ShareTarget] Process PWA/Web OS share-target is off; launch-queue replay stays on");
     }
@@ -1323,6 +1417,11 @@ export const handleShareTarget = () => {
 
             if (content || type === "file" || pendingFiles) {
                 console.log("[ShareTarget] Routing merged share payload");
+                holdIngressFiles(
+                    Array.isArray(transferPayload.files)
+                        ? transferPayload.files.filter((file): file is File => file instanceof File)
+                        : []
+                );
                 try {
                     const delivered = await routeToTransferView(
                         transferPayload,
@@ -1694,6 +1793,8 @@ export const setupLaunchQueueConsumer = async () => {
                         staged
                     });
 
+                    holdIngressFiles(files);
+
                     // Show immediate feedback that files were received
                     showToast({
                         message: `Received ${files.length} file(s)`,
@@ -1713,10 +1814,15 @@ export const setupLaunchQueueConsumer = async () => {
 
                         if (!delivered) {
                             const url = new URL(globalThis?.location?.href);
-                            url.pathname = pathForSkuHostView("/share-target");
-                            url.searchParams.set('shared', '1');
-                            url.hash = '';
-                            globalThis.location.href = url.toString();
+                            url.pathname = pathForSkuHostView("/workcenter");
+                            url.search = "";
+                            url.searchParams.set("shared", "1");
+                            url.hash = "";
+                            if (sameSkuHostViewPath(globalThis.location.pathname, url.pathname)) {
+                                console.warn("[LaunchQueue] Already on process landing — skip /share-target hard-nav");
+                            } else {
+                                globalThis.location.href = url.toString();
+                            }
                         }
                     } else {
                         showToast({
@@ -1783,7 +1889,8 @@ let _ingressPwaPromise: Promise<void> | null = null;
 
 /**
  * Single entry for page boot: SW registration, share-target URL/cache pipeline, clipboard receivers, launch queue.
- * Called from {@link BootLoader} so share-target is not dead code and runs after settings but before shell paint-heavy work.
+ * Called from {@link BootLoader} after settings. Route/process waits for `cwsp:boot-ready`
+ * so Work Center can attach files (and auto-process) instead of dropping the payload.
  */
 export const initIngressPWA = async (): Promise<void> => {
     if (_ingressPwaPromise) return _ingressPwaPromise;

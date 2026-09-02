@@ -2,9 +2,9 @@
  * Filename: sku-ingress.ts
  * FullPath: modules/projects/subsystem/src/routing/channel/sku-ingress.ts
  * FIND:sku
- * TAG:sku,share-target,open-policy
- * Change date and time: 08.30.00_30.08.2026
- * Reason for changes: Explorer directory ingress stays in Explorer (Transfer Open in Folder).
+ * TAG:sku,share-target,open-policy,held-ingress
+ * Change date and time: 01.15.00_03.09.2026
+ * Reason for changes: Merge share+launch holds; flush same-heap Files onto live Work Center.
  */
 
 import { inferCwspSkuFromLocation, type CwspSku } from "../../other/config/ecosystem-skus";
@@ -30,16 +30,134 @@ export type SkuIngressAction = "open" | "attach" | "process" | "ask" | "shortcut
  * Hold them in memory so Work Center can still attach the real blobs.
  */
 const heldIngressFiles: File[] = [];
+const heldIngressListeners = new Set<(files: File[]) => void>();
 
-export const holdIngressFiles = (files?: File[] | null): void => {
-    heldIngressFiles.length = 0;
-    if (!Array.isArray(files)) return;
-    for (const file of files) {
-        if (file instanceof File) heldIngressFiles.push(file);
+const ingressFileKey = (file: File): string =>
+    `${file.name}|${file.size}|${file.lastModified}`;
+
+const notifyHeldIngress = (): void => {
+    if (!heldIngressFiles.length) return;
+    const snapshot = heldIngressFiles.slice();
+    for (const listener of heldIngressListeners) {
+        try {
+            listener(snapshot);
+        } catch {
+            /* view may be mid-teardown */
+        }
     }
 };
 
+export const holdIngressFiles = (files?: File[] | null): void => {
+    const incoming = Array.isArray(files) ? files.filter((file): file is File => file instanceof File) : [];
+    /* WHY: empty bootstrap / stripped pending must not wipe blobs already staged for Work Center. */
+    if (!incoming.length) return;
+    /* INVARIANT: share-target + launch-queue can arrive as two holds; replace would drop the first File. */
+    const seen = new Set(heldIngressFiles.map(ingressFileKey));
+    let added = 0;
+    for (const file of incoming) {
+        const key = ingressFileKey(file);
+        if (seen.has(key)) continue;
+        seen.add(key);
+        heldIngressFiles.push(file);
+        added += 1;
+    }
+    if (added === 0) {
+        notifyHeldIngress();
+        return;
+    }
+    notifyHeldIngress();
+};
+
+export const peekHeldIngressFiles = (): File[] => heldIngressFiles.slice();
+
 export const takeHeldIngressFiles = (): File[] => heldIngressFiles.splice(0, heldIngressFiles.length);
+
+/** Drop only the Files that a view already attached — keep the rest of a merged hold. */
+export const dropHeldIngressFiles = (files?: File[] | null): void => {
+    if (!files?.length) return;
+    const drop = new Set(
+        files.filter((file): file is File => file instanceof File).map(ingressFileKey)
+    );
+    if (!drop.size) return;
+    for (let i = heldIngressFiles.length - 1; i >= 0; i--) {
+        if (drop.has(ingressFileKey(heldIngressFiles[i]!))) heldIngressFiles.splice(i, 1);
+    }
+};
+
+type WorkCenterFlushHost = {
+    addFiles?: (files: File[]) => Promise<void>;
+    handleMessage?: (message: unknown) => Promise<void>;
+};
+
+const collectWorkCenterFlushHosts = (): WorkCenterFlushHost[] => {
+    if (typeof document === "undefined") return [];
+    const hosts: WorkCenterFlushHost[] = [];
+    const seen = new Set<Element>();
+    const add = (node: Element | null | undefined): void => {
+        if (!node || seen.has(node)) return;
+        seen.add(node);
+        hosts.push(node as unknown as WorkCenterFlushHost);
+    };
+    document.querySelectorAll("cw-workcenter-view").forEach(add);
+    document
+        .querySelectorAll("[data-shell], cw-shell-minimal, cw-shell-immersive, cw-shell-content, cw-shell-environment")
+        .forEach((shell) => {
+            (shell as HTMLElement).shadowRoot?.querySelectorAll("cw-workcenter-view").forEach(add);
+        });
+    return hosts;
+};
+
+/**
+ * Same-heap attach after share/launch. Unified `deliveredNow` is not proof chips painted
+ * (settle + supersede can skip `handleMessage`; `navigate(workcenter)` remounts an empty draft).
+ */
+export const flushHeldIngressToWorkCenter = async (): Promise<number> => {
+    const files = peekHeldIngressFiles();
+    if (!files.length) return 0;
+    notifyHeldIngress();
+    try {
+        const { postWorkCenterCommand } = await import("./workcenter-command-wire");
+        postWorkCenterCommand({ type: "attach.add", files });
+    } catch {
+        /* command bus optional — listeners + addFiles still run */
+    }
+    console.log("[sku-ingress] Flushing held ingress to Work Center", {
+        fileCount: files.length,
+        names: files.map((file) => file.name)
+    });
+    for (const host of collectWorkCenterFlushHosts()) {
+        try {
+            if (typeof host.addFiles === "function") await host.addFiles(files);
+            else if (typeof host.handleMessage === "function") {
+                await host.handleMessage({
+                    type: "content-attach",
+                    data: { files, fileCount: files.length }
+                });
+            }
+        } catch (error) {
+            console.warn("[sku-ingress] flush to Work Center failed", error);
+        }
+    }
+    return files.length;
+};
+
+/**
+ * Work Center subscribes here so a hold after `sessionReady` still paints chips.
+ * If files are already held, the listener runs immediately.
+ */
+export const onHeldIngressFiles = (listener: (files: File[]) => void): (() => void) => {
+    heldIngressListeners.add(listener);
+    if (heldIngressFiles.length) {
+        try {
+            listener(heldIngressFiles.slice());
+        } catch {
+            /* ignore */
+        }
+    }
+    return () => {
+        heldIngressListeners.delete(listener);
+    };
+};
 
 export type SkuIngressHint = {
     destination: "viewer" | "workcenter" | "explorer" | "home" | "network";

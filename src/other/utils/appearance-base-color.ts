@@ -147,8 +147,8 @@ export const registerColorProperty = (name: string, initialValue: string = "#5a9
             inherits: true,
             initialValue,
         });
-    } catch (error) {
-        console.debug(error);
+    } catch {
+        /* already registered — CSS.registerProperty is once-per-document */
     }
 }
 
@@ -306,7 +306,11 @@ const colorFromAppWallpaper = async (): Promise<string> => {
     try {
         const { resolveAppWallpaperUrl } = await import("@fest-lib/image");
         const url = await resolveAppWallpaperUrl();
-        if (url) return extractFromImage(url);
+        if (!url) return cached;
+        /* WHY: process.u2re.space does not ship /assets/wallpaper.jpg — fetch 404 + decode noise. */
+        if (/\/assets\/wallpaper\.jpg(?:$|[?#])/i.test(url)) return cached;
+        if (url.startsWith("data:") && !/^data:image\//i.test(url)) return cached;
+        return extractFromImage(url);
     } catch {
         /* image module unavailable */
     }
