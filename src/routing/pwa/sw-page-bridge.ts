@@ -17,6 +17,9 @@ import {
 } from "../channel/ShareTargetGateway";
 import { clearPendingProcessResults, readPendingProcessResults } from "./sw-result-wire";
 import { holdIngressFiles } from "../channel/sku-ingress";
+import { inferCwspSkuFromLocation } from "../../other/config/ecosystem-skus";
+import { classifyOpenKindFromPayload } from "../../other/config/open-policy";
+import { peekProcessIngressSettings, resolveProcessIngressKind } from "../../other/config/process-ingress";
 
 const RESULT_TYPES = new Set([
     "ai-result",
@@ -41,6 +44,15 @@ const remember = (key: string): boolean => {
         if (first) seenKeys.delete(first);
     }
     return true;
+};
+
+const shareIngressKey = (raw: unknown): string => {
+    const row = raw && typeof raw === "object" ? (raw as Record<string, unknown>) : {};
+    const ts = Number(row.timestamp || 0);
+    const files = Array.isArray(row.files) ? row.files as Array<{ name?: string; size?: number }> : [];
+    const fileSig = files.map((file) => `${file?.name || ""}:${file?.size || 0}`).join(",");
+    if (ts > 0) return `share:${ts}:${fileSig}`;
+    return `share:${String(row.id || "")}:${fileSig}:${String(row.text || row.title || "").slice(0, 80)}`;
 };
 
 const resultKey = (type: string, text: string, raw: unknown): string => {
@@ -106,6 +118,46 @@ export const deliverShareTargetInput = async (data: unknown): Promise<boolean> =
     const files = Array.isArray(payload.files)
         ? payload.files.filter((file): file is File => typeof File !== "undefined" && file instanceof File)
         : [];
+    if (!payload.timestamp) payload.timestamp = Date.now();
+    /* INVARIANT: Document paints the file. Process-kind policy must not steal it into AI/WC. */
+    if (inferCwspSkuFromLocation() === "document") {
+        try {
+            const { ingestSharePayload } = await import("./sw-handling");
+            return await ingestSharePayload(
+                {
+                    ...payload,
+                    files,
+                    fileCount: files.length || Number(payload.fileCount || 0),
+                    timestamp: Number(payload.timestamp)
+                } as Parameters<typeof ingestSharePayload>[0],
+                "share-target"
+            );
+        } catch {
+            return false;
+        }
+    }
+    const kind = classifyOpenKindFromPayload({
+        files,
+        text: typeof payload.text === "string" ? payload.text : undefined,
+        url: typeof payload.url === "string" ? payload.url : undefined,
+        title: typeof payload.title === "string" ? payload.title : undefined,
+        hint: payload.hint as { filename?: string; source?: string; destination?: string; action?: string } | undefined
+    });
+    const row = resolveProcessIngressKind(peekProcessIngressSettings(), kind);
+    /* INVARIANT: process-mode shares run AI → clipboard; do not stage chat chips. */
+    if (row.mode === "process") {
+        try {
+            const { processShareTargetData } = await import("./sw-handling");
+            return await processShareTargetData(
+                { ...payload, files, fileCount: files.length || Number(payload.fileCount || 0) } as Parameters<
+                    typeof processShareTargetData
+                >[0],
+                true
+            );
+        } catch {
+            return false;
+        }
+    }
     if (files.length) holdIngressFiles(files);
     return deliverSwResultToWorkCenter("share-target-input", payload, String(payload.text || payload.title || ""));
 };
@@ -117,7 +169,7 @@ export const deliverSwResultToWorkCenter = async (
 ): Promise<boolean> => {
     if (type === "share-received") return deliverShareTargetInput(data);
     const text = extraText.trim() || readProcessApiResultText(data);
-    const key = resultKey(type, text, data);
+    const key = type === "share-target-input" ? shareIngressKey(data) : resultKey(type, text, data);
     if (!remember(key)) return false;
     const payload = asWorkCenterPayload(type, data, text);
     postWorkCenterCommand({

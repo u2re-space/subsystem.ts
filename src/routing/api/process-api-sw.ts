@@ -6,8 +6,9 @@
  * Service-worker / Vite Connect handler for `/api/process/*`.
  * WHY: Workbox NetworkOnly used to swallow these POSTs before the legacy
  * `/api/processing` route; Vite Dev has no Fastify unless this middleware runs.
+ * INVARIANT: a failed SW local fallback must not become the response — forward to Fastify.
  */
-import { isProcessApiPath, PROCESS_API_PUBLIC_ORIGIN } from "./process-api-path.ts";
+import { isProcessApiPath } from "./process-api-path.ts";
 import {
     handleProcessApiPost,
     processApiJsonResponse,
@@ -63,12 +64,21 @@ export const handleProcessApiFetch = async (request: Request): Promise<Response>
     }
     const raw = await request.text();
     const body = parseBody(raw);
-    const local = await runLocalProcessFallback(body, "sw");
-    if (local) return processApiJsonResponse(local);
+    const contentType = String(body?.contentType || "").toLowerCase();
+    /* WHY: image/base64 shares must hit Fastify recognize — SW chat/completions fetch fails
+     * (`fetch failed`) and used to be returned as the final 200. */
+    const skipLocal =
+        contentType === "base64" ||
+        contentType.startsWith("image") ||
+        String(body?.processingType || "").includes("recognize");
+    if (!skipLocal) {
+        const local = await runLocalProcessFallback(body, "sw");
+        if (local && local.ok !== false) return processApiJsonResponse(local);
+    }
 
     try {
-        const publicPath = pathname.startsWith("/api/process") ? pathname : "/api/process/processing";
-        const net = await fetch(`${PROCESS_API_PUBLIC_ORIGIN}${publicPath}`, {
+        /* INVARIANT: fetch() inside the SW goes to the network, not this handler. */
+        const net = await fetch(request.url, {
             method: "POST",
             headers: { "Content-Type": "application/json", Accept: "application/json" },
             body: raw || "{}",
@@ -76,7 +86,9 @@ export const handleProcessApiFetch = async (request: Request): Promise<Response>
         });
         if (net.ok) {
             const type = net.headers.get("content-type") || "";
-            if (type.includes("json")) return net;
+            if (type.includes("json") || type.includes("text/plain")) return net;
+            const text = await net.clone().text();
+            if (text && !/^\s*</.test(text)) return net;
         }
     } catch {
         /* miss */

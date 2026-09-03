@@ -2053,6 +2053,7 @@ export const saveSettings = async (settings: AppSettings) => {
         console.warn("[Settings] AirPad runtime sync failed:", e);
     }
     updateWebDavSettings(merged)?.catch?.(console.warn.bind(console));
+    rememberProcessIngressSettings(merged);
     return merged;
 };
 

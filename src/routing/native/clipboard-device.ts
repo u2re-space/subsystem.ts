@@ -165,10 +165,17 @@ async function writeViaCwsBridgeImage(
 }
 
 async function writeViaCwsBridge(text: string): Promise<boolean> {
-    if (!isCapacitorCwsNativeShell()) return false;
+    if (!isCapacitorCwsNativeShell() && !isCapacitorNative()) return false;
     try {
         const result = await invokeCwsNative("clipboard:write-local", { text });
-        return Boolean((result as { ok?: boolean })?.ok);
+        if (result?.ok === false) return false;
+        const echo = result?.echo;
+        if (echo && typeof echo === "object") {
+            const err = String((echo as { error?: unknown }).error || "");
+            if (err.includes("unhandled")) return false;
+            if ((echo as { ok?: unknown }).ok === false) return false;
+        }
+        return result?.ok === true;
     } catch {
         return false;
     }
@@ -290,11 +297,17 @@ export async function writeClipboardTextToDevice(text: string): Promise<void> {
         throw new Error("Desktop control clipboard write failed");
     }
 
+    if (isCapacitorNative()) {
+        /* WHY: Process/Launcher APKs have CwsBridge, not @capacitor/clipboard in gradle.
+         * navigator.clipboard.writeText throws after async Share (no user gesture). */
+        if (await writeViaCwsBridge(value)) return;
+        if (await writeCapacitorClipboardText(value)) return;
+        throw new Error("Clipboard write unavailable");
+    }
+
     if (await writeViaDesktopControl(value)) return;
 
     if (await writeViaCwsBridge(value)) return;
-
-    if (isCapacitorNative() && (await writeCapacitorClipboardText(value))) return;
 
     if (globalThis.navigator?.clipboard?.writeText) {
         await globalThis.navigator.clipboard.writeText(value);

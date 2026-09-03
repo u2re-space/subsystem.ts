@@ -12,6 +12,7 @@
 
 import { PROCESS_API_PREFIX, PROCESS_API_PUBLIC_ORIGIN, isProcessApiPath } from "./process-api-path.ts";
 import { readProcessApiResultText } from "./process-api-result.ts";
+import { runLocalProcessFallback } from "./process-local.ts";
 
 export { PROCESS_API_PREFIX, PROCESS_API_PUBLIC_ORIGIN, isProcessApiPath };
 export { readProcessApiResultText };
@@ -60,9 +61,9 @@ export const needsRemoteProcessApi = (): boolean => {
     try {
         const protocol = String(globalThis.location?.protocol || "").toLowerCase();
         if (isExtensionProtocol(protocol)) return true;
-        /* WHY: Capacitor WebView same-origin is SW + Java Process API, not process.u2re.space first. */
-        if (isCapacitorNative()) return false;
         const host = String(globalThis.location?.hostname || "").toLowerCase();
+        /* WHY: Capacitor bundled origin (localhost / capacitor) is the SPA, not Fastify. */
+        if (isCapacitorNative()) return !PROCESS_SAME_ORIGIN_HOSTS.has(host);
         if (!host) return true;
         return !PROCESS_SAME_ORIGIN_HOSTS.has(host);
     } catch {
@@ -113,6 +114,15 @@ export const processApiAuthFromSettings = (
     };
 };
 
+const looksLikeHtmlPayload = (value: unknown): boolean => {
+    const text = typeof value === "string"
+        ? value
+        : value && typeof value === "object" && "error" in value
+          ? String((value as { error?: unknown }).error || "")
+          : "";
+    return /^\s*</.test(text) || /<!doctype\s+html/i.test(text) || /data-cwsp-sku/i.test(text);
+};
+
 /** True when :443 never reached a working CWSP core — caller should run in-browser AI. */
 export const isProcessApiUnavailable = (posted: {
     ok: boolean;
@@ -121,10 +131,12 @@ export const isProcessApiUnavailable = (posted: {
     error?: string;
 }): boolean => {
     if (posted.status === 0 || posted.status >= 500) return true;
+    if (looksLikeHtmlPayload(posted.error) || looksLikeHtmlPayload(posted.json)) return true;
     const error = String(posted.error || "").toLowerCase();
     if (/failed to fetch|networkerror|econnrefused|certificate|aborted/.test(error)) return true;
     if (!posted.json || typeof posted.json !== "object") return !posted.ok;
     const row = posted.json as { ok?: unknown; layer?: unknown; error?: unknown; hint?: unknown };
+    if (looksLikeHtmlPayload(row.error)) return true;
     if (row.ok !== false) return false;
     const detail = `${row.error || ""} ${row.hint || ""}`.toLowerCase();
     return row.layer === "api" || /unreachable|econnrefused|certificate|bad gateway/.test(detail);
@@ -147,6 +159,16 @@ const fetchProcessApi = async (
             signal: init?.signal
         });
         const text = await res.text();
+        const html =
+            looksLikeHtmlPayload(text) ||
+            String(res.headers.get("content-type") || "").toLowerCase().includes("text/html");
+        if (html) {
+            return {
+                ok: false,
+                status: res.status || 404,
+                json: { ok: false, layer: "api", error: "Process API returned HTML" }
+            };
+        }
         let json: unknown = null;
         try {
             json = text ? JSON.parse(text) : null;
@@ -223,6 +245,10 @@ export const postProcessApi = async (
     for (const url of urls) {
         last = await fetchProcessApi(url, suffix, payload, init);
         if (!isProcessApiUnavailable(last)) return last;
+    }
+    if (suffix !== "health") {
+        const local = await runLocalProcessFallback(payload, "page");
+        if (local && local.ok !== false) return { ok: true, status: 200, json: local };
     }
     return last ?? { ok: false, status: 0, json: null, error: "Process API unavailable" };
 };

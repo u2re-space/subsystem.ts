@@ -25,6 +25,21 @@ import { peekProcessIngressSettings, resolveProcessIngressKind } from "../../oth
 
 export type SkuIngressAction = "open" | "attach" | "process" | "ask" | "shortcut" | "wallpaper";
 
+/** Android Open-with / Share often ships `file:`/`content:` — that is not a web URL. */
+export const isAndroidLocalShareUri = (value?: string | null): boolean =>
+    /^(file|content):/i.test(String(value || "").trim());
+
+export const filenameFromLocalShareUri = (value?: string | null): string => {
+    const raw = String(value || "").trim();
+    if (!raw) return "";
+    try {
+        const path = decodeURIComponent(raw.replace(/^(?:file|content):\/\//i, "").split("?")[0] || "");
+        return path.split("/").filter(Boolean).pop() || "";
+    } catch {
+        return "";
+    }
+};
+
 /**
  * Same-tab File objects die when unified messaging queues through IDB/JSON.
  * Hold them in memory so Work Center can still attach the real blobs.
@@ -45,6 +60,18 @@ const notifyHeldIngress = (): void => {
             /* view may be mid-teardown */
         }
     }
+};
+
+/** Hold Files only for attach-mode kinds. Process-mode shares must not stage chat chips. */
+export const holdIngressFilesForPolicy = (
+    files?: File[] | null,
+    payload?: IngressProbe,
+    settings?: AppSettings | null
+): void => {
+    if (payload && resolveProcessIngressKind(settings || peekProcessIngressSettings(), classifyOpenKindFromPayload(payload)).mode === "process") {
+        return;
+    }
+    holdIngressFiles(files);
 };
 
 export const holdIngressFiles = (files?: File[] | null): void => {
@@ -317,6 +344,21 @@ export const skuIngressHint = (
     const sink = resolveOpenPolicy(opts?.openPolicy || peekOpenPolicy(), surface, kind, channels);
     const skuDest = skuDefaultDestination(sku);
 
+    /* INVARIANT: Process SKU attach|process is only `processIngress.kinds.*.mode`.
+     * Open-policy viewer/document sinks must not steal attach into draft or force process. */
+    if (sku === "process") {
+        const row = resolveProcessIngressKind(settings, kind);
+        return {
+            destination: "workcenter",
+            action: row.mode === "attach" ? "attach" : "process",
+            filename,
+            source: path || payload.hint?.source,
+            contentType: kind,
+            instructionId: row.instructionId,
+            copyToClipboard: row.copyToClipboard
+        };
+    }
+
     /* User-set sink wins over SKU lock. `ask` keeps the receiving SKU. */
     if (surface && sink !== "ask") {
         /* WHY: Transfer "Open in Folder" is a directory path — never hand off to Document. */
@@ -332,12 +374,9 @@ export const skuIngressHint = (
         const destination = sinkToDestination(sink, skuDest || "workcenter");
         if (destination === "workcenter") {
             const row = resolveProcessIngressKind(settings, kind);
-            const hinted = payload.hint?.action;
-            const action: SkuIngressAction =
-                hinted === "attach" || hinted === "process" ? hinted : row.mode;
             return {
                 destination,
-                action,
+                action: row.mode === "attach" ? "attach" : "process",
                 filename,
                 source: path || payload.hint?.source,
                 contentType: kind,
@@ -348,7 +387,7 @@ export const skuIngressHint = (
         }
         return {
             destination,
-            action: sinkToAction(sink, sku === "process" ? "process" : "open"),
+            action: sinkToAction(sink, "open"),
             filename,
             source: path || payload.hint?.source,
             contentType: kind,
@@ -364,21 +403,6 @@ export const skuIngressHint = (
             filename,
             contentType: kind,
             sink: "transfer"
-        };
-    }
-
-    if (sku === "process") {
-        const row = resolveProcessIngressKind(settings, kind);
-        const hinted = payload.hint?.action;
-        const action: SkuIngressAction =
-            hinted === "attach" || hinted === "process" ? hinted : row.mode;
-        return {
-            destination: "workcenter",
-            action,
-            filename,
-            contentType: kind,
-            instructionId: row.instructionId,
-            copyToClipboard: row.copyToClipboard
         };
     }
 

@@ -13,6 +13,17 @@ type ClipboardModule = {
     };
 };
 
+const clipboardFromCapacitorPlugins = (): ClipboardModule["Clipboard"] | null => {
+    try {
+        const plugins = (globalThis as {
+            Capacitor?: { Plugins?: { Clipboard?: ClipboardModule["Clipboard"] } };
+        }).Capacitor?.Plugins;
+        return plugins?.Clipboard?.write ? plugins.Clipboard : null;
+    } catch {
+        return null;
+    }
+};
+
 const loadClipboardModule = async (): Promise<ClipboardModule | null> => {
     // WHY: MV3 ServiceWorkerGlobalScope forbids import(); Capacitor clipboard is WebView-only.
     try {
@@ -22,6 +33,8 @@ const loadClipboardModule = async (): Promise<ClipboardModule | null> => {
     } catch {
         return null;
     }
+    const registered = clipboardFromCapacitorPlugins();
+    if (registered) return { Clipboard: registered };
     for (const pkg of CLIPBOARD_PKGS) {
         try {
             return (await import(/* @vite-ignore */ pkg)) as ClipboardModule;

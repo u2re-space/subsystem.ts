@@ -6,6 +6,7 @@
  *
  * Process panel: per-kind Share Target / Launch Queue / Capacitor policy.
  * INVARIANT: attach vs process is only `ai.processIngress.kinds.*.mode`.
+ * INVARIANT: process implies background AI + clipboard; no extra copy/daemon checkboxes.
  */
 
 import { bindContributionFields, collectContributionFields, registerSettingsContribution } from "../../SettingsContributions";
@@ -17,7 +18,6 @@ import {
 } from "../../process-ingress";
 import { OPEN_KINDS } from "../../open-policy";
 import {
-    settingsCheckboxField,
     settingsHeading,
     settingsHint,
     settingsPanel,
@@ -58,21 +58,8 @@ const fillInstructionSelects = (panel: HTMLElement, settings: AppSettings): void
 const kindBlock = (kind: ProcessIngressKind): HTMLElement[] => [
     settingsHeading(PROCESS_INGRESS_KIND_LABELS[kind]),
     settingsSelectField(`When ${PROCESS_INGRESS_KIND_LABELS[kind].toLowerCase()} arrives`, `ai.processIngress.kinds.${kind}.mode`, MODE_OPTIONS),
-    instructionSelect("Default instruction", `ai.processIngress.kinds.${kind}.instructionId`),
-    settingsCheckboxField("Copy AI result to clipboard", `ai.processIngress.kinds.${kind}.copyToClipboard`)
+    instructionSelect("Default instruction", `ai.processIngress.kinds.${kind}.instructionId`)
 ];
-
-const isNativeSettingsSurface = (): boolean => {
-    try {
-        const root = document.documentElement;
-        const shell = String(root.dataset.cwspNativeShell || root.dataset.cwspSurface || "").toLowerCase();
-        if (shell.includes("capacitor") || shell === "native") return true;
-        const g = globalThis as { Capacitor?: { isNativePlatform?: () => boolean }; __CWS_NATIVE__?: boolean };
-        return Boolean(g.Capacitor?.isNativePlatform?.() || g.__CWS_NATIVE__);
-    } catch {
-        return false;
-    }
-};
 
 const dropRetiredProcessFlags = (settings: AppSettings): void => {
     if (settings.ai) {
@@ -96,16 +83,8 @@ export const registerWorkcenterSettingsContribution = (): (() => void) =>
         render: () =>
             settingsPanel("workcenter", "Process", [
                 settingsHint(
-                    "Share Target, file open, and Launch Queue use the action for each type. Attach puts the file in chat. Process runs AI (and copies the result when that box is on)."
+                    "Share Target, Android Share, Open with, and Launch Queue use one action per type. Attach puts the file in chat. Process runs AI in the background and writes the result to the clipboard."
                 ),
-                ...(isNativeSettingsSurface()
-                    ? [
-                          settingsCheckboxField(
-                              "Android: keep background service for clipboard-write",
-                              "ai.processIngress.backgroundClipboard"
-                          )
-                      ]
-                    : []),
                 settingsHeading("Incoming file types"),
                 ...OPEN_KINDS.flatMap((kind) => kindBlock(kind))
             ]),
@@ -120,6 +99,14 @@ export const registerWorkcenterSettingsContribution = (): (() => void) =>
             collectContributionFields(panel, settings);
             settings.ai = settings.ai || {};
             settings.ai.processIngress = mergeProcessIngress(settings.ai.processIngress);
+            const ingress = settings.ai.processIngress;
+            let anyProcess = false;
+            for (const kind of OPEN_KINDS) {
+                const row = ingress.kinds[kind];
+                row.copyToClipboard = row.mode === "process";
+                if (row.mode === "process") anyProcess = true;
+            }
+            ingress.backgroundClipboard = anyProcess;
             dropRetiredProcessFlags(settings);
         }
     });

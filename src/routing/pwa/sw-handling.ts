@@ -14,7 +14,7 @@ import { showToast } from "../../boot/toast";
 import { pathForSkuHostView, sameSkuHostViewPath } from "../../boot/history-base";
 import { dropStaleServiceWorkerRegistrations, ensureServiceWorkerRegistered } from "./sw-url";
 import { classifyIngressFile, classifyIngressFromBasename, dispatchViewTransfer, type ViewTransferHint } from "../channel/ViewTransferRouting";
-import { applyLauncherIngress, flushHeldIngressToWorkCenter, holdIngressFiles, installShellImageOpenListener, peekHeldIngressFiles, refineLauncherImageIngress, skuIngressHint } from "../channel/sku-ingress";
+import { applyLauncherIngress, flushHeldIngressToWorkCenter, holdIngressFiles, holdIngressFilesForPolicy, installShellImageOpenListener, isAndroidLocalShareUri, peekHeldIngressFiles, refineLauncherImageIngress, skuIngressHint } from "../channel/sku-ingress";
 import { inferCwspSkuFromLocation, stashSkuHandoff } from "../../other/config/ecosystem-skus";
 import { bindDirectoryForLaunchedFiles } from "@fest-lib/lure";
 import {
@@ -45,10 +45,8 @@ const storeShareTargetPayloadToCache = (
 export { consumeCachedShareTargetPayload, storeShareTargetPayloadToCache };
 import { waitForIngressPipelineSlot } from "../policies/ingress-pipeline-guard";
 import { summarizeForLog } from "../channel/LogSanitizer";
-import { unifiedMessaging } from "../channel/UnifiedMessaging";
 import { loadSettings } from "com/config/Settings";
 import { BROADCAST_CHANNELS } from "com/config/Names";
-import { postWorkCenterCommand } from "../channel/workcenter-command-wire";
 import { postProcessApi, processApiAuthFromSettings, readProcessApiResultText } from "../api/process-api";
 import { classifyOpenKindFromPayload } from "../../other/config/open-policy";
 import {
@@ -57,8 +55,10 @@ import {
     instructionTextForIngress,
     allowProcessWebShareLaunch,
     allowProcessWebLaunchQueue,
+    peekProcessIngressSettings,
     rememberProcessIngressSettings,
     resolveProcessIngressKind,
+    shouldAttachProcessIngress,
     writeProcessIngressClipboard
 } from "../../other/config/process-ingress";
 
@@ -140,8 +140,10 @@ const waitForBootReady = (timeoutMs = 8000): Promise<void> => {
 };
 
 const recentShareRoute = new Map<string, number>();
+let shareTargetBroadcastBound = false;
 const ingressRouteFingerprint = (shareData: ShareDataInput): string =>
     [
+        shareData.timestamp || "",
         shareData.title || "",
         (shareData.text || "").slice(0, 64),
         shareData.url || shareData.sharedUrl || "",
@@ -452,8 +454,8 @@ const inferShareContentType = (shareData: ShareDataInput): "markdown" | "text" |
         }
     }
 
-    if (text) return "text";
-    if (url) return "url";
+    if (text && !isAndroidLocalShareUri(text)) return "text";
+    if (url && !isAndroidLocalShareUri(url)) return "url";
     if (fcEarly > 0) return "file";
     return "other";
 };
@@ -630,12 +632,26 @@ const routeToTransferView = async (
     await waitForBootReady();
     await waitForIngressPipelineSlot();
 
-    const preparedData = await hydrateTextPayloadFromFiles(shareData);
+    let loadedSettings: Awaited<ReturnType<typeof loadSettings>> | null = null;
+    try {
+        loadedSettings = await loadSettings().catch(() => null);
+        rememberProcessIngressSettings(loadedSettings);
+        const { rememberOpenPolicyFromSettings } = await import("../../other/config/open-policy");
+        rememberOpenPolicyFromSettings(loadedSettings);
+    } catch {
+        /* settings optional — per-kind defaults still apply */
+    }
+
+    const skuEarly = inferCwspSkuFromLocation();
+    const kindEarly = classifyOpenKindFromPayload(shareData);
+    const attachMode =
+        skuEarly === "process" && resolveProcessIngressKind(loadedSettings, kindEarly).mode === "attach";
+    /* WHY: attach must keep Files as chips. Copying the body into `text` dumps it into the composer. */
+    const preparedData = attachMode ? shareData : await hydrateTextPayloadFromFiles(shareData);
 
     const files = Array.isArray(preparedData.files)
         ? preparedData.files.filter((file): file is File => file instanceof File)
         : [];
-    holdIngressFiles(files);
 
     console.log("[ViewTransfer] Pipeline input:", summarizeForLog({
         source,
@@ -649,16 +665,6 @@ const routeToTransferView = async (
         imageCountReported: preparedData.imageCount,
         timestamp: preparedData.timestamp
     }));
-
-    let loadedSettings: Awaited<ReturnType<typeof loadSettings>> | null = null;
-    try {
-        loadedSettings = await loadSettings().catch(() => null);
-        rememberProcessIngressSettings(loadedSettings);
-        const { rememberOpenPolicyFromSettings } = await import("../../other/config/open-policy");
-        rememberOpenPolicyFromSettings(loadedSettings);
-    } catch {
-        /* settings optional — per-kind defaults still apply */
-    }
 
     const sku = inferCwspSkuFromLocation();
     const skuHint = await refineLauncherImageIngress(
@@ -691,6 +697,30 @@ const routeToTransferView = async (
         inputHint: summarizeForLog(hint),
         resolvedHint: summarizeForLog(resolvedHint)
     });
+
+    const ingressRow = resolveProcessIngressKind(
+        loadedSettings,
+        classifyOpenKindFromPayload({
+            ...preparedData,
+            files,
+            hint: resolvedHint
+        })
+    );
+    /* INVARIANT: live kind mode wins over a stale hint.action=process. */
+    const processBackground = sku === "process" && ingressRow.mode === "process";
+    if (!processBackground) holdIngressFiles(files);
+    /**
+     * WHY: process = background AI → clipboard. Do not attach files, remount Work Center,
+     * or enqueue content-attach.
+     */
+    if (processBackground) {
+        try {
+            await processShareTargetData(preparedData, true);
+        } catch (error) {
+            console.warn("[ViewTransfer] Process SKU background AI failed:", error);
+        }
+        return true;
+    }
 
     const { delivered, resolved } = await dispatchViewTransfer({
         source,
@@ -860,19 +890,15 @@ const routeToTransferView = async (
     if (!leftTheDocument && resolved.destination === "workcenter") {
         await flushHeldIngressToWorkCenter();
     }
-
-    /**
-     * WHY: auto-process after Work Center is mounted. Running AI before navigate
-     * posted `share-target-result` onto an unbound command bus (settings / cold boot).
-     * Hard-nav leaves processing to the next document (`?shared=1` + cache).
-     */
-    if (!leftTheDocument && sku === "process" && resolvedHint?.action === "process") {
+    if (!leftTheDocument && resolved.destination === "viewer") {
         try {
-            await processShareTargetData(preparedData, true);
-        } catch (error) {
-            console.warn("[ViewTransfer] Process SKU auto-AI failed:", error);
+            const { replayQueuedMessagesForDestination } = await import("../channel/UnifiedMessaging");
+            await replayQueuedMessagesForDestination("viewer");
+        } catch {
+            /* viewer already painted via dispatch */
         }
     }
+
     return delivered;
 };
 
@@ -915,30 +941,52 @@ export const ingestSharePayload = async (
     } catch {
         /* cache optional */
     }
+    let settings: Awaited<ReturnType<typeof loadSettings>> | null = null;
     try {
-        await deliverShareTargetInput({
-            ...shareData,
-            files,
-            source: shareData.source || source,
-            fileCount: files.length || shareData.fileCount
-        });
+        settings = await loadSettings().catch(() => null);
+        rememberProcessIngressSettings(settings);
+        /* WHY: Document SKU has no Work Center. deliverShareTargetInput would recurse via ingest. */
+        if (
+            inferCwspSkuFromLocation() !== "document" &&
+            shouldAttachProcessIngress(settings, { ...shareData, files })
+        ) {
+            await deliverShareTargetInput({
+                ...shareData,
+                files,
+                source: shareData.source || source,
+                fileCount: files.length || shareData.fileCount
+            });
+        }
     } catch {
         /* Work Center command bus optional — SKU route still runs */
     }
     const file = files[0];
     try {
-        const looksText =
-            !!file &&
-            (/^text\/|json|markdown|xml|javascript|typescript/i.test(String(file.type || "")) ||
-                /\.(?:md|markdown|txt|json|html?|css|js|ts|tsx|yml|yaml|csv|log|xml)$/i.test(file.name));
-        const content = looksText && file ? await file.text() : String(shareData.text || "");
-        if (content.trim() || file?.name) {
-            stashSkuHandoff({
-                dest: inferCwspSkuFromLocation() === "process" ? "workcenter" : "viewer",
-                content,
-                filename: String(file?.name || shareData.title || ""),
-                src: String(shareData.url || shareData.sharedUrl || "")
-            });
+        const dest = inferCwspSkuFromLocation() === "process" ? "workcenter" : "viewer";
+        const attach = shouldAttachProcessIngress(settings, { ...shareData, files });
+        /* WHY: Process attach is a chip. Dumping file.text() into handoff became the composer draft. */
+        if (dest === "workcenter" && attach) {
+            if (file?.name || shareData.title) {
+                stashSkuHandoff({
+                    dest,
+                    filename: String(file?.name || shareData.title || ""),
+                    src: String(shareData.url || shareData.sharedUrl || "")
+                });
+            }
+        } else {
+            const looksText =
+                !!file &&
+                (/^text\/|json|markdown|xml|javascript|typescript/i.test(String(file.type || "")) ||
+                    /\.(?:md|markdown|txt|json|html?|css|js|ts|tsx|yml|yaml|csv|log|xml)$/i.test(file.name));
+            const content = looksText && file ? await file.text() : String(shareData.text || "");
+            if (content.trim() || file?.name) {
+                stashSkuHandoff({
+                    dest,
+                    content,
+                    filename: String(file?.name || shareData.title || ""),
+                    src: String(shareData.url || shareData.sharedUrl || "")
+                });
+            }
         }
     } catch {
         /* sessionStorage optional */
@@ -946,50 +994,97 @@ export const ingestSharePayload = async (
     return routeToTransferView(shareData, source, extractTransferHint(shareData), capacitorNative);
 };
 
-/**
- * Extract processable content from share data
- * Handles various formats from SW, server, or direct input
- */
+const IMAGE_PROCESS_TASK =
+    "Extract all readable text, equations, tables, and data from this image. " +
+    "Output the recognized content now using the user's format rules. " +
+    "Do not ask what to do with the image.";
+
+const resolveShareCustomInstruction = async (
+    settings: Awaited<ReturnType<typeof loadSettings>> | null,
+    instructionId?: string
+): Promise<string> => {
+    const fromSettings = instructionTextForIngress(settings, instructionId);
+    if (fromSettings) return fromSettings;
+    try {
+        const { getActiveInstructionText } = await import("com/service/instructions/CustomInstructions");
+        const active = String(await getActiveInstructionText() || "").trim();
+        if (active) return active;
+    } catch {
+        /* settings already consulted */
+    }
+    try {
+        const { DEFAULT_INSTRUCTION_TEMPLATES } = await import("com/service/instructions/templates");
+        const id = String(instructionId || "").trim().toLowerCase();
+        const byLabel = id
+            ? DEFAULT_INSTRUCTION_TEMPLATES.find((item) => String(item.label || "").trim().toLowerCase() === id)
+            : null;
+        return String((byLabel || DEFAULT_INSTRUCTION_TEMPLATES[0])?.instruction || "").trim();
+    } catch {
+        return "";
+    }
+};
+
+const isImageSharePayload = (
+    kind: string,
+    file?: File | Blob | null,
+    content?: string
+): boolean => {
+    if (kind === "image") return true;
+    const type = file && "type" in file ? String(file.type || "") : "";
+    if (type.startsWith("image/")) return true;
+    return typeof content === "string" && content.startsWith("data:image/");
+};
+
+/** Extract processable content from share data (SW, server, or direct input). */
 const extractShareContent = (shareData: ShareDataInput): { content: string | null; type: 'text' | 'url' | 'file' | null } => {
-    // Check for text content first
+    const files = Array.isArray(shareData.files)
+        ? shareData.files.filter((file): file is File => typeof File !== "undefined" && (file instanceof File || file instanceof Blob))
+        : [];
+    if (files.length) return { content: null, type: "file" };
+    /* WHY: launch-queue + cache replay often has fileCount without blobs — leftover title/text
+     * must not start a second AI job (logs: type text, length 59). */
+    if (Number(shareData.fileCount || 0) > 0) return { content: null, type: null };
+
     const text = shareData.text?.trim();
-    if (text) {
-        return { content: text, type: 'text' };
+    if (text && !isAndroidLocalShareUri(text)) {
+        return { content: text, type: "text" };
     }
 
-    // Check for URL (handle both 'url' and 'sharedUrl' from server)
     const url = (shareData.url || shareData.sharedUrl)?.trim();
-    if (url) {
-        return { content: url, type: 'url' };
+    if (url && !isAndroidLocalShareUri(url)) {
+        return { content: url, type: "url" };
     }
 
-    // Check for title as fallback
     const title = shareData.title?.trim();
-    if (title) {
-        return { content: title, type: 'text' };
-    }
-
-    // Check for actual file objects
-    if (Array.isArray(shareData.files) && shareData.files.length > 0) {
-        const firstFile = shareData.files[0];
-        if (firstFile instanceof File || firstFile instanceof Blob) {
-            return { content: null, type: 'file' };
-        }
+    if (title && !/\.(png|jpe?g|webp|gif|pdf|txt|md)$/i.test(title)) {
+        return { content: title, type: "text" };
     }
 
     return { content: null, type: null };
 };
 
-const shareProcessKey = (shareData: ShareDataInput): string =>
-    [
-        shareData.timestamp || 0,
+const shareProcessKey = (shareData: ShareDataInput): string => {
+    const files = Array.isArray(shareData.files)
+        ? shareData.files.filter((file): file is File => typeof File !== "undefined" && file instanceof File)
+        : [];
+    const fileSig = files.map((file) => `${file.name}:${file.size}`).join(",")
+        || `${shareData.title || ""}:${shareData.fileCount || 0}`;
+    return fileSig || [
         shareData.title || "",
         (shareData.text || "").slice(0, 64),
-        shareData.url || shareData.sharedUrl || "",
-        shareData.fileCount || shareData.files?.length || 0
+        shareData.url || shareData.sharedUrl || ""
     ].join("|");
+};
 
 const recentShareProcess = new Map<string, Promise<boolean>>();
+
+const toastProcessError = (raw: unknown): string => {
+    const text = String(raw || "").replace(/\s+/g, " ").trim();
+    if (!text || /^\s*</.test(text) || /<!doctype|data-cwsp-sku/i.test(text)) {
+        return "Process API unavailable";
+    }
+    return text.slice(0, 140);
+};
 
 const extractProcessApiText = (result: unknown): string => {
     if (!result || typeof result !== "object") return "";
@@ -1009,52 +1104,24 @@ const deliverProcessIngressResult = async (
     raw: unknown,
     copyToClipboard: boolean
 ): Promise<void> => {
-    if (copyToClipboard && text.trim()) {
-        const wrote = await writeProcessIngressClipboard(text);
-        try {
-            const clipboardChannel = new BroadcastChannel(CHANNELS.CLIPBOARD);
-            clipboardChannel.postMessage({ type: "copy", data: text });
-            clipboardChannel.close();
-        } catch {
-            /* bus optional */
-        }
-        if (wrote) showToast({ message: "Processed and copied", kind: "success" });
+    void raw;
+    if (!text.trim()) return;
+    if (!copyToClipboard) {
+        showToast({ message: "Processed", kind: "success" });
+        return;
     }
+    const wrote = await writeProcessIngressClipboard(text);
     try {
-        postWorkCenterCommand({
-            type: "ingress.apply",
-            payload: {
-                type: "share-target-result",
-                data: {
-                    content: text,
-                    rawData: raw,
-                    timestamp: Date.now(),
-                    source: "share-target"
-                }
-            }
-        });
-        await unifiedMessaging.sendMessage({
-            type: "share-target-result",
-            source: "share-target",
-            destination: "workcenter",
-            data: {
-                content: text,
-                rawData: raw,
-                timestamp: Date.now(),
-                source: "share-target",
-                action: "Processing (/api/process/processing)"
-            },
-            metadata: { priority: "high" }
-        } as any);
+        const clipboardChannel = new BroadcastChannel(CHANNELS.CLIPBOARD);
+        clipboardChannel.postMessage({ type: "copy", data: text });
+        clipboardChannel.close();
     } catch {
-        postWorkCenterCommand({
-            type: "ingress.apply",
-            payload: {
-                type: "share-target-result",
-                data: { content: text, rawData: raw, timestamp: Date.now(), source: "share-target" }
-            }
-        });
+        /* bus optional */
     }
+    showToast({
+        message: wrote ? "Processed and copied" : "Processed, but clipboard write failed",
+        kind: wrote ? "success" : "warning"
+    });
 };
 
 /**
@@ -1109,7 +1176,10 @@ const runProcessShareTargetData = async (shareData: ShareDataInput, skipIfEmpty 
         return false;
     }
     await holdCapacitorIngressJob(settings);
-    const customInstruction = instructionTextForIngress(settings, shareData.hint?.instructionId || ingress.instructionId);
+    const customInstruction = await resolveShareCustomInstruction(
+        settings,
+        shareData.hint?.instructionId || ingress.instructionId
+    );
 
     const { content, type } = extractShareContent(shareData);
 
@@ -1148,10 +1218,13 @@ const runProcessShareTargetData = async (shareData: ShareDataInput, skipIfEmpty 
         let processingContent: string;
         let contentType: string;
 
-        if (type === "file" && shareData.files?.[0]) {
-            const file = shareData.files[0] as File;
-            console.log("[ShareTarget] Processing file:", { name: file.name, type: file.type, size: file.size });
-            processingContent = await fileToBase64(file);
+        const shareFile =
+            type === "file" && shareData.files?.[0]
+                ? (shareData.files[0] as File)
+                : null;
+        if (shareFile) {
+            console.log("[ShareTarget] Processing file:", { name: shareFile.name, type: shareFile.type, size: shareFile.size });
+            processingContent = await fileToBase64(shareFile);
             contentType = "base64";
         } else if (content) {
             processingContent = content;
@@ -1159,6 +1232,38 @@ const runProcessShareTargetData = async (shareData: ShareDataInput, skipIfEmpty 
             console.log("[ShareTarget] Processing text content, length:", content.length);
         } else {
             throw new Error("No processable content found");
+        }
+
+        /* WHY: /api/process flatten + File attachToRequest use JSON-only vision prompts.
+         * Markdown & KaTeX is format-only — without an extract-now task the model asks
+         * "what would you like me to do". Same shape as Work Center chat (input_image). */
+        if (isImageSharePayload(ingress.kind, shareFile, processingContent)) {
+            const { processDataWithInstruction } = await import("com/service/processing/unified");
+            const local = await processDataWithInstruction(
+                [
+                    {
+                        type: "message",
+                        role: "user",
+                        content: [
+                            { type: "input_image", image_url: processingContent, detail: "auto" }
+                        ]
+                    }
+                ],
+                {
+                    instruction: IMAGE_PROCESS_TASK,
+                    customInstruction: customInstruction || undefined,
+                    useActiveInstruction: !customInstruction,
+                    includeImageRecognition: false,
+                    dataType: "image"
+                }
+            );
+            const text = String(local.data || "").trim();
+            if (!local.ok || !text) {
+                throw new Error(local.error || "Image processing returned no data");
+            }
+            shareData.aiProcessed = true;
+            await deliverProcessIngressResult(text, local.data, ingress.copyToClipboard === true);
+            return true;
         }
 
         const analyze =
@@ -1189,11 +1294,18 @@ const runProcessShareTargetData = async (shareData: ShareDataInput, skipIfEmpty 
             processApiAuthFromSettings(settings)
         );
 
-        if (!posted.ok) {
-            throw new Error(`Processing API failed: ${posted.status || posted.error || "network"}`);
-        }
-
         const result = posted.json;
+        const resultOk = posted.ok && !(result && typeof result === "object" && (result as { ok?: unknown }).ok === false);
+        if (!resultOk) {
+            throw new Error(
+                toastProcessError(
+                    posted.error
+                    || (result && typeof result === "object" ? (result as { error?: unknown }).error : "")
+                    || posted.status
+                    || "network"
+                )
+            );
+        }
         const text = readProcessApiResultText(result) || extractProcessApiText(result);
         console.log("[ShareTarget] Unified processing completed:", { ok: result?.ok, success: result?.success });
 
@@ -1213,7 +1325,7 @@ const runProcessShareTargetData = async (shareData: ShareDataInput, skipIfEmpty 
         });
         shareChannel.close();
 
-        showToast({ message: `Processing failed: ${errorMsg}`, kind: "warning" });
+        showToast({ message: `Processing failed: ${toastProcessError(errorMsg)}`, kind: "warning" });
         return false;
     } catch (error: any) {
         console.error("[ShareTarget] Processing error:", error);
@@ -1235,7 +1347,7 @@ const runProcessShareTargetData = async (shareData: ShareDataInput, skipIfEmpty 
         });
         shareChannel.close();
 
-        showToast({ message: `Processing failed: ${error?.message || "Unknown error"}`, kind: "error" });
+        showToast({ message: `Processing failed: ${toastProcessError(error?.message || error)}`, kind: "error" });
         return false;
     }
 };
@@ -1413,10 +1525,11 @@ export const handleShareTarget = () => {
 
             if (content || type === "file" || pendingFiles) {
                 console.log("[ShareTarget] Routing merged share payload");
-                holdIngressFiles(
+                holdIngressFilesForPolicy(
                     Array.isArray(transferPayload.files)
                         ? transferPayload.files.filter((file): file is File => file instanceof File)
-                        : []
+                        : [],
+                    transferPayload
                 );
                 try {
                     const delivered = await routeToTransferView(
@@ -1426,18 +1539,24 @@ export const handleShareTarget = () => {
                         true
                     );
                     if (!delivered) {
-                        await processShareTargetData(transferPayload, true);
+                        const kind = classifyOpenKindFromPayload(transferPayload);
+                        if (resolveProcessIngressKind(peekProcessIngressSettings(), kind).mode === "process") {
+                            await processShareTargetData(transferPayload, true);
+                        }
                     }
                 } catch (error) {
                     console.warn("[ShareTarget] Route transfer failed, falling back to processing:", error);
-                    await processShareTargetData(transferPayload, true);
+                    const kind = classifyOpenKindFromPayload(transferPayload);
+                    if (resolveProcessIngressKind(peekProcessIngressSettings(), kind).mode === "process") {
+                        await processShareTargetData(transferPayload, true);
+                    }
                 }
             } else {
                 console.log("[ShareTarget] Nothing to route after merge");
             }
         })().catch((e) => console.warn("[ShareTarget] shared=1 async flow failed:", e));
 
-        return;
+        /* WHY: do not return — a live window must keep the BroadcastChannel for the next share. */
     } else if (shared === "test") {
         // Test mode - just show confirmation
         showToast({ message: "Share target route working", kind: "info" });
@@ -1535,7 +1654,8 @@ export const handleShareTarget = () => {
 
     // Listen for real-time share target broadcasts from service worker
     // Note: AI results are handled by PWA clipboard receivers, this handles share notifications
-    if (typeof BroadcastChannel !== "undefined") {
+    if (typeof BroadcastChannel !== "undefined" && !shareTargetBroadcastBound) {
+        shareTargetBroadcastBound = true;
         const shareChannel = new BroadcastChannel(CHANNELS.SHARE_TARGET);
         shareChannel.addEventListener("message", async (event) => {
             const unwrapped = unwrapSwInteropMessage(event.data);
@@ -1578,7 +1698,10 @@ export const handleShareTarget = () => {
                     console.log("[ShareTarget] Processing broadcasted share data");
                     const delivered = await routeToTransferView(transferPayload, "share-target", extractTransferHint(transferPayload), true);
                     if (!delivered) {
-                        await processShareTargetData(transferPayload, true);
+                        const kind = classifyOpenKindFromPayload(transferPayload);
+                        if (resolveProcessIngressKind(peekProcessIngressSettings(), kind).mode === "process") {
+                            await processShareTargetData(transferPayload, true);
+                        }
                     }
                 } else if ((msgData.fileCount ?? 0) > 0) {
                     showToast({ message: `Processing ${msgData.fileCount} file(s)...`, kind: "info" });
@@ -1789,7 +1912,12 @@ export const setupLaunchQueueConsumer = async () => {
                         staged
                     });
 
-                    holdIngressFiles(files);
+                    holdIngressFilesForPolicy(files, {
+                        files,
+                        title: files[0]?.name,
+                        source: "launch-queue",
+                        hint
+                    });
 
                     // Show immediate feedback that files were received
                     showToast({

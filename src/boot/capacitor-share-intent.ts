@@ -30,13 +30,31 @@ type ShareIntentDetail = {
     asset?: ShareAsset;
 } | string;
 
+type ParsedShare = {
+    text: string;
+    title: string;
+    name: string;
+    mime: string;
+    asset: ShareAsset | null;
+    pending: boolean;
+};
+
+const emptyParsedShare = (): ParsedShare => ({
+    text: "",
+    title: "",
+    name: "",
+    mime: "",
+    asset: null,
+    pending: false
+});
+
 const parseSharePayload = (
     detail: ShareIntentDetail | null | undefined
-): { text: string; title: string; asset: ShareAsset | null; pending: boolean } => {
-    if (detail == null) return { text: "", title: "", asset: null, pending: false };
+): ParsedShare => {
+    if (detail == null) return emptyParsedShare();
     if (typeof detail === "string") {
         const trimmed = detail.trim();
-        if (!trimmed) return { text: "", title: "", asset: null, pending: false };
+        if (!trimmed) return emptyParsedShare();
         try {
             const parsed = JSON.parse(trimmed) as {
                 text?: string;
@@ -49,6 +67,8 @@ const parseSharePayload = (
             return {
                 text: String(parsed?.text || "").trim() || (parsed?.asset ? "" : trimmed),
                 title: String(parsed?.title || "").trim(),
+                name: String(parsed?.name || "").trim(),
+                mime: String(parsed?.mime || "").trim(),
                 asset: parsed?.asset && typeof parsed.asset === "object"
                     ? parsed.asset
                     : parsed?.name
@@ -57,12 +77,14 @@ const parseSharePayload = (
                 pending: parsed?.pending === true
             };
         } catch {
-            return { text: trimmed, title: "", asset: null, pending: false };
+            return { ...emptyParsedShare(), text: trimmed };
         }
     }
     return {
         text: String(detail.text || "").trim(),
         title: String(detail.title || "").trim(),
+        name: String(detail.name || "").trim(),
+        mime: String(detail.mime || "").trim(),
         asset: detail.asset && typeof detail.asset === "object"
             ? detail.asset
             : detail.name
@@ -70,6 +92,26 @@ const parseSharePayload = (
               : null,
         pending: detail.pending === true
     };
+};
+
+const looksLikeFileShare = (echo: {
+    hasFile?: boolean;
+    mime?: string;
+    name?: string;
+    title?: string;
+    url?: string;
+    text?: string;
+}): boolean => {
+    if (echo.hasFile) return true;
+    const mime = String(echo.mime || "").toLowerCase();
+    const name = String(echo.name || echo.title || "").toLowerCase();
+    if (mime.startsWith("image/") || mime.startsWith("application/") || mime.startsWith("audio/") || mime.startsWith("video/")) {
+        return true;
+    }
+    if (/\.(pdf|docx?|odt|rtf|pptx?|xlsx?|md|markdown|txt|png|jpe?g|gif|webp|html?|csv|json)$/i.test(name)) {
+        return true;
+    }
+    return false;
 };
 
 const readDestinationNodes = (settings: Record<string, unknown>): string[] => {
@@ -84,10 +126,17 @@ const readDestinationNodes = (settings: Record<string, unknown>): string[] => {
 
 const isDocumentSku = (): boolean => {
     try {
-        return String(document.documentElement?.dataset?.cwspSku || "").trim() === "document";
+        const root = document.documentElement;
+        const sku = String(root?.dataset?.cwspSku || "").trim();
+        if (sku === "document") return true;
+        const surface = String(root?.dataset?.cwspSurface || "");
+        if (surface === "cw-document" || surface === "cw-markdown" || surface === "cw-document-crx") {
+            return true;
+        }
     } catch {
-        return false;
+        /* ignore */
     }
+    return false;
 };
 
 const isTransferSku = (): boolean => {
@@ -102,12 +151,16 @@ const consumeNativePendingShare = async (): Promise<{
     text: string;
     title: string;
     url: string;
+    name: string;
+    mime: string;
     files: File[];
 } | null> => {
     try {
         const { invokeCwsPlatformIPC } = await import("com/routing/native/cws-bridge");
         const peek = await invokeCwsPlatformIPC({ channel: "launcher:pending-share" });
         if (!peek?.ok) return null;
+        /* INVARIANT: Document viewer owns the stash. Ack here leaves Open-with/Share blank. */
+        if (isDocumentSku()) return null;
         const echo = (peek.echo || peek) as {
             text?: string;
             title?: string;
@@ -115,27 +168,60 @@ const consumeNativePendingShare = async (): Promise<{
             mime?: string;
             url?: string;
             hasFile?: boolean;
+            stashedAt?: number | string;
         };
-        const text = String(echo.text || "").trim();
+        const stashedAt = Number(echo.stashedAt || 0) || undefined;
+        if (!echo.text && !echo.title && !echo.name && !echo.url && !echo.hasFile) return null;
+        const { dataUrlToFile, filenameFromLocalShareUri, isAndroidLocalShareUri } = await import(
+            "com/routing/channel/sku-ingress"
+        );
+        let text = String(echo.text || "").trim();
         const title = String(echo.title || echo.name || "").trim();
-        const url = String(echo.url || "").trim();
+        const name = String(echo.name || "").trim();
+        const mime = String(echo.mime || "").trim();
+        let url = String(echo.url || "").trim();
         const files: File[] = [];
-        if (echo.hasFile) {
+        const local = isAndroidLocalShareUri(url) || isAndroidLocalShareUri(text);
+        const wantFile = Boolean(echo.hasFile) || local || looksLikeFileShare(echo);
+        const pullFile = async (): Promise<void> => {
             const read = await invokeCwsPlatformIPC({ channel: "launcher:read-share-file" });
             const blob = (read.echo || read) as { data?: string; name?: string; mime?: string };
-            if (blob?.data) {
-                const { dataUrlToFile } = await import("com/routing/channel/sku-ingress");
-                const file = await dataUrlToFile(
-                    blob.data,
-                    String(blob.name || echo.name || "shared.bin"),
-                    String(blob.mime || echo.mime || "application/octet-stream")
-                );
-                if (file) files.push(file);
+            if (!blob?.data) return;
+            const file = await dataUrlToFile(
+                blob.data,
+                String(blob.name || echo.name || filenameFromLocalShareUri(url || text) || "shared.bin"),
+                String(blob.mime || echo.mime || "application/octet-stream")
+            );
+            if (file) files.push(file);
+        };
+        if (wantFile) await pullFile();
+        if (wantFile && !files.length) {
+            const status = await invokeCwsPlatformIPC({ channel: "storage:all-files-status" }).catch(() => null);
+            const granted = Boolean((status?.echo as { allFilesAccess?: boolean } | undefined)?.allFilesAccess);
+            if (!granted) {
+                await invokeCwsPlatformIPC({ channel: "storage:all-files-request" }).catch(() => null);
+                const { showToast } = await import("./toast");
+                showToast({ message: "Allow all-files access, then share the file again", kind: "warning" });
+                /* WHY: do not ack — stash stays until the user shares again with the grant. */
+                return null;
             }
+            await invokeCwsPlatformIPC({ channel: "launcher:restash-share-file" }).catch(() => null);
+            await pullFile();
         }
-        await invokeCwsPlatformIPC({ channel: "launcher:ack-share" }).catch(() => null);
+        if (wantFile && !files.length) {
+            /* INVARIANT: a file share without bytes must not become EXTRA_TEXT in chat. */
+            return null;
+        }
+        if (files.length || (!local && (text || url))) {
+            await invokeCwsPlatformIPC({
+                channel: "launcher:ack-share",
+                payload: stashedAt ? { stashedAt } : {}
+            }).catch(() => null);
+        }
+        if (isAndroidLocalShareUri(url)) url = "";
+        if (isAndroidLocalShareUri(text)) text = "";
         if (!text && !url && !files.length) return null;
-        return { text, title, url, files };
+        return { text, title, url, name, mime, files };
     } catch {
         return null;
     }
@@ -145,16 +231,21 @@ const ingestParsedShare = async (input: {
     text?: string;
     title?: string;
     url?: string;
+    name?: string;
+    mime?: string;
     files?: File[];
 }): Promise<void> => {
     const { ingestSharePayload } = await import("com/routing/pwa/sw-handling");
+    const filename = String(input.files?.[0]?.name || input.name || input.title || "").trim();
     await ingestSharePayload({
-        title: input.title || undefined,
+        title: input.title || input.name || undefined,
         text: input.text || undefined,
         url: input.url || undefined,
         files: input.files?.length ? input.files : undefined,
         fileCount: input.files?.length || 0,
-        source: "share-target"
+        timestamp: Date.now(),
+        source: "share-target",
+        hint: filename ? { filename } : undefined
     });
 };
 
@@ -174,7 +265,7 @@ export const installCapacitorShareIntentBridge = (): void => {
 
     const handler = (ev: Event): void => {
         void (async () => {
-            const { text, title, asset, pending } = parseSharePayload(
+            const { text, title, name, mime, asset, pending } = parseSharePayload(
                 (ev as CustomEvent<ShareIntentDetail>).detail
             );
 
@@ -201,17 +292,23 @@ export const installCapacitorShareIntentBridge = (): void => {
                     text,
                     title,
                     files,
-                    source: "share-target"
+                    hint: { filename: name || title || files[0]?.name }
                 });
                 const row = ingress.resolveProcessIngressKind(settings, kind);
-                if (row.backgroundClipboard) {
+                if (row.mode === "process") {
                     const { ensureCapacitorBridgeDaemonStarted } = await import(
                         "./capacitor-settings-permissions"
                     );
-                    await ensureCapacitorBridgeDaemonStarted(settings);
+                    await ensureCapacitorBridgeDaemonStarted({
+                        ...(settings || {}),
+                        shell: { ...(settings?.shell || {}), bridgeDaemonEnabled: true }
+                    });
                 }
-                // WHY: process + clipboard kinds write the AI result; do not overwrite with the raw share.
-                const skipRawClipboard = row.mode === "process" && row.copyToClipboard !== false;
+                // WHY: Process SKU: attach stays in chat; process writes the AI result.
+                // Never overwrite the clipboard with the raw share on this SKU.
+                const skipRawClipboard =
+                    row.mode === "process" ||
+                    String(document.documentElement?.dataset?.cwspSku || "").trim() === "process";
                 if (!skipRawClipboard) {
                     const nodes = readDestinationNodes(settings as unknown as Record<string, unknown>);
                     ws.connectWS();
@@ -238,28 +335,41 @@ export const installCapacitorShareIntentBridge = (): void => {
                 try {
                     /* WHY: Document viewer owns pending-share. Ack here deletes the stash
                      * before the painted view can pull, so the last markdown stays on screen. */
-                    if (pending && isDocumentSku()) return;
+                    if (pending && isDocumentSku()) {
+                        try {
+                            window.dispatchEvent(
+                                new CustomEvent("cwsp:document-open", { detail: { source: "share-intent" } })
+                            );
+                        } catch {
+                            /* viewer pull is also bound to cws:shareIntent */
+                        }
+                        return;
+                    }
                     if (pending) {
                         const native = await consumeNativePendingShare();
                         if (native) {
                             await ingestParsedShare(native);
                             return;
                         }
+                        /* WHY: pending Share Target is on disk. Event text is a 400-char clip — not the file. */
+                        return;
                     }
                     const { dataUrlToFile } = await import("com/routing/channel/sku-ingress");
                     const files: File[] = [];
                     if (asset?.data) {
                         const file = await dataUrlToFile(
                             asset.data,
-                            String(asset.name || "shared.bin"),
-                            String(asset.mimeType || asset.type || "application/octet-stream")
+                            String(asset.name || name || "shared.bin"),
+                            String(asset.mimeType || asset.type || mime || "application/octet-stream")
                         );
                         if (file) files.push(file);
                     }
                     if (!text && !files.length && !asset) return;
                     await ingestParsedShare({
                         text,
-                        title: title || asset?.name,
+                        title: title || name || asset?.name,
+                        name,
+                        mime,
                         files
                     });
                 } catch {

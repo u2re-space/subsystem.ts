@@ -80,6 +80,14 @@ test("processApiSuffixFromPath and auth + result helpers", () => {
     );
     assert.equal(isProcessApiUnavailable({ ok: false, status: 502, json: { ok: false, layer: "api" } }), true);
     assert.equal(isProcessApiUnavailable({ ok: true, status: 200, json: { ok: true, result: { text: "x" } } }), false);
+    assert.equal(
+        isProcessApiUnavailable({
+            ok: false,
+            status: 200,
+            json: { ok: false, error: "<!doctype html><html data-cwsp-sku=\"process\">" }
+        }),
+        true
+    );
 });
 
 test("local fallback misses without a request key", async () => {
@@ -89,6 +97,14 @@ test("local fallback misses without a request key", async () => {
     assert.equal(miss.ok, false);
     assert.equal(miss.error, "Missing credentials");
     assert.equal(processApiMissPayload("sw").fallback, "sw");
+    assert.equal(
+        isProcessApiUnavailable({
+            ok: true,
+            status: 200,
+            json: { ok: false, error: "fetch failed", layer: "api", fallback: "sw" }
+        }),
+        true
+    );
     assert.equal(isProcessApiRequest("/api/process/processing", "POST"), true);
     assert.equal(isProcessApiRequest("/workcenter", "POST"), false);
 });

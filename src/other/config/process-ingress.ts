@@ -4,14 +4,16 @@
  * FIND:process-ingress
  * TAG:process-ingress,share-target,workcenter
  *
- * Per-kind Share Target / Launch Queue policy for CWSP-process.
- * INVARIANT: attach only stages files. process runs AI once (page-side) and
- * optionally writes the result to the device clipboard — never also click Execute.
+ * Per-kind Share Target / Launch Queue / Capacitor Open-with policy.
+ * INVARIANT: attach only stages files in chat. process runs AI once in the
+ * background and writes the result to the device clipboard — never also attach,
+ * never also click Execute, never also dump the result into chat.
  * INVARIANT: `ai.autoProcessShared`, `ai.shareTargetMode`, and `processIngress.autoProcess`
  * are unread leftovers. Only `processIngress.kinds.*.mode` chooses attach vs process.
+ * INVARIANT: `mode === "process"` implies clipboard-write + Capacitor daemon hold.
  */
 
-import { OPEN_KINDS, type OpenKind } from "./open-policy";
+import { classifyOpenKindFromPayload, OPEN_KINDS, type OpenKind } from "./open-policy";
 import type { AppSettings, ProcessIngressKindPolicy, ProcessIngressMode, ProcessIngressPolicy } from "./SettingsTypes";
 
 export type ProcessIngressKind = OpenKind;
@@ -62,11 +64,13 @@ export const mergeProcessIngress = (
                 const src = layer.kinds[key];
                 if (!src || typeof src !== "object") continue;
                 const prev = out.kinds[key];
+                const mode: ProcessIngressMode =
+                    src.mode === "attach" || src.mode === "process" ? src.mode : prev.mode;
                 out.kinds[key] = {
-                    mode: src.mode === "attach" || src.mode === "process" ? src.mode : prev.mode,
+                    mode,
                     instructionId: typeof src.instructionId === "string" ? src.instructionId : prev.instructionId,
-                    copyToClipboard:
-                        typeof src.copyToClipboard === "boolean" ? src.copyToClipboard : prev.copyToClipboard
+                    /* WHY: leftover `copyToClipboard: false` must not disable process → clipboard. */
+                    copyToClipboard: mode === "process"
                 };
             }
         }
@@ -95,22 +99,32 @@ export const resolveProcessIngressKind = (
         kind: key,
         mode,
         instructionId: row.instructionId || "",
-        copyToClipboard: mode === "process" && row.copyToClipboard !== false,
+        copyToClipboard: mode === "process",
         autoProcess: mode === "process",
-        backgroundClipboard: policy.backgroundClipboard
+        backgroundClipboard: mode === "process"
     };
 };
+
+/** Attach-mode kinds stage chat chips. Process-mode kinds must not. */
+export const shouldAttachProcessIngress = (
+    settings: AppSettings | null | undefined,
+    payload: Parameters<typeof classifyOpenKindFromPayload>[0]
+): boolean => resolveProcessIngressKind(settings, classifyOpenKindFromPayload(payload)).mode !== "process";
 
 export const instructionTextForIngress = (
     settings: AppSettings | null | undefined,
     instructionId?: string
 ): string => {
     const list = settings?.ai?.customInstructions || [];
-    const id = String(instructionId || "").trim();
-    const pick = id
-        ? list.find((item) => item.id === id)
-        : list.find((item) => item.id === settings?.ai?.activeInstructionId) || null;
-    return String(pick?.instruction || "").trim();
+    const id = String(instructionId || settings?.ai?.activeInstructionId || "").trim();
+    const byId = id ? list.find((item) => item.id === id) : null;
+    const byLabel = id
+        ? list.find((item) => String(item.label || "").trim().toLowerCase() === id.toLowerCase())
+        : null;
+    const active = list.find((item) => item.id === settings?.ai?.activeInstructionId);
+    const enabled = list.find((item) => item.enabled !== false && String(item.instruction || "").trim());
+    /* WHY: empty per-kind id means "Active instruction"; label match covers seeded Markdown & KaTeX. */
+    return String(byId?.instruction || byLabel?.instruction || active?.instruction || enabled?.instruction || "").trim();
 };
 
 export const formatProcessIngressResult = (data: unknown): string => {
@@ -127,6 +141,46 @@ let settingsPeek: AppSettings | null = null;
 
 export const rememberProcessIngressSettings = (settings?: AppSettings | null): void => {
     if (settings) settingsPeek = settings;
+    void persistProcessIngressNativeSnapshot(settingsPeek);
+};
+
+/** Capacitor Process FGS reads this snapshot — share must not wait for WebView IDB. */
+export const persistProcessIngressNativeSnapshot = async (
+    settings?: AppSettings | null
+): Promise<void> => {
+    try {
+        const g = globalThis as { Capacitor?: { isNativePlatform?: () => boolean } };
+        if (typeof g.Capacitor?.isNativePlatform !== "function" || !g.Capacitor.isNativePlatform()) {
+            return;
+        }
+    } catch {
+        return;
+    }
+    const policy = resolveProcessIngressPolicy(settings);
+    const kinds: Record<string, ProcessIngressMode> = {
+        markdown: policy.kinds.markdown.mode,
+        text: policy.kinds.text.mode,
+        document: policy.kinds.document.mode,
+        image: policy.kinds.image.mode,
+        url: policy.kinds.url.mode,
+        other: policy.kinds.other.mode
+    };
+    const instruction = instructionTextForIngress(settings);
+    try {
+        const { invokeCwsNative } = await import("../../routing/native/cws-bridge");
+        await invokeCwsNative("settings:snapshot", {
+            apiKey: String(settings?.ai?.apiKey || "").trim(),
+            baseUrl: String(settings?.ai?.baseUrl || "").trim(),
+            model: String(settings?.ai?.model || "").trim(),
+            instruction,
+            instructionId: String(settings?.ai?.activeInstructionId || "").trim(),
+            kinds,
+            /* WHY: Capacitor JSObject nesting can drop `kinds`; Java also reads this string. */
+            kindsJson: JSON.stringify(kinds)
+        });
+    } catch {
+        /* native snapshot optional until Process APK is rebuilt */
+    }
 };
 
 export const peekProcessIngressSettings = (): AppSettings | null => settingsPeek;
@@ -183,14 +237,12 @@ export const writeProcessIngressClipboard = async (text: string): Promise<boolea
 
 /** Capacitor: keep the foreground bridge so AI + clipboard-write can finish after Share. */
 export const holdCapacitorIngressJob = async (settings?: AppSettings | null): Promise<() => void> => {
-    const policy = resolveProcessIngressPolicy(settings);
     try {
         const { isCapacitorNative } = await import("../../boot/capacitor-permissions");
         if (!isCapacitorNative()) return () => {};
     } catch {
         return () => {};
     }
-    if (!policy.backgroundClipboard) return () => {};
     try {
         const { ensureCapacitorBridgeDaemonStarted } = await import("../../boot/capacitor-settings-permissions");
         /* WHY: a share-time AI job must keep the foreground bridge even if Settings left the daemon off. */

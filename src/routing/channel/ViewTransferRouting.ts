@@ -198,11 +198,13 @@ const isNativeCapacitor = (): boolean => {
 
 const pickDestination = (payload: ViewTransferPayload, contentType: string): ViewTransferDestination => {
     ensureCwspSkuFromLocation();
+    const sku = inferCwspSkuFromLocation();
+    /* INVARIANT: Process SKU has no document viewer — attach/process stay on Work Center. */
+    if (sku === "process") return "workcenter";
     const skuHint = skuIngressHint(payload, { settings: peekProcessIngressSettings() });
     if (skuHint?.destination) return skuHint.destination;
 
     /* Hub / CRX / transfer: no SKU lock — still honor a concrete openPolicy sink. */
-    const sku = inferCwspSkuFromLocation();
     const surface = surfaceForSku(sku) || "shell";
     const kind = classifyOpenKindFromPayload(payload);
     const channels = inferIngressChannels(payload.source || payload.route, isNativeCapacitor());
@@ -235,7 +237,7 @@ const toMessageType = (destination: ViewTransferDestination, hint?: ViewTransfer
         if (hint?.action === "open") return "navigate-path";
         return "file-save";
     }
-    if (destination === "workcenter") return "content-attach";
+    if (destination === "workcenter") return hint?.action === "process" ? "content-process" : "content-attach";
     if (destination === "editor") return "content-load";
     if (destination === "home") return hint?.action === "wallpaper" ? "content-share" : "content-share";
     return "content-share";
@@ -453,7 +455,8 @@ export const dispatchViewTransfer = async (
         if (handedOff) return { delivered: true, resolved };
     }
     const files = Array.isArray(payload.files) ? payload.files : [];
-    holdIngressFiles(files);
+    /* INVARIANT: process-mode shares must not stage composer chips. */
+    if (payload.hint?.action !== "process") holdIngressFiles(files);
     const dest = normalizeDestination(resolved.destination);
     const heldForWorkCenter = dest === "workcenter" && files.some((file) => file instanceof File);
     const hasBinaryPayload = resolved.contentType === "image" || resolved.contentType === "file";

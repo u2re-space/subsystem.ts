@@ -58,9 +58,19 @@ export const runLocalProcessFallback = async (
     );
     const model = pick(body.model, (body.provider as { model?: string })?.model, PROCESS_LOCAL_DEFAULT_MODEL);
     const instruction = pick(body.customInstruction);
+    const imageUrl = input.startsWith("data:image/") && input.includes(";base64,") ? input : "";
+    /* WHY: a data-URL as a plain user string makes the model ask "what to do with the image". */
+    const extractNow =
+        "Extract all readable text, equations, tables, and data. Output the content now. Do not ask what to do.";
+    const userContent = imageUrl
+        ? [
+            { type: "text", text: instruction ? `${extractNow}\n\n${instruction}` : extractNow },
+            { type: "image_url", image_url: { url: imageUrl } }
+        ]
+        : input;
     const messages = [
-        ...(instruction ? [{ role: "system", content: instruction }] : []),
-        { role: "user", content: input }
+        ...(instruction && !imageUrl ? [{ role: "system", content: instruction }] : []),
+        { role: "user", content: userContent }
     ];
 
     try {
