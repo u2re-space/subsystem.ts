@@ -24,6 +24,15 @@ const SINK_OPTIONS: Array<[string, string]> = [
     ["system", "Android / system chooser"]
 ];
 
+/** Document PWA has no Work Center / Explorer host — those sinks swallow drop/paste. */
+const DOCUMENT_VIEWER_SINK_OPTIONS: Array<[string, string]> = [
+    ["ask", "Follow default / this app"],
+    ["display", "Display here"],
+    ["viewer", "Markdown (in this app)"],
+    ["document", "Stay in this app"],
+    ["external", "New tab / browser"]
+];
+
 const PLACEMENT_OPTIONS: Array<[string, string]> = [
     ["inline", "Inline window (same tab)"],
     ["native-window", "Separate window"],
@@ -90,17 +99,32 @@ export const registerOpenFilesSettingsContribution = (): (() => void) =>
                 )
             ];
             if (showSurface(ctx, "viewer")) {
+                const documentSku =
+                    ctx.sku === "document" ||
+                    ctx.hubSection === "document" ||
+                    ctx.surface === "markdown";
+                const viewerSinks = documentSku ? DOCUMENT_VIEWER_SINK_OPTIONS : SINK_OPTIONS;
                 blocks.push(
-                    ...section("Markdown / document", "Opened, pasted, dropped, or shared into the viewer.", [
-                        settingsSelectField("When a file opens", "openPolicy.viewer.channels.open", SINK_OPTIONS),
-                        settingsSelectField("Share target", "openPolicy.viewer.channels.share-target", SINK_OPTIONS),
-                        settingsSelectField("Launch queue", "openPolicy.viewer.channels.launch-queue", SINK_OPTIONS),
-                        settingsSelectField("Markdown", "openPolicy.viewer.kinds.markdown", SINK_OPTIONS),
-                        settingsSelectField("Text", "openPolicy.viewer.kinds.text", SINK_OPTIONS),
-                        settingsSelectField("Documents (PDF, Office)", "openPolicy.viewer.kinds.document", SINK_OPTIONS),
-                        settingsSelectField("Images", "openPolicy.viewer.kinds.image", SINK_OPTIONS),
-                        settingsSelectField("Other files", "openPolicy.viewer.kinds.other", SINK_OPTIONS)
-                    ])
+                    ...section(
+                        "Markdown / document",
+                        documentSku
+                            ? "Drop, paste, share, and open always paint in this viewer. Sibling-app sinks are not available here."
+                            : "Opened, pasted, dropped, or shared into the viewer.",
+                        [
+                            settingsSelectField("When a file opens", "openPolicy.viewer.channels.open", viewerSinks),
+                            settingsSelectField("Share target", "openPolicy.viewer.channels.share-target", viewerSinks),
+                            settingsSelectField("Launch queue", "openPolicy.viewer.channels.launch-queue", viewerSinks),
+                            settingsSelectField("Markdown", "openPolicy.viewer.kinds.markdown", viewerSinks),
+                            settingsSelectField("Text", "openPolicy.viewer.kinds.text", viewerSinks),
+                            settingsSelectField(
+                                "Documents (PDF, Office)",
+                                "openPolicy.viewer.kinds.document",
+                                viewerSinks
+                            ),
+                            settingsSelectField("Images", "openPolicy.viewer.kinds.image", viewerSinks),
+                            settingsSelectField("Other files", "openPolicy.viewer.kinds.other", viewerSinks)
+                        ]
+                    )
                 );
             }
             if (showSurface(ctx, "explorer")) {

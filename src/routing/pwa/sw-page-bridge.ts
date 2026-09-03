@@ -16,7 +16,7 @@ import {
     buildShareDataFromCachedPayload
 } from "../channel/ShareTargetGateway";
 import { clearPendingProcessResults, readPendingProcessResults } from "./sw-result-wire";
-import { holdIngressFiles } from "../channel/sku-ingress";
+import { flushHeldIngressToWorkCenter, holdIngressFiles } from "../channel/sku-ingress";
 import { inferCwspSkuFromLocation } from "../../other/config/ecosystem-skus";
 import { classifyOpenKindFromPayload } from "../../other/config/open-policy";
 import { peekProcessIngressSettings, resolveProcessIngressKind } from "../../other/config/process-ingress";
@@ -143,7 +143,20 @@ export const deliverShareTargetInput = async (data: unknown): Promise<boolean> =
         title: typeof payload.title === "string" ? payload.title : undefined,
         hint: payload.hint as { filename?: string; source?: string; destination?: string; action?: string } | undefined
     });
-    const row = resolveProcessIngressKind(peekProcessIngressSettings(), kind);
+    let settings = peekProcessIngressSettings();
+    if (!settings) {
+        try {
+            const { loadSettings } = await import("../../other/config/Settings");
+            settings = await loadSettings().catch(() => null);
+            if (settings) {
+                const { rememberProcessIngressSettings } = await import("../../other/config/process-ingress");
+                rememberProcessIngressSettings(settings);
+            }
+        } catch {
+            /* defaults */
+        }
+    }
+    const row = resolveProcessIngressKind(settings, kind);
     /* INVARIANT: process-mode shares run AI → clipboard; do not stage chat chips. */
     if (row.mode === "process") {
         try {
@@ -158,7 +171,10 @@ export const deliverShareTargetInput = async (data: unknown): Promise<boolean> =
             return false;
         }
     }
-    if (files.length) holdIngressFiles(files);
+    if (files.length) {
+        holdIngressFiles(files);
+        await flushHeldIngressToWorkCenter();
+    }
     return deliverSwResultToWorkCenter("share-target-input", payload, String(payload.text || payload.title || ""));
 };
 

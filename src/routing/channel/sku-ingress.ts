@@ -344,6 +344,18 @@ export const skuIngressHint = (
     const sink = resolveOpenPolicy(opts?.openPolicy || peekOpenPolicy(), surface, kind, channels);
     const skuDest = skuDefaultDestination(sku);
 
+    /* INVARIANT: Document SKU paints the viewer. Settings open-policy must not
+     * hand Share Target to a Work Center that is not mounted on md.u2re.space. */
+    if (sku === "document") {
+        return {
+            destination: "viewer",
+            action: "open",
+            filename,
+            source: path || payload.hint?.source,
+            contentType: kind
+        };
+    }
+
     /* INVARIANT: Process SKU attach|process is only `processIngress.kinds.*.mode`.
      * Open-policy viewer/document sinks must not steal attach into draft or force process. */
     if (sku === "process") {
@@ -403,15 +415,6 @@ export const skuIngressHint = (
             filename,
             contentType: kind,
             sink: "transfer"
-        };
-    }
-
-    if (sku === "document") {
-        return {
-            destination: "viewer",
-            action: "open",
-            filename,
-            contentType: kind
         };
     }
 

@@ -5,13 +5,15 @@
  * TAG:sku,share-target
  *
  * Share-target 302 landing per fleet SKU.
- * INVARIANT: Explorer stays `/`, document stays viewer, process stays Work Center.
+ * INVARIANT: dedicated hosts live at `/`. Hard-nav `/viewer` or `/workcenter` remounts the SPA.
  */
 import { inferCwspSkuFromLocation, type CwspSku } from "../../other/config/ecosystem-skus.ts";
 
 export const SHARE_LANDING_BY_SKU: Record<CwspSku, string> = {
-    process: "/workcenter?shared=1",
-    document: "/viewer?shared=1",
+    /* WHY: process.u2re.space `/workcenter` remounts `/` and drops in-memory share Files. */
+    process: "/?shared=1",
+    /* WHY: md.u2re.space `/viewer` remounts `/` and drops in-memory share Files. */
+    document: "/?shared=1",
     explorer: "/?shared=1",
     transfer: "/?shared=1",
     launcher: "/?shared=1",

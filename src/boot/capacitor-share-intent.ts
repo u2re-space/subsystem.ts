@@ -171,7 +171,9 @@ const consumeNativePendingShare = async (): Promise<{
             stashedAt?: number | string;
         };
         const stashedAt = Number(echo.stashedAt || 0) || undefined;
-        if (!echo.text && !echo.title && !echo.name && !echo.url && !echo.hasFile) return null;
+        const flagged =
+            echo.hasFile === true || echo.hasFile === "true" || (echo.hasFile as unknown) === 1 || echo.hasFile === "1";
+        if (!echo.text && !echo.title && !echo.name && !echo.url && !flagged) return null;
         const { dataUrlToFile, filenameFromLocalShareUri, isAndroidLocalShareUri } = await import(
             "com/routing/channel/sku-ingress"
         );
@@ -182,7 +184,7 @@ const consumeNativePendingShare = async (): Promise<{
         let url = String(echo.url || "").trim();
         const files: File[] = [];
         const local = isAndroidLocalShareUri(url) || isAndroidLocalShareUri(text);
-        const wantFile = Boolean(echo.hasFile) || local || looksLikeFileShare(echo);
+        const wantFile = flagged || local || looksLikeFileShare({ ...echo, hasFile: flagged });
         const pullFile = async (): Promise<void> => {
             const read = await invokeCwsPlatformIPC({ channel: "launcher:read-share-file" });
             const blob = (read.echo || read) as { data?: string; name?: string; mime?: string };
@@ -247,6 +249,12 @@ const ingestParsedShare = async (input: {
         source: "share-target",
         hint: filename ? { filename } : undefined
     });
+    try {
+        const { flushHeldIngressToWorkCenter } = await import("com/routing/channel/sku-ingress");
+        await flushHeldIngressToWorkCenter();
+    } catch {
+        /* Work Center host optional */
+    }
 };
 
 let installed = false;
@@ -380,6 +388,22 @@ export const installCapacitorShareIntentBridge = (): void => {
     };
 
     window.addEventListener("cws:shareIntent", handler);
+    /* WHY: warm attach while MainActivity is already resumed can drop cws:shareIntent.
+     * Pull the native stash on visibility the same way Document pulls Open-with. */
+    const pullPending = (): void => {
+        if (isDocumentSku() || isTransferSku()) return;
+        try {
+            if (document.visibilityState && document.visibilityState !== "visible") return;
+        } catch {
+            /* ignore */
+        }
+        enqueueShareIngest(async () => {
+            const native = await consumeNativePendingShare().catch(() => null);
+            if (native) await ingestParsedShare(native);
+        });
+    };
+    document.addEventListener("visibilitychange", pullPending);
+    window.addEventListener("pageshow", pullPending);
     enqueueShareIngest(async () => {
         /* WHY: consume after viewer mount — otherwise content-view has no handler. */
         await new Promise<void>((resolve) => {

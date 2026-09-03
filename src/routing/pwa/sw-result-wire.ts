@@ -155,9 +155,10 @@ const stripFilesForPending = (data: unknown): unknown => {
 
 /**
  * Share-target fan-out: files stay in Cache Storage; metadata + cloneable File[]
- * go to clients. Existing windows are focused; the POST 302 still lands Work Center.
+ * go to clients. Do not `client.navigate` an already-open Process or Document window —
+ * `/` ↔ `/workcenter` or `/viewer` remounts the SPA and drops the live share.
  */
-export const publishSwShareReceived = (data: Record<string, unknown>): void => {
+export const publishSwShareReceived = (data: Record<string, unknown>, _landingPath?: string): void => {
     publishSwFrontendResult({
         type: "share-received",
         data,
@@ -177,8 +178,9 @@ const focusShareClients = async (): Promise<void> => {
             };
         };
         const clients = await scope.clients?.matchAll?.({ type: "window", includeUncontrolled: true });
-        const first = clients?.[0];
-        if (first && typeof first.focus === "function") await first.focus();
+        for (const client of clients || []) {
+            if (typeof client.focus === "function") await client.focus();
+        }
     } catch {
         /* share POST 302 still opens the landing page */
     }
