@@ -191,7 +191,8 @@ const consumeNativePendingShare = async (): Promise<{
             if (!blob?.data) return;
             const file = await dataUrlToFile(
                 blob.data,
-                String(blob.name || echo.name || filenameFromLocalShareUri(url || text) || "shared.bin"),
+                String(echo.name || blob.name || filenameFromLocalShareUri(url || text) || "shared.bin")
+                    .replace(/^open-\d+-/i, ""),
                 String(blob.mime || echo.mime || "application/octet-stream")
             );
             if (file) files.push(file);

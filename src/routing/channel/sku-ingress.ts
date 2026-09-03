@@ -39,7 +39,9 @@ export const filenameFromLocalShareUri = (value?: string | null): string => {
     if (!raw) return "";
     try {
         const path = decodeURIComponent(raw.replace(/^(?:file|content):\/\//i, "").split("?")[0] || "");
-        return path.split("/").filter(Boolean).pop() || "";
+        const base = path.split("/").filter(Boolean).pop() || "";
+        /* COMPAT: older Shell copies used `open-<epoch>-note.md` as the FileProvider name. */
+        return base.replace(/^open-\d+-/i, "");
     } catch {
         return "";
     }
