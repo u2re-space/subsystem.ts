@@ -26,8 +26,13 @@ import { peekProcessIngressSettings, resolveProcessIngressKind } from "../../oth
 export type SkuIngressAction = "open" | "attach" | "process" | "ask" | "shortcut" | "wallpaper";
 
 /** Android Open-with / Share often ships `file:`/`content:` — that is not a web URL. */
-export const isAndroidLocalShareUri = (value?: string | null): boolean =>
-    /^(file|content):/i.test(String(value || "").trim());
+export const isAndroidLocalShareUri = (value?: string | null): boolean => {
+    const raw = String(value || "").trim();
+    if (/^(file|content):/i.test(raw)) return true;
+    if (/^\/(?:sdcard|saf)(?:\/|$)/i.test(raw)) return true;
+    if (/^(?:\/storage\/emulated\/0|\/mnt\/sdcard)(?:\/|$)/i.test(raw)) return true;
+    return false;
+};
 
 export const filenameFromLocalShareUri = (value?: string | null): string => {
     const raw = String(value || "").trim();

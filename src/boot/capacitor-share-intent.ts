@@ -197,6 +197,21 @@ const consumeNativePendingShare = async (): Promise<{
             if (file) files.push(file);
         };
         if (wantFile) await pullFile();
+        if (!files.length) {
+            const virtual = String(url || text || "")
+                .trim()
+                .replace(/^file:\/\/(?:localhost)?/i, "")
+                .replace(/^(?:\/storage\/emulated\/0|\/mnt\/sdcard)(?=\/|$)/i, "/sdcard");
+            if (/^\/(?:sdcard|saf)(?:\/|$)/i.test(virtual)) {
+                try {
+                    const { readNativeStorageFile } = await import("fl-ui/explorer/storage-bridge");
+                    const file = await readNativeStorageFile(virtual);
+                    if (file) files.push(file);
+                } catch {
+                    /* web / no bridge */
+                }
+            }
+        }
         if (wantFile && !files.length) {
             const status = await invokeCwsPlatformIPC({ channel: "storage:all-files-status" }).catch(() => null);
             const granted = Boolean((status?.echo as { allFilesAccess?: boolean } | undefined)?.allFilesAccess);

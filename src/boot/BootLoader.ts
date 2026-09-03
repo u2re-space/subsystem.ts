@@ -251,6 +251,10 @@ export class BootLoader {
                 void import("./capacitor-clipboard-asset")
                     .then((mod) => mod.installCapacitorClipboardAssetBridge())
                     .catch(() => undefined);
+                /* WHY: Document/Process never imported Explorer path-router — provide("/sdcard/") was empty. */
+                void import("fl-ui/explorer/storage-bridge")
+                    .then((mod) => mod.ensureNativeStorageProvide())
+                    .catch(() => undefined);
             }
             try {
                 const { initFrontendDebugCapture } = await import("./frontend-debug-capture");
