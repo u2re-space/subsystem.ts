@@ -7,7 +7,8 @@
  * Per-kind Share Target / Launch Queue policy for CWSP-process.
  * INVARIANT: attach only stages files. process runs AI once (page-side) and
  * optionally writes the result to the device clipboard — never also click Execute.
- * COMPAT: `ai.autoProcessShared === false` forces attach for every kind.
+ * INVARIANT: `ai.autoProcessShared`, `ai.shareTargetMode`, and `processIngress.autoProcess`
+ * are unread leftovers. Only `processIngress.kinds.*.mode` chooses attach vs process.
  */
 
 import { OPEN_KINDS, type OpenKind } from "./open-policy";
@@ -73,12 +74,8 @@ export const mergeProcessIngress = (
     return out;
 };
 
-export const resolveProcessIngressPolicy = (settings?: AppSettings | null): ProcessIngressPolicy => {
-    const merged = mergeProcessIngress(DEFAULT_PROCESS_INGRESS, settings?.ai?.processIngress);
-    // COMPAT: older master flag still wins when it is explicitly off.
-    if (settings?.ai?.autoProcessShared === false) merged.autoProcess = false;
-    return merged;
-};
+export const resolveProcessIngressPolicy = (settings?: AppSettings | null): ProcessIngressPolicy =>
+    mergeProcessIngress(DEFAULT_PROCESS_INGRESS, settings?.ai?.processIngress);
 
 export type ResolvedProcessIngressKind = ProcessIngressKindPolicy & {
     kind: ProcessIngressKind;
@@ -93,13 +90,13 @@ export const resolveProcessIngressKind = (
     const policy = resolveProcessIngressPolicy(settings);
     const key = (OPEN_KINDS as readonly string[]).includes(kind) ? (kind as ProcessIngressKind) : "other";
     const row = policy.kinds[key] || DEFAULT_PROCESS_INGRESS.kinds[key];
-    const mode: ProcessIngressMode = policy.autoProcess === false ? "attach" : row.mode === "attach" ? "attach" : "process";
+    const mode: ProcessIngressMode = row.mode === "attach" ? "attach" : "process";
     return {
         kind: key,
         mode,
         instructionId: row.instructionId || "",
         copyToClipboard: mode === "process" && row.copyToClipboard !== false,
-        autoProcess: policy.autoProcess,
+        autoProcess: mode === "process",
         backgroundClipboard: policy.backgroundClipboard
     };
 };
@@ -136,7 +133,7 @@ export const peekProcessIngressSettings = (): AppSettings | null => settingsPeek
 
 /** True when a settings blob has been loaded (defaults still apply on Capacitor). */
 export const processIngressSettingsFound = (settings?: AppSettings | null): boolean =>
-    Boolean(settings?.ai && (settings.ai.processIngress || typeof settings.ai.autoProcessShared === "boolean"));
+    Boolean(settings?.ai);
 
 const isCapacitorNativeSync = (): boolean => {
     try {

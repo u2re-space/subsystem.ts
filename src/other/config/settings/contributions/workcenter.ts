@@ -4,7 +4,8 @@
  * FIND:process-ingress
  * TAG:workcenter,share-target
  *
- * Work Center panel: pinned-task defaults plus per-kind share / launch / Capacitor policy.
+ * Process panel: per-kind Share Target / Launch Queue / Capacitor policy.
+ * INVARIANT: attach vs process is only `ai.processIngress.kinds.*.mode`.
  */
 
 import { bindContributionFields, collectContributionFields, registerSettingsContribution } from "../../SettingsContributions";
@@ -20,8 +21,7 @@ import {
     settingsHeading,
     settingsHint,
     settingsPanel,
-    settingsSelectField,
-    settingsTextField
+    settingsSelectField
 } from "../settings-contribution-ui";
 
 const MODE_OPTIONS: Array<[string, string]> = [
@@ -62,6 +62,30 @@ const kindBlock = (kind: ProcessIngressKind): HTMLElement[] => [
     settingsCheckboxField("Copy AI result to clipboard", `ai.processIngress.kinds.${kind}.copyToClipboard`)
 ];
 
+const isNativeSettingsSurface = (): boolean => {
+    try {
+        const root = document.documentElement;
+        const shell = String(root.dataset.cwspNativeShell || root.dataset.cwspSurface || "").toLowerCase();
+        if (shell.includes("capacitor") || shell === "native") return true;
+        const g = globalThis as { Capacitor?: { isNativePlatform?: () => boolean }; __CWS_NATIVE__?: boolean };
+        return Boolean(g.Capacitor?.isNativePlatform?.() || g.__CWS_NATIVE__);
+    } catch {
+        return false;
+    }
+};
+
+const dropRetiredProcessFlags = (settings: AppSettings): void => {
+    if (settings.ai) {
+        delete settings.ai.autoProcessShared;
+        delete settings.ai.shareTargetMode;
+    }
+    const views = (settings as { views?: { workcenter?: Record<string, unknown> } }).views?.workcenter;
+    if (views) {
+        delete views.autoRunPinned;
+        delete views.defaultInstructionId;
+    }
+};
+
 export const registerWorkcenterSettingsContribution = (): (() => void) =>
     registerSettingsContribution({
         id: "workcenter",
@@ -71,30 +95,24 @@ export const registerWorkcenterSettingsContribution = (): (() => void) =>
         manualFields: true,
         render: () =>
             settingsPanel("workcenter", "Process", [
-                settingsCheckboxField("Auto-run pinned tasks", "views.workcenter.autoRunPinned"),
-                settingsTextField("Default instruction id", "views.workcenter.defaultInstructionId", "(none)"),
-                settingsHeading("File types and incoming actions"),
                 settingsHint(
-                    "PWA/Web Share Target and Launch Queue open files here. On Android, Share and Open with follow these per-type actions. “Run AI and write to clipboard” can keep a background service so the result still lands after Share."
+                    "Share Target, file open, and Launch Queue use the action for each type. Attach puts the file in chat. Process runs AI (and copies the result when that box is on)."
                 ),
-                settingsHint(
-                    "Chat and AI actions POST to `/api/process`. PWA service worker and Capacitor Java run the same key-on-request fallback as Fastify; dedicated hosts stay same-origin, LAN still uses process.u2re.space."
-                ),
-                settingsCheckboxField("Allow automatic AI for incoming files", "ai.processIngress.autoProcess"),
-                settingsCheckboxField(
-                    "Android: keep background service for clipboard-write",
-                    "ai.processIngress.backgroundClipboard"
-                ),
-                settingsSelectField("AI action", "ai.shareTargetMode", [
-                    ["recognize", "Recognize"],
-                    ["analyze", "Analyze"]
-                ]),
+                ...(isNativeSettingsSurface()
+                    ? [
+                          settingsCheckboxField(
+                              "Android: keep background service for clipboard-write",
+                              "ai.processIngress.backgroundClipboard"
+                          )
+                      ]
+                    : []),
+                settingsHeading("Incoming file types"),
                 ...OPEN_KINDS.flatMap((kind) => kindBlock(kind))
             ]),
         load: (settings, panel) => {
             settings.ai = settings.ai || {};
             settings.ai.processIngress = mergeProcessIngress(settings.ai.processIngress);
-            if (settings.ai.autoProcessShared === false) settings.ai.processIngress.autoProcess = false;
+            dropRetiredProcessFlags(settings);
             fillInstructionSelects(panel, settings);
             bindContributionFields(panel, settings);
         },
@@ -102,6 +120,6 @@ export const registerWorkcenterSettingsContribution = (): (() => void) =>
             collectContributionFields(panel, settings);
             settings.ai = settings.ai || {};
             settings.ai.processIngress = mergeProcessIngress(settings.ai.processIngress);
-            settings.ai.autoProcessShared = settings.ai.processIngress.autoProcess !== false;
+            dropRetiredProcessFlags(settings);
         }
     });

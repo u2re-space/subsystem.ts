@@ -505,13 +505,7 @@ const shouldForceWorkCenterAttachment = async (shareData: ShareDataInput): Promi
         return shareData.aiEnabled === false && !(contentType === "text" || contentType === "markdown");
     }
 
-    // Fallback to current app settings if share packet does not carry aiEnabled.
-    try {
-        const settings = await loadSettings().catch(() => null);
-        return (settings?.ai?.autoProcessShared ?? true) === false && !(contentType === "text" || contentType === "markdown");
-    } catch {
-        return false;
-    }
+    return false;
 };
 
 const extractTransferHint = (shareData: ShareDataInput): ViewTransferHint | undefined => {
@@ -656,21 +650,19 @@ const routeToTransferView = async (
         timestamp: preparedData.timestamp
     }));
 
-    let autoProcessShared = true;
     let loadedSettings: Awaited<ReturnType<typeof loadSettings>> | null = null;
     try {
         loadedSettings = await loadSettings().catch(() => null);
         rememberProcessIngressSettings(loadedSettings);
-        autoProcessShared = (loadedSettings?.ai?.autoProcessShared ?? true) !== false;
         const { rememberOpenPolicyFromSettings } = await import("../../other/config/open-policy");
         rememberOpenPolicyFromSettings(loadedSettings);
     } catch {
-        autoProcessShared = true;
+        /* settings optional — per-kind defaults still apply */
     }
 
     const sku = inferCwspSkuFromLocation();
     const skuHint = await refineLauncherImageIngress(
-        skuIngressHint(preparedData, { sku, autoProcessShared, settings: loadedSettings }),
+        skuIngressHint(preparedData, { sku, settings: loadedSettings }),
         files
     );
     const forceAttachToWorkCenter =
@@ -1169,7 +1161,11 @@ const runProcessShareTargetData = async (shareData: ShareDataInput, skipIfEmpty 
             throw new Error("No processable content found");
         }
 
-        const analyze = settings?.ai?.shareTargetMode === "analyze";
+        const analyze =
+            ingress.kind === "text" ||
+            ingress.kind === "markdown" ||
+            ingress.kind === "document" ||
+            ingress.kind === "url";
         console.log("[ShareTarget] Calling unified processing API");
         const posted = await postProcessApi(
             "processing",

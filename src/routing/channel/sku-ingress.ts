@@ -89,20 +89,32 @@ type WorkCenterFlushHost = {
     handleMessage?: (message: unknown) => Promise<void>;
 };
 
-const collectWorkCenterFlushHosts = (): WorkCenterFlushHost[] => {
-    if (typeof document === "undefined") return [];
-    const hosts: WorkCenterFlushHost[] = [];
-    const seen = new Set<Element>();
-    const add = (node: Element | null | undefined): void => {
-        if (!node || seen.has(node)) return;
-        seen.add(node);
-        hosts.push(node as unknown as WorkCenterFlushHost);
+/** In-memory host — Process mounts the inner chat div, so `querySelector("cw-workcenter-view")` is empty. */
+let registeredWorkCenterFlushHost: WorkCenterFlushHost | null = null;
+
+export const registerWorkCenterFlushHost = (host: WorkCenterFlushHost): (() => void) => {
+    registeredWorkCenterFlushHost = host;
+    return () => {
+        if (registeredWorkCenterFlushHost === host) registeredWorkCenterFlushHost = null;
     };
-    document.querySelectorAll("cw-workcenter-view").forEach(add);
+};
+
+const collectWorkCenterFlushHosts = (): WorkCenterFlushHost[] => {
+    const hosts: WorkCenterFlushHost[] = [];
+    const seen = new Set<WorkCenterFlushHost>();
+    const add = (host: WorkCenterFlushHost | null | undefined): void => {
+        if (!host || seen.has(host)) return;
+        seen.add(host);
+        hosts.push(host);
+    };
+    add(registeredWorkCenterFlushHost);
+    if (typeof document === "undefined") return hosts;
+    const addEl = (node: Element | null | undefined): void => add(node as unknown as WorkCenterFlushHost);
+    document.querySelectorAll("cw-workcenter-view").forEach(addEl);
     document
         .querySelectorAll("[data-shell], cw-shell-minimal, cw-shell-immersive, cw-shell-content, cw-shell-environment")
         .forEach((shell) => {
-            (shell as HTMLElement).shadowRoot?.querySelectorAll("cw-workcenter-view").forEach(add);
+            (shell as HTMLElement).shadowRoot?.querySelectorAll("cw-workcenter-view").forEach(addEl);
         });
     return hosts;
 };
@@ -281,7 +293,7 @@ const skuDefaultDestination = (sku: CwspSku | ""): OpenPolicyDestination | undef
 
 export const skuIngressHint = (
     payload: IngressProbe,
-    opts?: { sku?: CwspSku | ""; autoProcessShared?: boolean; openPolicy?: OpenPolicy; settings?: AppSettings | null }
+    opts?: { sku?: CwspSku | ""; openPolicy?: OpenPolicy; settings?: AppSettings | null }
 ): SkuIngressHint | undefined => {
     const sku = opts?.sku || inferCwspSkuFromLocation();
     const settings = opts?.settings || peekProcessIngressSettings();
@@ -322,11 +334,7 @@ export const skuIngressHint = (
             const row = resolveProcessIngressKind(settings, kind);
             const hinted = payload.hint?.action;
             const action: SkuIngressAction =
-                hinted === "attach" || hinted === "process"
-                    ? hinted
-                    : opts?.autoProcessShared === false
-                      ? "attach"
-                      : row.mode;
+                hinted === "attach" || hinted === "process" ? hinted : row.mode;
             return {
                 destination,
                 action,
@@ -363,11 +371,7 @@ export const skuIngressHint = (
         const row = resolveProcessIngressKind(settings, kind);
         const hinted = payload.hint?.action;
         const action: SkuIngressAction =
-            hinted === "attach" || hinted === "process"
-                ? hinted
-                : opts?.autoProcessShared === false
-                  ? "attach"
-                  : row.mode;
+            hinted === "attach" || hinted === "process" ? hinted : row.mode;
         return {
             destination: "workcenter",
             action,

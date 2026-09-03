@@ -84,6 +84,7 @@ export type ProcessIngressKindPolicy = {
 };
 
 export type ProcessIngressPolicy = {
+    /** COMPAT: unread leftover. Attach vs process is `kinds.*.mode` only. */
     autoProcess: boolean;
     /** Capacitor: keep the foreground service and write the AI result to the device clipboard. */
     backgroundClipboard: boolean;
@@ -443,8 +444,9 @@ export type AppSettings = {
         maxToolCalls?: number;
         parallelToolCalls?: boolean;
         mcp?: MCPConfig[];
+        /** COMPAT: unread leftover. Prompt flavor follows the ingress kind. */
         shareTargetMode?: "analyze" | "recognize";
-        /** COMPAT: master off forces attach for every kind. Prefer `processIngress.autoProcess`. */
+        /** COMPAT: unread leftover. Does not override `processIngress.kinds`. */
         autoProcessShared?: boolean;
         /** Per-kind attach vs AI + clipboard for share-target / launch-queue / Capacitor. */
         processIngress?: ProcessIngressPolicy;
@@ -651,8 +653,6 @@ export const DEFAULT_SETTINGS: AppSettings = {
         maxToolCalls: 8,
         parallelToolCalls: true,
         mcp: [],
-        shareTargetMode: "recognize",
-        autoProcessShared: true,
         processIngress: {
             autoProcess: true,
             backgroundClipboard: true,
