@@ -5,17 +5,23 @@
  * convenience operations used by share-target flows, recognition/analyze
  * pipelines, markdown/json persistence, and timeline/entity storage.
  */
-import { canParseURL } from "core/utils/index";
+/* WHY: `core/utils` barrel re-exports Theme → StateStorage → fest/dom; SW must not load that. */
+import { canParseURL } from "core/utils/Runtime";
 import { BASE64_PREFIX, convertImageToJPEG, MAX_BASE64_SIZE } from "core/workers/ImageProcess";
-import { getJSONFromFile, getMarkDownFromFile, writeFileSmart } from "@fest-lib/lure";
-
 const viteEnv = (import.meta as unknown as { env?: { PROD?: boolean } }).env;
 const isViteProd = Boolean(viteEnv?.PROD);
 
-/** Dynamic-only: static `fest/lure` pulls `com-app` into the MV3 service worker graph. */
+/** Dynamic-only: static `fest/lure` pulls `fest/dom` into the MV3 service worker graph. */
 type LureFs = Pick<
     typeof import("@fest-lib/lure"),
-    "getDirectoryHandle" | "getFileHandle" | "decodeBase64ToBytes" | "stringToFile" | "parseDataUrl"
+    | "getDirectoryHandle"
+    | "getFileHandle"
+    | "decodeBase64ToBytes"
+    | "stringToFile"
+    | "parseDataUrl"
+    | "getJSONFromFile"
+    | "getMarkDownFromFile"
+    | "writeFileSmart"
 >;
 let lureFsPromise: Promise<LureFs> | null = null;
 const getLureFs = (): Promise<LureFs> => {
@@ -26,6 +32,9 @@ const getLureFs = (): Promise<LureFs> => {
             decodeBase64ToBytes: m.decodeBase64ToBytes,
             stringToFile: m.stringToFile,
             parseDataUrl: m.parseDataUrl,
+            getJSONFromFile: m.getJSONFromFile,
+            getMarkDownFromFile: m.getMarkDownFromFile,
+            writeFileSmart: m.writeFileSmart,
         }));
     }
     return lureFsPromise;
@@ -114,6 +123,7 @@ export const getAnalyzeRecognizeUnified = async (): Promise<AnalyzeRecognizeUnif
 
 /** Try recognition first for non-markdown inputs, then persist the recognized result into the target directory. */
 export const writeWithTryRecognize = async (dir: string, file: File) => {
+    const { writeFileSmart } = await getLureFs();
     if (file?.name?.endsWith?.(".md") || file?.type?.includes?.("markdown")) {
         return writeFileSmart(null, dir, file, { sanitize: true });
     }
@@ -170,7 +180,7 @@ export const hasCriteriaInText = async (text: string, criteria: string[]) => {
 
 /** Read every JSON file from a directory-like handle or path. */
 export const readJSONs = async (dir: any | null) => {
-    const { getDirectoryHandle } = await getLureFs();
+    const { getDirectoryHandle, getJSONFromFile } = await getLureFs();
     const dirHandle = typeof dir === "string" ? await getDirectoryHandle(null, dir) : dir;
     const factors = await Array.fromAsync(dirHandle?.entries?.() ?? []);
     return Promise.all(factors?.map?.((factor) => getJSONFromFile(factor)));
@@ -178,7 +188,7 @@ export const readJSONs = async (dir: any | null) => {
 
 //
 export const readJSONsFiltered = async (dir: any | null, filterFiles?: string[] | null) => {
-    const { getDirectoryHandle } = await getLureFs();
+    const { getDirectoryHandle, getJSONFromFile } = await getLureFs();
     const dirHandle = typeof dir === "string" ? await getDirectoryHandle(null, dir) : dir;
     const factors = await Array.fromAsync(dirHandle?.entries?.() ?? []);
     return Promise.all(factors?.map?.((factor) => getJSONFromFile(factor)));
@@ -186,7 +196,7 @@ export const readJSONsFiltered = async (dir: any | null, filterFiles?: string[] 
 
 //
 export const readMarkDownsFiltered = async (dir: any | null, filterFiles?: string[] | null) => {
-    const { getDirectoryHandle } = await getLureFs();
+    const { getDirectoryHandle, getMarkDownFromFile } = await getLureFs();
     const dirHandle = typeof dir === "string" ? await getDirectoryHandle(null, dir) : dir;
     const preferences = await Array.fromAsync(dirHandle?.entries?.() ?? []);
     return Promise.all(preferences?.map?.(async (preferences) => (await getMarkDownFromFile(preferences)))
@@ -195,7 +205,7 @@ export const readMarkDownsFiltered = async (dir: any | null, filterFiles?: strin
 
 //
 export const readMarkDowns = async (dir: any | null) => {
-    const { getDirectoryHandle } = await getLureFs();
+    const { getDirectoryHandle, getMarkDownFromFile } = await getLureFs();
     const dirHandle = typeof dir === "string" ? await getDirectoryHandle(null, dir) : dir;
     const preferences = await Array.fromAsync(dirHandle?.entries?.() ?? []);
     return Promise.all(preferences?.map?.((preference) => getMarkDownFromFile(preference?.[1])));
@@ -227,6 +237,7 @@ export const writeMarkDown = async (data: any, path: any | null = null) => {
     filename = filename?.endsWith?.(".md") ? filename : (filename + ".md");
 
     //
+    const { writeFileSmart } = await getLureFs();
     let results: any = await writeFileSmart(null, path, data instanceof File ? data : new File([data], filename, { type: 'text/markdown' }))?.catch?.(console.warn.bind(console));
     if (typeof document !== "undefined")
         document?.dispatchEvent?.(new CustomEvent("rs-fs-changed", { detail: results, bubbles: true, composed: true, cancelable: true, }));

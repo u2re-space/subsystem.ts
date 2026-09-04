@@ -1,4 +1,6 @@
-import { isBase64Like, parseDataUrl } from "@fest-lib/lure";
+/* WHY: SW imports this file. The lure barrel evaluates DOM (`document`) and
+ * kills MV3. Base64 helpers are a leaf module with no DOM. */
+import { isBase64Like, parseDataUrl } from "@fest-lib/lure/base64-data";
 
 export interface LogSanitizerOptions {
     maxStringLength?: number;

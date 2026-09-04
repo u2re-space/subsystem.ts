@@ -14,7 +14,6 @@ import { DEFAULT_SETTINGS, normalizeEcosystemToken } from "./SettingsTypes";
 import { mergeOpenPolicy, mergeOpenPolicyByHost, rememberOpenPolicyFromSettings, resolveHostOpenPolicy } from "./open-policy";
 import { mergeProcessIngress, rememberProcessIngressSettings } from "./process-ingress";
 import { detectSettingsHost } from "./settings-host";
-import { writeFileSmart } from "@fest-lib/lure";
 import { migrateLegacyCwspPublicPort } from "cwsp-shared/cwsp-endpoint-resolve";
 import {
     isAssociableFleetWireNodeId,
@@ -2080,13 +2079,16 @@ type SyncOptions = {
 };
 
 /** Lazy `fest/lure` — keeps content scripts / lightweight callers from pulling lure + UI CSS. */
-let lureFsPromise: Promise<{ getDirectoryHandle: typeof import("@fest-lib/lure").getDirectoryHandle; readFile: typeof import("@fest-lib/lure").readFile }> | null = null;
+let lureFsPromise: Promise<{
+    getDirectoryHandle: typeof import("@fest-lib/lure").getDirectoryHandle;
+    readFile: typeof import("@fest-lib/lure").readFile;
+    writeFileSmart: typeof import("@fest-lib/lure").writeFileSmart;
+}> | null = null;
 const isServiceWorkerScope = (): boolean => {
     try {
         // MV3 extension / classic SW: dynamic import() is disallowed.
         return typeof (globalThis as { ServiceWorkerGlobalScope?: unknown }).ServiceWorkerGlobalScope !== "undefined"
-            && typeof (globalThis as { clients?: unknown }).clients !== "undefined"
-            && typeof (globalThis as { document?: unknown }).document === "undefined";
+            && typeof (globalThis as { clients?: unknown }).clients !== "undefined";
     } catch {
         return false;
     }
@@ -2099,6 +2101,7 @@ const loadLureFs = () => {
         lureFsPromise = import("@fest-lib/lure").then((m) => ({
             getDirectoryHandle: m.getDirectoryHandle,
             readFile: m.readFile,
+            writeFileSmart: m.writeFileSmart,
         }));
     }
     return lureFsPromise;
@@ -2111,7 +2114,7 @@ const downloadContentsToOPFS = async (
     opts: SyncOptions = {},
     rootHandle: FileSystemDirectoryHandle | null = null
 ) => {
-    const { getDirectoryHandle, readFile } = await loadLureFs();
+    const { getDirectoryHandle, readFile, writeFileSmart } = await loadLureFs();
     const files = await webDavClient
         ?.getDirectoryContents?.(path || "/")
         ?.catch?.((e) => { console.warn(e); return []; }) as any;
