@@ -19,6 +19,8 @@ export interface ViewLifecycle {
     onUnmount?: () => void | Promise<void>;
     onShow?: () => void | Promise<void>;
     onHide?: () => void | Promise<void>;
+    /** Called when the view should reload its current document / listing. */
+    onRefresh?: () => void | Promise<void>;
 }
 
 export interface ViewOptions {

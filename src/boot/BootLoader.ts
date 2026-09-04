@@ -302,12 +302,20 @@ export class BootLoader {
                         typeof document !== "undefined"
                             ? String(document.documentElement?.dataset?.cwspSurface || "")
                             : "";
+                    const protocol = String(globalThis.location?.protocol || "");
+                    const nativeShell =
+                        typeof document !== "undefined"
+                            ? String(document.documentElement?.dataset?.cwspNativeShell || "")
+                            : "";
                     return Boolean(
                         g.__CWS_SKIP_PWA__ ||
                             g.__CWS_NEUTRALINO_BOOT__ ||
                             g.__CWS_WEBNATIVE_BOOT__ ||
                             g.Neutralino ||
                             typeof g.NL_OS === "string" ||
+                            protocol === "chrome-extension:" ||
+                            nativeShell === "crx" ||
+                            surface.includes("crx") ||
                             surface === "cwsp-control" ||
                             surface === "gateway"
                     );
