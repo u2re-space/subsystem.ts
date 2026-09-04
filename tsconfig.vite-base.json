@@ -101,6 +101,8 @@
             "@fest-lib/dom": ["../../projects/dom.ts/src/index.ts"],
             "@fest-lib/style-lib": ["../../projects/style.ts/src/index.ts"],
             "@fest-lib/fl-ui": ["../../projects/fl.ui/src/index.ts"],
+            "@fest-lib/fl-ui/markdown/highlight": ["../../projects/fl.ui/src/ui/markdown/highlight.ts"],
+            "@fest-lib/fl-ui/markdown/render": ["../../projects/fl.ui/src/ui/markdown/render.ts"],
             "@fest-lib/icon": ["../../projects/icon.ts/src/index.ts"],
             "@fest-lib/lure": ["../../projects/lur.e/src/index.ts"],
             "@fest-lib/lure/provide": ["../../projects/lur.e/src/utils/opfs/provide.ts"],
