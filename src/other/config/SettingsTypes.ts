@@ -299,7 +299,20 @@ export type ShellSettings = {
      * Byte transport hint placed on outbound files:offer
      * (`auto` | `http` | `ws`). Receivers may still negotiate.
      */
-    filesByteTransport?: "auto" | "http" | "ws";
+    filesByteTransport?: "auto" | "http" | "ws" | "bluetooth";
+    /**
+     * Name → id overlay (`desk=L-110; pixel=L-210`) plus built-in fleet defaults.
+     */
+    deviceAliases?: string;
+    /** Peer id → Classic Bluetooth MAC (`L-196=AA:BB:CC:DD:EE:FF`). */
+    deviceBluetooth?: string;
+    /** Listen/send clipboard and ≤2MiB files over RFCOMM. Default on. */
+    bluetoothEnabled?: boolean;
+    /**
+     * Try Bluetooth before hub / peer `/ws`.
+     * WHY: bypass gateway even when it is up (LTE desk-less / airplane-adjacent).
+     */
+    preferBluetooth?: boolean;
     /**
      * Where Capacitor lands received files after unpack (W4 export).
      * - `app`: keep under app-private files/incoming (default; not in system Files)
@@ -636,6 +649,10 @@ export const DEFAULT_SETTINGS: AppSettings = {
         filesOpenForShareMode: "auto",
         filesInboundMode: "ask",
         filesByteTransport: "auto",
+        deviceAliases: "",
+        deviceBluetooth: "",
+        bluetoothEnabled: true,
+        preferBluetooth: false,
         filesLandingMode: "app",
         filesIncomingDir: "",
         filesAskDirEveryTime: true,

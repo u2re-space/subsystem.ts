@@ -89,8 +89,31 @@ const connectionFields = (ctx: SettingsContributionContext): SettingsPanelChild[
                 ? "Shared ecosystem key for Neutralino + Chrome hub auth. WAN / external Relay or Local hub still needs this token (Control may also require gateway login)."
                 : "One shared token for identification + control (replaces separate identifier / access tokens). Leave blank on Save to keep the stored token."
         ),
-        settingsTextField("Destination node ids", "core.socket.routeTarget", "L-196;L-210;L-208"),
-        settingsHint(MULTI_VALUE_HINT),
+        settingsTextField("Destination node ids", "core.socket.routeTarget", "desk; L-210; phone"),
+        settingsHint(
+            MULTI_VALUE_HINT + " Names resolve locally: desk→L-110, phone→L-196, gateway→L-200."
+        ),
+        settingsTextField(
+            "Device name map",
+            "shell.deviceAliases",
+            "desk=L-110; pixel=L-210; fold=L-208"
+        ),
+        settingsHint(
+            "Extra names for the built-in fleet map (desk/ultrabook=L-110, phone=L-196). `name=L-id` or JSON."
+        ),
+        settingsTextField(
+            "Bluetooth addresses",
+            "shell.deviceBluetooth",
+            "L-110=AA:BB:CC:DD:EE:FF; L-196=…"
+        ),
+        settingsHint(
+            "Classic Bluetooth MAC per id. Empty = bonded-device name match (L-210 in the adapter name)."
+        ),
+        settingsCheckboxField("Bluetooth transfer (no gateway)", "shell.bluetoothEnabled"),
+        settingsCheckboxField("Prefer Bluetooth over hub", "shell.preferBluetooth"),
+        settingsHint(
+            "Clipboard, images, and files ≤2 MiB over RFCOMM. Works when the gateway is down or this Prefer toggle is on."
+        ),
         settingsCheckboxField("Allow insecure TLS", "core.allowInsecureTls")
     );
     return fields;
@@ -164,7 +187,8 @@ const filesTransferFields = (ctx: SettingsContributionContext): SettingsPanelChi
         settingsSelectField("Byte transport hint", "shell.filesByteTransport", [
             ["auto", "Auto — receiver chooses"],
             ["http", "HTTP blob GET/PUT"],
-            ["ws", "WebSocket chunks"]
+            ["ws", "WebSocket chunks"],
+            ["bluetooth", "Bluetooth RFCOMM (≤2 MiB, no gateway)"]
         ]),
         settingsHint(
             "Transport hint is advisory. Large batches still need a live blob endpoint (W4); small batches may embed."
