@@ -17,6 +17,8 @@ export type FieldConfig = {
     placeholder?: string;
     helper?: string;
     options?: FieldOption[];
+    /** highlight.js language for `textarea` (css, json, …). */
+    language?: string;
 };
 
 export type GroupConfig = {

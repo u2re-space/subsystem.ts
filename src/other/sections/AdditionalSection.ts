@@ -66,6 +66,7 @@ export const AdditionalSection: SectionConfig = {
                     path: "appearance.markdown.customCss",
                     label: "Custom CSS (screen/view)",
                     type: "textarea",
+                    language: "css",
                     placeholder: ".markdown-viewer-content h1 { color: var(--color-primary); }",
                     helper: "Applied to markdown viewer while browsing documents."
                 },
@@ -73,6 +74,7 @@ export const AdditionalSection: SectionConfig = {
                     path: "appearance.markdown.printCss",
                     label: "Custom CSS (print)",
                     type: "textarea",
+                    language: "css",
                     placeholder: ".markdown-viewer-content { font-size: 12pt; }",
                     helper: "Wrapped in @media print when printing markdown."
                 },
@@ -80,6 +82,7 @@ export const AdditionalSection: SectionConfig = {
                     path: "appearance.markdown.extensions",
                     label: "Extensions JSON",
                     type: "textarea",
+                    language: "json",
                     placeholder: "[{\"pattern\":\"==(.+?)==\",\"replacement\":\"<mark>$1</mark>\",\"flags\":\"g\",\"enabled\":true}]",
                     helper: "JSON array of regex replacement rules applied before markdown parsing."
                 }
