@@ -1,8 +1,10 @@
 /*
  * Filename: toast.ts
  * FullPath: modules/projects/subsystem/src/boot/toast.ts
- * Change date and time: 13.35.00_19.07.2026
- * Reason for changes: Fix CRX/content-script toast design — Shadow DOM isolation, no light-dark/@layer.
+ * FIND:toast
+ * MAP:modules/projects/lur.e/src/utils/text/decodeToastMessage.ts
+ * Change date and time: 17.46.00_06.09.2026
+ * Reason for changes: Decode percent-encoded Cyrillic in toast text (decodeURI / decodeURIComponent).
  */
 /**
  * Standalone toast layer (forked from `fl.ui` `misc/Toast.ts`, zero framework deps).
@@ -52,6 +54,43 @@ let lastToastFingerprintAt = 0;
 
 const toastFingerprint = (opts: ToastOptions): string =>
     `${opts.kind || "info"}\0${opts.position || DEFAULT_CONFIG.position}\0${opts.message}`;
+
+const PCT_OCTET = /%[0-9A-Fa-f]{2}/;
+const PCT_RUN = /(?:%[0-9A-Fa-f]{2})+/g;
+
+const decodePctRun = (seq: string): string => {
+    try {
+        return decodeURIComponent(seq);
+    } catch {
+        try {
+            return decodeURI(seq);
+        } catch {
+            return seq;
+        }
+    }
+};
+
+/** MAP:modules/projects/lur.e/src/utils/text/decodeToastMessage.ts — keep inlined (zero deps). */
+export const decodeToastMessage = (raw: unknown): string => {
+    let text = String(raw ?? "");
+    if (!text || !PCT_OCTET.test(text)) return text;
+    for (let i = 0; i < 3; i++) {
+        let next: string;
+        try {
+            next = decodeURIComponent(text);
+        } catch {
+            try {
+                next = decodeURI(text);
+            } catch {
+                next = text.replace(PCT_RUN, decodePctRun);
+            }
+        }
+        if (next === text) break;
+        text = next;
+        if (!PCT_OCTET.test(text)) break;
+    }
+    return text;
+};
 
 const hasVisibleDuplicate = (layer: HTMLElement, message: string, kind: ToastKind): boolean => {
     for (const el of Array.from(layer?.children ?? [])) {
@@ -336,7 +375,8 @@ const broadcastToast = (options: ToastOptions): void => {
  */
 export const showToast = (options: ToastOptions | string): HTMLElement | null => {
     // Handle string shorthand
-    const opts: ToastOptions = typeof options === "string" ? { message: options } : options;
+    const raw: ToastOptions = typeof options === "string" ? { message: options } : options;
+    const opts: ToastOptions = { ...raw, message: decodeToastMessage(raw.message) };
 
     const {
         message,

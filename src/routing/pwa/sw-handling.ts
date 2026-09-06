@@ -10,7 +10,7 @@ import { deliverShareTargetInput } from "./sw-page-bridge";
 import { bindIngressHosts } from "./ingress-host";
 import { safeCacheMatch, safeCacheOpen } from "./sw-cache";
 import { unwrapSwInteropMessage } from "../channel/UniformInterop";
-import { showToast } from "../../boot/toast";
+import { decodeToastMessage, showToast } from "../../boot/toast";
 import { pathForSkuHostView, sameSkuHostViewPath } from "../../boot/history-base";
 import { dropStaleServiceWorkerRegistrations, ensureServiceWorkerRegistered } from "./sw-url";
 import { classifyIngressFile, classifyIngressFromBasename, dispatchViewTransfer, type ViewTransferHint } from "../channel/ViewTransferRouting";
@@ -1224,7 +1224,7 @@ const shareProcessKey = (shareData: ShareDataInput): string => {
 const recentShareProcess = new Map<string, Promise<boolean>>();
 
 const toastProcessError = (raw: unknown): string => {
-    const text = String(raw || "").replace(/\s+/g, " ").trim();
+    const text = decodeToastMessage(String(raw || "")).replace(/\s+/g, " ").trim();
     if (!text || /^\s*</.test(text) || /<!doctype|data-cwsp-sku/i.test(text)) {
         return "Process API unavailable";
     }

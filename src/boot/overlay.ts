@@ -5,7 +5,7 @@
  */
 
 import { initClipboardReceiver } from "core/modules/Clipboard";
-import { showToast as toastShow, initToastReceiver, type ToastOptions } from "./toast";
+import { showToast as toastShow, initToastReceiver, decodeToastMessage, type ToastOptions } from "./toast";
 
 export interface OverlayConfig {
     prefix?: string;
@@ -300,6 +300,7 @@ export const showToast = (text: string | ToastOptions, config?: Partial<OverlayC
     try {
         toastShow({ message: text, kind: "info", duration: 1800 });
     } catch {
+        const message = decodeToastMessage(text);
         const elements = getOverlayElements(config);
         const toast = elements.toast;
         if (!toast) return;
@@ -308,11 +309,11 @@ export const showToast = (text: string | ToastOptions, config?: Partial<OverlayC
             toast.classList.add("is-visible");
         }
 
-        if (toast.textContent === text) return;
-        toast.textContent = text;
+        if (toast.textContent === message) return;
+        toast.textContent = message;
 
         setTimeout(() => {
-            if (toast.textContent !== text) return;
+            if (toast.textContent !== message) return;
             toast.classList.remove("is-visible");
         }, 1800);
     }
