@@ -1,1 +1,1 @@
-../../../subsystem/sharedImport.ts
+../../../sharedImport.ts

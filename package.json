@@ -63,15 +63,15 @@
         "docs:md:clean": "rm -rf ./docs-md && typedoc --options ./typedoc.md.json"
     },
     "devDependencies": {
-        "@types/node": ">=22.8.1",
-        "@vitejs/plugin-basic-ssl": "^2.1.0",
-        "autoprefixer": ">=10.4.20",
-        "cssnano": ">=7.0.6",
-        "postcss-discard-duplicates": ">=7.0.1",
-        "puppeteer": ">=24.42.0",
-        "sass": ">=1.93.3",
-        "typescript": ">=6.0.0-beta",
-        "vite": ">=8.0.10",
-        "vite-plugin-external": "^6.2.2"
+        "@types/node": ">=26.4.1",
+        "@vitejs/plugin-basic-ssl": "^2.3.0",
+        "autoprefixer": ">=10.5.5",
+        "cssnano": ">=9.0.3",
+        "postcss-discard-duplicates": ">=9.0.2",
+        "puppeteer": ">=25.10.0",
+        "sass": ">=1.104.0",
+        "typescript": "^6.0.3",
+        "vite": ">=8.2.2",
+        "vite-plugin-external": "^8.0.3"
     }
 }
