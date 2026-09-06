@@ -33,6 +33,7 @@ import {
 //@ts-ignore
 import style from "./views.scss?inline";
 import { ViewRegistry } from "com/routing/core/registry";
+import { ensureViewportTracking } from "@fest-lib/dom";
 
 /** Views backed by {@link SERVICE_CHANNEL_CONFIG}; lazily initialized on first navigate when not boot-preloaded. */
 const VIEW_SERVICE_CHANNEL_IDS = new Set<string>([
@@ -115,6 +116,8 @@ export abstract class ShellBase implements Shell {
             return;
         }
 
+        /* WHY: Document / Process never mount Work Center first — start IME chrome pin here. */
+        ensureViewportTracking();
         this.container = container;
 
         // Load stylesheet if provided
