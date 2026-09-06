@@ -236,8 +236,11 @@ const consumeNativePendingShare = async (): Promise<{
                 payload: stashedAt ? { stashedAt } : {}
             }).catch(() => null);
         }
-        if (isAndroidLocalShareUri(url)) url = "";
-        if (isAndroidLocalShareUri(text)) text = "";
+        const mappedUrl = String(url || text || "")
+            .trim()
+            .replace(/^file:\/\/(?:localhost)?/i, "")
+            .replace(/^(?:\/storage\/emulated\/0|\/mnt\/sdcard)(?=\/|$)/i, "/sdcard");
+        if (/^\/(?:sdcard|saf)(?:\/|$)/i.test(mappedUrl)) url = mappedUrl;
         if (!text && !url && !files.length) return null;
         return { text, title, url, name, mime, files };
     } catch {

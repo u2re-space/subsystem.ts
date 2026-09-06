@@ -329,9 +329,20 @@ class ServiceWorkerUpdateManager {
         });
 
         // Handle controller change (new SW takes control)
+        // WHY: after a hashed-asset wipe the in-memory HTML still points at the old entry.
+        let seenController = Boolean(navigator.serviceWorker.controller);
         navigator.serviceWorker.addEventListener('controllerchange', () => {
             console.log('[SW] Controller changed - new service worker active');
             globalThis?.dispatchEvent?.(new CustomEvent('sw-controller-changed'));
+            if (!seenController) {
+                seenController = true;
+                return;
+            }
+            if (shouldSkipAutoReloadNow()) {
+                console.log('[SW] Controller-change reload skipped (dev or cooldown)');
+                return;
+            }
+            globalThis?.location?.reload?.();
         });
 
         // Listen for messages from service worker
