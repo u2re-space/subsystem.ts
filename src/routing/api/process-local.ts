@@ -7,7 +7,7 @@
  * no server env key — only credentials on the request body.
  * INVARIANT: SW, Vite Dev, Fastify, and Java share this shape (`fallback: "local"`).
  */
-export const PROCESS_LOCAL_DEFAULT_BASE_URL = "https://api.proxyapi.ru/openai/v1";
+export const PROCESS_LOCAL_DEFAULT_BASE_URL = "https://api.proxyapi.ru/v1";
 export const PROCESS_LOCAL_DEFAULT_MODEL = "gpt-5.6-luna";
 
 const pick = (...values: unknown[]): string => {

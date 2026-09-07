@@ -8,7 +8,7 @@
  * Implemented here (under `shared/routing`) so PWA and CRX entries resolve one stable
  * module — avoids dev-server secondary fetches to `frontend/ai-slop/*` that could fail behind proxies.
  */
-import { fixOrientToScreen } from "@fest-lib/dom";
+import { ensureVirtualKeyboardOverlay, fixOrientToScreen } from "@fest-lib/dom";
 import { initializeAppCanvasLayer } from "@fest-lib/image";
 
 /** COMPAT: historical `fl-ui/speed-dial` orient hook; upstream module not present in this tree. */
@@ -25,6 +25,7 @@ export const ensureAppLayers = (
     mountElement: HTMLElement,
     options: { enableOrientLayer?: boolean; enableCanvasLayer?: boolean } = {},
 ): AppLayers => {
+    ensureVirtualKeyboardOverlay();
     const enableOrientLayer = options.enableOrientLayer !== false;
     const enableCanvasLayer = options.enableCanvasLayer !== false;
     const existingCanvas = mountElement.querySelector<HTMLElement>('[data-app-layer="canvas"]');
