@@ -57,6 +57,8 @@
         "build:publish": "FEST_NPM_IMPORTS=1 vite build --config vite.config.js",
         "prepack": "npm run build:publish",
         "preview": "vite preview",
+        "release": "PUPPETEER_SKIP_DOWNLOAD=1 npm run build:publish && npm publish --access public --ignore-scripts",
+        "publish": "node ../scripts/bump-patch-version.mjs && npm run release",
         "docs": "typedoc ./src/index.ts --options ./typedoc.json --out ./docs --tsconfig ./tsconfig.json --excludeExternals --excludePrivate --excludeProtected --skipErrorChecking",
         "docs:clean": "rm -rf ./docs && typedoc --options ./typedoc.json",
         "docs:md": "typedoc --options ./typedoc.md.json",

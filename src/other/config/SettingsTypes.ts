@@ -127,7 +127,10 @@ export type MarkdownStylePlugins = {
 };
 
 export const BUILTIN_AI_MODELS = [
-    "gpt-5.6-luna"
+    "gpt-5.6-luna",
+    "gpt-5.6-terra",
+    "gpt-5.6-sol",
+    "gpt-6-astra"
 ] as const;
 
 const defaultSpeechLanguage = (): SpeechRecognitionLanguage => {
@@ -662,7 +665,7 @@ export const DEFAULT_SETTINGS: AppSettings = {
     ai: {
         apiKey: "",
         baseUrl: "",
-        model: "gpt-5.2",
+        model: "gpt-5.6-luna",
         customModel: "",
         defaultReasoningEffort: "medium",
         defaultVerbosity: "medium",
