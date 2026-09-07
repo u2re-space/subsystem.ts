@@ -21,7 +21,27 @@ import {
 } from "cwsp-shared/airpad-cwsp-client-parity";
 import { createInteropEnvelope } from "../channel/UniformInterop";
 
-export interface CwsShellInfo {
+/** Android DisplayMetrics + WindowMetrics — FIND:native-display. */
+export interface CwsDisplayMetrics {
+    windowWidthPx?: number;
+    windowHeightPx?: number;
+    windowWidthCss?: number;
+    windowHeightCss?: number;
+    displayWidthPx?: number;
+    displayHeightPx?: number;
+    displayWidthCss?: number;
+    displayHeightCss?: number;
+    density?: number;
+    densityDpi?: number;
+    xdpi?: number;
+    ydpi?: number;
+    ppi?: number;
+    scaledDensity?: number;
+    fontScale?: number;
+    orientation?: string;
+}
+
+export interface CwsShellInfo extends CwsDisplayMetrics {
     shell: string;
     bridge: string;
     native: boolean;
@@ -53,6 +73,8 @@ export type CwsNativeIpcInput = {
 
 export interface CwsBridgePluginContract {
     getShellInfo(): Promise<CwsShellInfo>;
+    /** Native window + display CSS-px, density, DPI/PPI. */
+    getDisplayMetrics?(): Promise<CwsDisplayMetrics & { native?: boolean; platform?: string }>;
     /** Capacitor Java Process API fallback (`CwsProcessApi`). */
     processApi?(body: Record<string, unknown>): Promise<Record<string, unknown>>;
     invoke(options: {
@@ -81,6 +103,13 @@ class CwsBridgeWeb extends WebPlugin implements CwsBridgePluginContract {
         return {
             shell: "browser",
             bridge: "cws-bridge",
+            native: false,
+            platform: typeof globalThis.navigator !== "undefined" ? "web" : "unknown"
+        };
+    }
+
+    async getDisplayMetrics(): Promise<CwsDisplayMetrics & { native?: boolean; platform?: string }> {
+        return {
             native: false,
             platform: typeof globalThis.navigator !== "undefined" ? "web" : "unknown"
         };
