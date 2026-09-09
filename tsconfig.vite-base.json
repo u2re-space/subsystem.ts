@@ -30,6 +30,9 @@
             "com/config/settings/register-builtin-contributions": ["./src/other/config/settings/register-builtin-contributions.ts"],
             "com/config/settings/settings-shell-profile": ["./src/other/config/settings/settings-shell-profile.ts"],
             "com/config/ecosystem-skus": ["./src/other/config/ecosystem-skus.ts"],
+            "com/config/open-policy": ["./src/other/config/open-policy.ts"],
+            "com/routing/pwa/sw-cache": ["./src/routing/pwa/sw-cache.ts"],
+            "com/routing/native/cws-bridge": ["./src/routing/native/cws-bridge.ts"],
             "com/config/Names": ["./runtime/names.ts"],
             "com/config/admin-doors": ["./runtime/admin-doors.ts"],
             "com/core/UnifiedMessaging": ["./runtime/messaging.ts"],
@@ -81,6 +84,16 @@
                 "../../projects/cwsp-shared/src/clipboard-wire-constants.ts"
             ],
             "cwsp-shared/cwsp-global": ["../../projects/cwsp-shared/src/cwsp-global.ts"],
+            "cwsp-shared/remote-connection-runtime": [
+                "../../projects/cwsp-shared/src/remote-connection-runtime.ts"
+            ],
+            "cwsp-shared/transport-credential-bridge": [
+                "../../projects/cwsp-shared/src/transport-credential-bridge.ts"
+            ],
+            "cwsp-shared/airpad-motion-adaptive": [
+                "../../projects/cwsp-shared/src/airpad-motion-adaptive.ts"
+            ],
+            "cwsp-shared/v2/*": ["../../projects/cwsp-shared/src/v2/*"],
             "@fest-lib/cwsp-shared": ["../../projects/cwsp-shared/src/index.ts"],
             "@fest-lib/cwsp-shared/*": ["../../projects/cwsp-shared/src/*"],
             "veela-lib": ["../../projects/veela.css/src/scss/index.scss"],
