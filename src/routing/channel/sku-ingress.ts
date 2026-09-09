@@ -38,8 +38,22 @@ export const filenameFromLocalShareUri = (value?: string | null): string => {
     const raw = String(value || "").trim();
     if (!raw) return "";
     try {
-        const path = decodeURIComponent(raw.replace(/^(?:file|content):\/\//i, "").split("?")[0] || "");
+        let cur = raw;
+        for (let i = 0; i < 4; i++) {
+            try {
+                const next = decodeURIComponent(cur);
+                if (next === cur) break;
+                cur = next;
+            } catch {
+                break;
+            }
+        }
+        const fileAt = cur.toLowerCase().indexOf("file:");
+        const path = (fileAt >= 0 ? cur.slice(fileAt).replace(/^file:\/\//i, "") : cur)
+            .replace(/^(?:content):\/\/[^/]+/i, "")
+            .split("?")[0] || "";
         const base = path.split("/").filter(Boolean).pop() || "";
+        if (/^file:/i.test(base)) return "";
         /* COMPAT: older Shell copies used `open-<epoch>-note.md` as the FileProvider name. */
         return base.replace(/^open-\d+-/i, "");
     } catch {
