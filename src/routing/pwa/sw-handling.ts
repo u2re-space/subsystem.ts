@@ -1592,7 +1592,10 @@ export const handleShareTarget = () => {
     const hasExplicitSharedFlow = shared === "1" || shared === "true" || shared === "test";
     let routedFromSessionPending = false;
 
-    // Handle URL params from server-side share handler
+    /*
+     * WHY: cold share POST is a static route to the network (`installShareTargetStaticRoutes`).
+     * Runtime redirects here with `?shared=1`. The worker fetch handler is the backup when it is already running.
+     */
     if (shared === "1" || shared === "true") {
         console.log("[ShareTarget] Detected shared=1 URL param, processing server-side share");
 

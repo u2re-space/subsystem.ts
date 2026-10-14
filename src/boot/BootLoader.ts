@@ -4,6 +4,7 @@
  * Change date and time: 09.40.00_31.07.2026
  * Reason for changes: bootMinimal mounts via ensureAppLayers shell grid so host is not 0-height on body.
  *
+ * FIND:shell-boot
  * Boot Loader - Shell/Style Initialization System
  *
  * Manages the boot sequence for the CWSP-shell application:
@@ -256,12 +257,10 @@ export class BootLoader {
                     .then((mod) => mod.ensureNativeStorageProvide())
                     .catch(() => undefined);
             }
-            try {
-                const { initFrontendDebugCapture } = await import("./frontend-debug-capture");
-                initFrontendDebugCapture();
-            } catch {
-                /* optional */
-            }
+            /* PERF: debug capture must not sit on the first-paint path. */
+            void import("./frontend-debug-capture")
+                .then((mod) => mod.initFrontendDebugCapture())
+                .catch(() => undefined);
 
             // Phase 0: Settings first — apply appearance to :root before Veela/shell CSS loads so
             // M3 tokens + color-scheme resolve to the saved theme on first paint (avoids light→dark flash).
@@ -323,14 +322,17 @@ export class BootLoader {
                     return false;
                 }
             })();
-            if (!skipPwaIngress) {
-                try {
-                    const { initIngressPWA } = await import("shared/routing/pwa/sw-handling");
-                    await initIngressPWA();
-                } catch (e) {
-                    console.warn("[BootLoader] Share-target / service worker ingress failed (non-fatal):", e);
-                }
-            }
+            /*
+             * PERF: SW registration overlaps style + shell load. Share payloads still
+             * settle before navigate (cwsp:boot-ready stays after the view mounts).
+             */
+            const ingressPromise = skipPwaIngress
+                ? null
+                : import("shared/routing/pwa/sw-handling")
+                    .then((mod) => mod.initIngressPWA())
+                    .catch((e) => {
+                        console.warn("[BootLoader] Share-target / service worker ingress failed (non-fatal):", e);
+                    });
 
             // Phase 1: Style system (Veela, etc.) after document theme attrs are stable.
             await this.loadStyles(config.styleSystem);
@@ -345,6 +347,19 @@ export class BootLoader {
 
             // Phase 4: Mount Shell
             await shell.mount(container);
+
+            /* WHY: SW install (multi-MB precache) must not sit between shell mount and
+             * home. Share-target still waits so the payload is applied before navigate. */
+            const shareBeforeNavigate = (() => {
+                try {
+                    const path = String(globalThis.location?.pathname || "");
+                    const search = String(globalThis.location?.search || "");
+                    return /share[-_]target/i.test(path) || /(?:^|[?&])shared=1(?:&|$)/.test(search);
+                } catch {
+                    return false;
+                }
+            })();
+            if (ingressPromise && shareBeforeNavigate) await ingressPromise;
 
             // Implicit DOM-discovered receive bindings (views expose `handleMessage` / APIs; no transport mixins required).
             this.implicitBridgeCleanup?.();
