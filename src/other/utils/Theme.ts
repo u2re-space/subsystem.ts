@@ -59,7 +59,7 @@ export const bindQuickSettingsThemePersistence = (): void => {
 /** Convert getComputedStyle background (rgb/rgba or hex) to #rrggbb for meta theme-color / PWA chrome. */
 export const cssBackgroundToOpaqueHex = (css: string): string | null => {
     const t = css.trim();
-    if (!t || t === "transparent") return null;
+    if (!t || t === "transparent") return css;
 
     const hexMatch = t.match(/^#([0-9a-f]{3}|[0-9a-f]{6})$/i);
     if (hexMatch) {
@@ -71,10 +71,10 @@ export const cssBackgroundToOpaqueHex = (css: string): string | null => {
     }
 
     const m = t.match(/^rgba?\(\s*([\d.]+)\s*,\s*([\d.]+)\s*,\s*([\d.]+)(?:\s*,\s*([\d.]+))?\s*\)$/i);
-    if (!m) return null;
+    if (!m) return css;
 
     const alpha = m[4] !== undefined ? Number(m[4]) : 1;
-    if (!Number.isFinite(alpha) || alpha < 0.98) return null;
+    if (!Number.isFinite(alpha) || alpha < 0.98) return css;
 
     const r = Math.max(0, Math.min(255, Math.round(Number(m[1]))));
     const g = Math.max(0, Math.min(255, Math.round(Number(m[2]))));
