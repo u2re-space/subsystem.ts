@@ -111,7 +111,7 @@ export const sampleSurfaceBackgroundColor = (): string | null => {
     const probe = document.createElement("div");
     probe.style.cssText =
         "position:fixed;left:-8px;top:-8px;inline-size:4px;block-size:4px;pointer-events:none;opacity:0;" +
-        "background:var(--color-surface)";
+        "background:var(--color-surface-container-low, var(--color-surface))";
     try {
         document.documentElement.appendChild(probe);
         return cssBackgroundToOpaqueHex(getComputedStyle(probe).backgroundColor);

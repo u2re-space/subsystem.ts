@@ -36,7 +36,7 @@
         --shell-toolbar-height: 48px;
 
         /* Colors */
-        --shell-bg: light-dark(var(--color-surface), var(--color-surface));
+        --shell-bg: light-dark(var(--color-surface-container-low), var(--color-surface-container-low));
         --shell-fg: light-dark(var(--color-on-surface), var(--color-on-surface));
         --shell-sidebar-bg: light-dark(var(--color-surface-container-high), var(--color-surface-container-high));
         --shell-sidebar-border: light-dark(var(--color-outline-variant), var(--color-outline-variant));
