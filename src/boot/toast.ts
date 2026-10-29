@@ -332,7 +332,7 @@ const getToastMount = (config: Required<ToastLayerConfig>, doc: Document = docum
         styleEl = doc.createElement("style");
         styleEl.setAttribute("data-rs-toast", "");
         styleEl.textContent = TOAST_STYLES;
-        shadow.insertBefore(styleEl, shadow.firstChild);
+        shadow.moveBefore(styleEl, shadow.firstChild);
     } else {
         // Refresh styles when toast module is updated / SW reloads content script.
         styleEl.textContent = TOAST_STYLES;

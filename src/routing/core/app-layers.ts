@@ -49,7 +49,7 @@ export const ensureAppLayers = (
         let canvasLayer: HTMLElement | null = existingCanvas;
         if (enableCanvasLayer && !canvasLayer) {
             canvasLayer = createCanvasLayer();
-            mountElement.insertBefore(canvasLayer, existingOrient ?? existingShell);
+            mountElement.moveBefore(canvasLayer, existingOrient ?? existingShell);
         }
         if (!enableCanvasLayer && canvasLayer) {
             canvasLayer.remove();
@@ -75,7 +75,7 @@ export const ensureAppLayers = (
             orientLayer.appendChild(orientBox);
             fixOrientToScreen(orientBox as any);
             initializeOrientedDesktop(orientBox as HTMLElement);
-            mountElement.insertBefore(orientLayer, existingShell);
+            mountElement.moveBefore(orientLayer, existingShell);
             return { canvasLayer, orientLayer, shellLayer: existingShell, overlayLayer: existingOverlay };
         }
         if (!enableOrientLayer && existingOrient) {
