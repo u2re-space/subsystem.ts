@@ -11,7 +11,7 @@
 
 @mixin surface($value) {
     background: var(--#{$value}, var(--view-bg, canvas));
-    color: contrast-color(var(--#{$value}, var(--view-bg, canvas)));
+    color: --contrast-color(var(--#{$value}, var(--view-bg, canvas)));
 }
 
 @mixin border-color($value) {
@@ -58,7 +58,7 @@
     border-radius: var(--radius-md, 10px);
     background: transparent;
     color: inherit;
-    color: contrast-color(inherit(background-color));
+    color: --u2-contrast-color(inherit(background-color));
 }
 
 @mixin breakpoint($name) {
