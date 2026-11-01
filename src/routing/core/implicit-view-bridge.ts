@@ -278,8 +278,8 @@ export function startImplicitViewMessagingBridge(
 
     const observer = new MutationObserver((records) => {
         for (const rec of records) {
-            rec.addedNodes.forEach(scanConnect);
             rec.removedNodes.forEach(scanDisconnect);
+            rec.addedNodes.forEach(scanConnect);
         }
     });
 
