@@ -327,7 +327,12 @@ export const showSelection = (config?: Partial<OverlayConfig>): void => {
     try {
         (overlay as any).showPopover?.();
     } catch (e) {
+        // COMPAT: popover can fail (host page CSP/UA quirks, double-open).
+        // WHY: the base overlay style is pointer-events:none — without
+        // :popover-open the overlay would be visible but never receive mouse
+        // events, silently killing the snip selection.
         console.warn("[Overlay] showPopover failed:", e);
+        overlay.style.setProperty("pointer-events", "auto", "important");
     }
 
     overlay.style.setProperty("display", "block", "important");
@@ -346,6 +351,9 @@ export const hideSelection = (config?: Partial<OverlayConfig>): void => {
     if (!overlay) return;
 
     overlay.style.removeProperty("display");
+    // WHY: pair of the showSelection fallback — clear the forced pointer-events
+    // so a later page interaction is not blocked by the hidden overlay.
+    overlay.style.removeProperty("pointer-events");
 
     try {
         (overlay as any).hidePopover?.();
